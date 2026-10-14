@@ -474,6 +474,8 @@ ForeverChronicleDB = {
 			},
 			["UI"] = {
 			},
+			["ViewBar"] = {
+			},
 		},
 		["overviewGraph"] = "xp",
 	},

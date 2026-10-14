@@ -35,7 +35,9 @@ end
 -------------------------------------------------------------------------------
 -- Stats: per-character counters/values shown in the overview.
 --   def = { labelKey, icon, order, format = "number" | "duration" | function(value),
---           compute = function() -> value }   -- optional; otherwise the stored counter is used
+--           compute = function() -> value,    -- optional; otherwise the stored counter is used
+--           fromRecord = function(char) -> value }  -- optional; for other characters (alts, friends), whose
+--                                                   -- live state is unknown; otherwise their stored counter
 -------------------------------------------------------------------------------
 
 FC.statDefs = {}
@@ -94,6 +96,14 @@ function FC:SetStat(key, value)
 end
 
 function FC:GetStatValue(def)
+  if not self:IsViewingPlayed() then
+    local char = self:ViewChar()
+    if def.fromRecord then
+      local ok, value = pcall(def.fromRecord, char)
+      return ok and value or nil
+    end
+    return type(char.stats) == "table" and char.stats[def.key] or nil
+  end
   if def.compute then
     local ok, value = pcall(def.compute)
     return ok and value or nil

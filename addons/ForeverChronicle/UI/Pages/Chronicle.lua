@@ -60,11 +60,11 @@ function page:Create(c)
 end
 
 function page:Refresh()
-  local stream = FC.Storage:GetStream("events")
-  local seq = stream.nextSeq
+  local stream = FC:ViewStream("events")
+  local seq = tostring(FC:ViewKey()) .. ":" .. tostring(stream.nextSeq)
   if self.lastSeq == seq and self.lastLang == FC:GetLanguage() then return end -- nothing new
   self.lastSeq, self.lastLang = seq, FC:GetLanguage()
-  local items = FC:GetRecentEvents(MAX_ROWS)
+  local items = FC:GetRecentEvents(MAX_ROWS, stream)
   self.list:SetItems(items)
   self.empty:SetShown(#items == 0)
 end

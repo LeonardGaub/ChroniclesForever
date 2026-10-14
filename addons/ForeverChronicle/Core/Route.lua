@@ -32,20 +32,21 @@ end
 
 local cache = { key = nil, firstSeq = 1, points = {}, version = nil }
 
--- All points of the current character in time order. Only new records are parsed; the newest record is
--- always re-read because a stationary point may have been extended.
+-- All points of the viewed character (FC:ViewChar) in time order. Only new records are parsed; the newest
+-- record is always re-read because a stationary point may have been extended.
 function Route.Points()
-  local stream = FC.Storage:GetStream("positions")
+  local stream = FC:ViewStream("positions")
+  local key = FC:ViewKey()
   local records = stream.records
   local n = #records
-  local first = stream.nextSeq - n
-  local version = stream.nextSeq .. ":" .. tostring(records[n])
-  if cache.key == FC.charKey and cache.version == version and cache.out then
+  local first = (stream.nextSeq or n + 1) - n
+  local version = tostring(key) .. ":" .. tostring(stream.nextSeq) .. ":" .. tostring(records[n])
+  if cache.key == key and cache.version == version and cache.out then
     return cache.out, version -- unchanged: no parsing, no new tables
   end
 
-  if cache.key ~= FC.charKey or first < cache.firstSeq then
-    cache.key, cache.firstSeq, cache.points = FC.charKey, first, {}
+  if cache.key ~= key or first < cache.firstSeq then
+    cache.key, cache.firstSeq, cache.points = key, first, {}
   elseif first > cache.firstSeq then
     -- Old records were trimmed by the retention cap: drop them from the cache in one pass.
     local drop, kept = first - cache.firstSeq, {}
@@ -69,7 +70,7 @@ end
 -------------------------------------------------------------------------------
 
 local function mapInfo(mapID)
-  return FC.db.maps and FC.db.maps[tostring(mapID)]
+  return FC:MapInfo(mapID)
 end
 
 -- Normalized position of a point on the view map, or nil if it is not on that map.
@@ -115,8 +116,8 @@ end
 
 function Route.Entrance(instanceID)
   if not instanceID then return nil end
-  local stored = FC.db.entrances and FC.db.entrances[tostring(instanceID)]
-  if stored and stored.mapID and stored.x then return stored end
+  local stored = FC:StoredEntrance(instanceID)
+  if stored then return stored end
   local points, version = Route.Points()
   return Route.DerivedEntrances(points, version)[instanceID]
 end
@@ -139,18 +140,17 @@ end
 function Route.ZoneFor(p)
   if p and not p.mapID and p.instanceID then p = Route.Locate(p) end
   if not p or not p.mapID then return nil end
-  if not p.x or not FC.db.maps then return p.mapID end
+  if not p.x then return p.mapID end
   local best, bestArea
-  for key, info in pairs(FC.db.maps) do
-    local id = tonumber(key)
-    if id and id ~= p.mapID and info.continent == p.mapID and info.minX then
+  FC:EachMap(function(id, info)
+    if id ~= p.mapID and info.continent == p.mapID and info.minX then
       local area = (info.maxX - info.minX) * (info.maxY - info.minY)
       if p.x >= info.minX and p.x <= info.maxX and p.y >= info.minY and p.y <= info.maxY
           and (not bestArea or area < bestArea) then
         best, bestArea = id, area
       end
     end
-  end
+  end)
   return best or p.mapID
 end
 
@@ -234,10 +234,10 @@ function Route.NextTimeAfter(points, t)
   return p and p.time or nil
 end
 
--- Sessions of the current character, newest first: list of { startedAt, endedAt }.
+-- Sessions of the viewed character, newest first: list of { startedAt, endedAt }.
 function Route.Sessions()
   local out = {}
-  local records = FC.Storage:GetStream("sessions").records
+  local records = FC:ViewStream("sessions").records
   for i = #records, 1, -1 do
     local s = records[i]
     out[#out + 1] = { startedAt = s.startedAt, endedAt = s.endedAt or time() }

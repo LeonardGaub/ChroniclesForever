@@ -130,6 +130,24 @@
   - Next (phase 2): the in-game character layer around the whole addon window (user decision): default is the
     played character, with a choice of all characters of the account and all friends' characters, fed by
     `Friends\FriendsData.lua`, which the desktop app writes.
+- **Phase 2 of sharing: friends in game (addon v0.11.0, desktop v0.4.0).**
+  - Desktop finds the game through Battle.net (`wow/battlenet.py`): product.db (generic protobuf decoding),
+    Battle.net.config, and the Windows uninstall entries; then the drive scan. `client_from_path` only checks the
+    chosen folder.
+  - Desktop writes `Interface\AddOns\ForeverChronicle\Friends\FriendsData.lua` (`wow/friends_data.py`) at
+    start and after every friend import or removal. Friend characters use the addon's own record shape, trimmed
+    (200 events, routes of the last 3 sessions, at most 60,000 points in total). It uses a strict literal-only
+    serializer: plain ASCII, \ddd escapes, one function per character. The real-Lua test is
+    `tests/addon/dump_friends.js`. The Freunde tab shows the in-game status.
+  - Addon: `Core/View.lua` (FC:ViewChar/ViewStream/ViewSnapshot/MapInfo/InstanceName/StoredEntrance) and
+    `UI/ViewBar.lua`, a character chooser under the title (scrollable list: played character, account alts,
+    friends grouped by name). Every tab shows the chosen character, with the banner "nur lesen" and
+    "Zurück zu mir". Live-only parts of the overview (model, gear, XP, gold, graph) only show for the played
+    character. Recording always goes to the played character.
+  - **Install rule changed:** mirror with `robocopy /MIR /XF FriendsData.lua`, place the placeholder only if
+    missing, and compare hashes without that file (the desktop app owns it in the game folder).
+  - Tests: desktop `test_battlenet`, `test_friends_data` (writes `tests/fixtures/FriendsData.lua`); addon
+    phase 12 loads that fixture.
 - **Desktop:** the icon overhaul was reverted at the user's request; text UI stays.
   - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
   - Open question for the user: real WoW icons for the desktop. Options: export from the local client with
@@ -142,7 +160,7 @@
   - Map art: the user's 52 explored-zone maps were imported into `%APPDATA%\ForeverChronicle\maps\<uiMapID>.jpg`.
     The Import tab has "Kartenbilder importieren …". Coordinates were verified against real probe data
     (Orgrimmar/Cleft of Shadow, Kalimdor rectangle).
-- Tests: `tests/addon` (`npm test`: 14 queue tests and 11 phases) and `desktop` (`pytest`, 88 tests). All pass.
+- Tests: `tests/addon` (`npm test`: 14 queue tests and 12 phases) and `desktop` (`pytest`, 98 tests). All pass.
 - In-game confirmed by the user: window, import, Screenshots tab (v0.2.0). Not yet seen in game: v0.2.1 and v0.3.0 changes.
 
 ## Confirmed client facts
@@ -156,7 +174,7 @@
 - Modular architecture: new stats arrive as new addon modules and desktop registry entries (see ARCHITECTURE.md).
 - Screenshots: shared delay after the event (user request, default 5 s), on-screen countdown (not chat: chat would be in
   the screenshot), cooldown bypass for level/achievement, and the test screenshot follows the delay.
-- After every addon change: copy to the game folder and hash-verify.
+- After every addon change: copy to the game folder and hash-verify (keep `Friends\FriendsData.lua` there; the desktop app writes it).
 - The user prefers short in-game test sessions.
 
 ## Spec updates still to write (v1.4)

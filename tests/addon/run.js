@@ -9,7 +9,7 @@ const addonDir = path.join(__dirname, '..', '..', 'addons', 'ForeverChronicle');
 const toc = fs.readFileSync(path.join(addonDir, 'ForeverChronicle.toc'), 'utf8');
 const files = toc.split(/\r?\n/).map(l => l.trim()).filter(l => l.endsWith('.lua')).map(l => l.replace(/\\/g, '/'));
 
-function runPhase(phase, saved, offset) {
+function runPhase(phase, saved, offset, overrides) {
   const L = lauxlib.luaL_newstate();
   lualib.luaL_openlibs(L);
   const setStr = (name, value) => { lua.lua_pushstring(L, to_luastring(value)); lua.lua_setglobal(L, to_luastring(name)); };
@@ -18,7 +18,8 @@ function runPhase(phase, saved, offset) {
   lua.lua_setglobal(L, to_luastring('ADDON_FILES'));
   lua.lua_newtable(L);
   for (const f of files) {
-    lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(addonDir, f), 'utf8')));
+    const text = overrides && overrides[f] !== undefined ? overrides[f] : fs.readFileSync(path.join(addonDir, f), 'utf8');
+    lua.lua_pushstring(L, to_luastring(text));
     lua.lua_setfield(L, -2, to_luastring(f));
   }
   lua.lua_setglobal(L, to_luastring('ADDON_SRC'));
@@ -69,6 +70,13 @@ runPhase(8, oldSettings(5), 0);
 runPhase(9, null, 0);
 runPhase(10, null, 0);
 runPhase(11, null, 0);
+// Friends' characters as written by the desktop app (desktop/tests/test_friends_data.py writes the fixture).
+const friendsFixture = path.join(__dirname, '..', 'fixtures', 'FriendsData.lua');
+if (fs.existsSync(friendsFixture)) {
+  runPhase(12, null, 0, { 'Friends/FriendsData.lua': fs.readFileSync(friendsFixture, 'utf8') });
+} else {
+  console.log('phase 12 skipped: run the desktop tests first (they write tests/fixtures/FriendsData.lua)');
+}
 
 const fixtures = path.join(__dirname, '..', 'fixtures');
 fs.mkdirSync(fixtures, { recursive: true });

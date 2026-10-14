@@ -201,7 +201,7 @@ function page:Redraw()
   end
   for i, v in ipairs(self.views) do if v == self.viewMap then self.viewIndex = i end end
   local hasArt = self.canvas:SetMap(self.viewMap)
-  local info = FC.db.maps and FC.db.maps[tostring(self.viewMap)]
+  local info = FC:MapInfo(self.viewMap)
   self.mapSel.label:SetText((info and info.name) or tostring(self.viewMap))
   self.artNotice = not hasArt and L.MAP_NO_ART or nil
 
@@ -210,7 +210,7 @@ function page:Redraw()
 
   local pins = {}
   if self.eventToggle.on then
-    for _, r in ipairs(FC.Storage:GetStream("events").records) do
+    for _, r in ipairs(FC:ViewStream("events").records) do
       -- Events inside dungeons are shown at the dungeon entrance.
       local spot = r.location and r.time >= self.range[1] and r.time <= self.range[2] and Route.Locate(r.location)
       if spot then
@@ -246,7 +246,7 @@ function page:UpdateMarker()
   if not p then return end
   -- Inside a dungeon the client gives no position: show the dungeon entrance instead, if known.
   local shown = Route.Locate(p)
-  local instanceName = p.instanceID and (FC.db.instances and FC.db.instances[tostring(p.instanceID)] or ("#" .. p.instanceID))
+  local instanceName = p.instanceID and FC:InstanceName(p.instanceID)
   if not shown then
     self.canvas:SetMarker(nil)
     self:ShowNotice(instanceName and string.format(L.MAP_INSTANCE, instanceName) or nil)
@@ -266,7 +266,7 @@ function page:UpdateMarker()
   if x then
     self:ShowNotice(instanceName and string.format(L.MAP_INSTANCE_ENTRANCE, instanceName) or self.artNotice)
   else
-    local info = FC.db.maps and FC.db.maps[tostring(shown.mapID)]
+    local info = FC:MapInfo(shown.mapID)
     self:ShowNotice(string.format(L.MAP_ELSEWHERE, info and info.name or tostring(shown.mapID)))
   end
 end
@@ -329,6 +329,13 @@ function page:OnUpdate(elapsed)
   end
   self.current = t
   self:UpdateMarker()
+end
+
+-- Another character is shown: start over on its newest moment and its zone.
+function page:OnViewChanged()
+  self.live, self.playing = true, false
+  self.sessionIndex, self.current, self.viewMap, self.lastZone, self.version = 0, nil, nil, nil, nil
+  self:SyncPlay()
 end
 
 -- Shows the given moment (e.g. clicked in the Chronicle).

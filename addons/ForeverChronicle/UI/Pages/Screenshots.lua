@@ -15,7 +15,7 @@ local STATUS_ICON = { confirmed = "ok", api_called = "wait" }
 -- First event of a screenshot (looked up in the events stream), or nil for test screenshots.
 local function firstEvent(eventId)
   if not eventId then return nil end
-  local records = FC.Storage:GetStream("events").records
+  local records = FC:ViewStream("events").records
   for i = #records, math.max(1, #records - 500), -1 do
     if records[i].id == eventId then return records[i] end
   end
@@ -75,7 +75,7 @@ function page:Create(c)
 end
 
 function page:Refresh()
-  local items = FC:GetModule("Screenshots"):GetRecent(100)
+  local items = FC:GetModule("Screenshots"):GetRecent(100, FC:ViewStream("screenshots"))
   self.list:SetItems(items)
   self.empty:SetShown(#items == 0)
 end

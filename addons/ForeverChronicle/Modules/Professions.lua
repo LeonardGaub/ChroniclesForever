@@ -60,7 +60,8 @@ FC:RegisterEventType("recipe_learned", {
 })
 
 FC:RegisterStat("recipes_known", { labelKey = "STAT_RECIPES", order = 25, icon = "Interface\\Icons\\INV_Scroll_03",
-  compute = function() return Professions:CountRecipes() end })
+  compute = function() return Professions:CountRecipes() end,
+  fromRecord = function(char) return Professions:CountRecipes(char) end })
 
 -------------------------------------------------------------------------------
 -- Helpers
@@ -84,7 +85,14 @@ local function api(name)
   return C_TradeSkillUI and C_TradeSkillUI[name]
 end
 
-function Professions:GetSnapshot()
+-- The professions snapshot of a character (default: the played one). Other characters' snapshots are
+-- read-only (alts from this account, friends from the desktop app).
+function Professions:GetSnapshot(char)
+  if char and char ~= FC.char then
+    local snap = type(char.snapshots) == "table" and char.snapshots.professions
+    if type(snap) ~= "table" or type(snap.list) ~= "table" then return { list = {} } end
+    return snap
+  end
   local snap = FC.Storage:GetSnapshot("professions")
   snap.list = snap.list or {}
   return snap
@@ -97,9 +105,9 @@ function Professions:Find(skillLine)
 end
 
 -- Active professions, primary first, then by name.
-function Professions:GetActive()
+function Professions:GetActive(char)
   local out = {}
-  for _, prof in ipairs(self:GetSnapshot().list) do
+  for _, prof in ipairs(self:GetSnapshot(char).list) do
     if prof.active then out[#out + 1] = prof end
   end
   table.sort(out, function(a, b)
@@ -109,9 +117,9 @@ function Professions:GetActive()
   return out
 end
 
-function Professions:CountRecipes()
+function Professions:CountRecipes(char)
   local n = 0
-  for _, prof in ipairs(self:GetActive()) do
+  for _, prof in ipairs(self:GetActive(char)) do
     if prof.recipes then n = n + #prof.recipes.list end
   end
   return n

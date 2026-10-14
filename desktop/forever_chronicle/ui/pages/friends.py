@@ -63,6 +63,8 @@ class FriendsPage(Page):
         fl.addWidget(self.friends, 1)
         self.friends_hint = muted()
         fl.addWidget(self.friends_hint)
+        self.game_status = muted()
+        fl.addWidget(self.game_status)
         root.addWidget(self.friends_box, 1)
 
         self.message = muted()
@@ -91,6 +93,20 @@ class FriendsPage(Page):
             for col, text in enumerate(cells):
                 self.friends.setItem(i, col, QTableWidgetItem(text))
         self._selection_changed()
+        self._show_game_status()
+
+    def _show_game_status(self) -> None:
+        r = self.ctx.friends_data
+        if r is None:
+            self.game_status.setText("")
+        elif r.status == "ok":
+            self.game_status.setText(tr("friends.game_ok", characters=r.characters, friends=r.friends))
+        elif r.status == "no_client":
+            self.game_status.setText(tr("friends.game_no_client"))
+        elif r.status == "no_addon":
+            self.game_status.setText(tr("friends.game_no_addon", path=str(r.path)))
+        else:
+            self.game_status.setText(tr("friends.game_failed", message=r.message or ""))
 
     def _selection_changed(self) -> None:
         self.remove_button.setEnabled(bool(self.friends.selectedItems()))

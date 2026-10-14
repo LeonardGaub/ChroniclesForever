@@ -243,4 +243,17 @@ FC:RegisterLocale("enUS", {
   RECIPES_NONE = "No recipes known.",
   RECIPE_ID = "Recipe ID %d",
   RECIPE_CATEGORY_OTHER = "Other",
+  -- Character chooser (friends)
+  VIEW_CHOOSE = "Choose character",
+  VIEW_CHOOSE_TIP = "All tabs show the chosen character: your other characters or your friends'.",
+  VIEW_MINE = "My characters",
+  VIEW_PLAYED = "playing",
+  VIEW_ROW = "Level %s  \194\183  %s",
+  VIEW_FRIEND_OF = "Character of %s",
+  VIEW_OTHER_OWN = "Other character",
+  VIEW_READONLY = "read-only",
+  VIEW_BACK = "Back to me",
+  VIEW_LAST_SEEN = "Last seen: %s",
+  VIEW_LIVE_ONLY = "Model, gear, experience and graphs are only available for the character you are playing.",
+  VIEW_NO_FRIENDS = "Add friends in the desktop app (Friends tab); they appear here after /reload.",
 })

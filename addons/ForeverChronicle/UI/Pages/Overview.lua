@@ -132,6 +132,7 @@ function page:Create(c)
 
   -- Character model with gear (right side)
   local panel = CreateFrame("Frame", nil, c)
+  self.gearPanel = panel
   panel:SetPoint("TOPRIGHT", -16, -16)
   panel:SetSize(2 * SLOT_SIZE + 260 + 2 * 10, 8 * (SLOT_SIZE + SLOT_GAP) + SLOT_SIZE + 16)
   self.slots = {}
@@ -183,6 +184,13 @@ function page:Create(c)
   self.graphSubtitle:SetPoint("TOP", self.graphTitle, "BOTTOM", 0, -2)
   self.graph = UI:LineGraph(c, panel:GetWidth(), 140)
   self.graph.frame:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -8)
+  self.liveParts = { panel, prev, nextB, self.graphTitle, self.graphSubtitle, self.graph.frame }
+
+  -- Other characters (alts, friends): no live model, gear, XP, gold or graph.
+  self.otherNote = UI:Label(c, "VIEW_LIVE_ONLY", "GameFontDisable")
+  self.otherNote:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -40)
+  self.otherNote:SetWidth(panel:GetWidth())
+  self.otherNote:SetJustifyH("CENTER")
 end
 
 local GRAPH_SECONDS = 2 * 3600   -- the graph shows the last 2 hours of played time
@@ -206,7 +214,7 @@ function page:RefreshGraph()
   local def = defs[1]
   for _, d in ipairs(defs) do if d.key == FC.db.settings.overviewGraph then def = d end end
   -- The window moves with the clock while playing: recompute at most once per minute.
-  local version = table.concat({ def.key, FC:GetLanguage(), FC.Storage:GetStream("metrics").nextSeq,
+  local version = table.concat({ def.key, FC:GetLanguage(), FC.Storage:GetStream("metrics").nextSeq, FC:ViewKey(),
     FC.Storage:GetStream("events").nextSeq, FC.Storage:GetStream("sessions").nextSeq, date("%H%M") }, ":")
   if version == self.graphVersion then return end
   self.graphVersion = version
@@ -241,12 +249,27 @@ function page:RefreshGraph()
 end
 
 function page:Refresh()
-  local info = FC.char.info
+  local played = FC:IsViewingPlayed()
+  local info = FC:ViewChar().info
   local fullName = info.name or "?"
   if info.nameSuffix and info.nameSuffix ~= "" then fullName = fullName .. " " .. info.nameSuffix end
   self.name:SetText(UI:ClassColored(fullName, info.classFile))
   self.details:SetText(string.format(L.CHAR_DETAILS, info.level or "?", info.raceName or "", info.className or "")
     .. "  \194\183  " .. (info.realm or ""))
+
+  for _, part in ipairs(self.liveParts) do part:SetShown(played) end
+  self.otherNote:SetShown(not played)
+  if not played then
+    local owner = FC:ViewOwner()
+    if owner then self.details:SetText(self.details:GetText() .. "  \194\183  " .. string.format(L.VIEW_FRIEND_OF, owner)) end
+    self.xp:Hide()
+    self.money:SetText(info.lastSeenAt and string.format(L.VIEW_LAST_SEEN, Util.FormatTime(info.lastSeenAt)) or "")
+    for _, tile in ipairs(self.tiles) do
+      local value = FC:GetStatValue(tile.def)
+      tile.value:SetText(value ~= nil and FC:FormatStat(tile.def, value) or "-")
+    end
+    return
+  end
 
   -- XP bar with rested XP
   local xp, max = Util.SafeValue("number", UnitXP, "player"), Util.SafeValue("number", UnitXPMax, "player")

@@ -748,4 +748,93 @@ if PHASE == 11 then
   check(errors == 0, "no errors logged")
 end
 
+if PHASE == 12 then
+  print("phase 12: character layer with an alt and a friend's characters")
+  local FC = startClient(true, false)
+  local me = "Player-4619-0112A417"
+  -- An alt on the same account (all characters share the SavedVariables).
+  ForeverChronicleDB.characters["Player-4619-0ALT0001"] = {
+    info = { name = "Altie", level = 10, classFile = "MAGE", realm = "Classic Beta PvP", lastSeenAt = 1791900000 },
+    stats = { kills = 5 }, state = {}, snapshots = {},
+    streams = { events = { nextSeq = 2, dropped = 0, records = {
+      { id = "alt1", seq = 1, type = "level_up", time = 1791900000, data = { level = 10 } } } } },
+  }
+
+  local entries = FC:ViewEntries()
+  check(#entries == 3 and entries[1].played and entries[1].key == me, "played character first")
+  check(entries[2].key == "Player-4619-0ALT0001" and not entries[2].owner, "then the account's other characters")
+  check(entries[3].owner == 'Bob"]] os.exit(1) --\\\195\164\194\171' and entries[3].char.info.name == 'Thr"all\n',
+    "then friends' characters, names exactly as shared")
+  check(FC:IsViewingPlayed() and FC:ViewChar() == FC.char, "the window starts on the played character")
+
+  -- Chooser: header, played, alt, friend header, friend.
+  FC.UI:Toggle()
+  local UI = FC.UI
+  check(UI.viewButton.text and UI.viewButton.text:find("Blind Bullseye", 1, true), "chooser shows the played character")
+  check(not UI.viewBack:IsShown(), "no back button while viewing myself")
+  UI.viewButton:GetScript("OnClick")(UI.viewButton)
+  local rows = {}
+  for _, row in ipairs(UI.viewRows.rows) do if row:IsShown() then rows[#rows + 1] = row end end
+  check(#rows == 5 and rows[1].header.text == "Meine Charaktere" and rows[4].header.text:find("Bob", 1, true),
+    "list: my characters, then the friend's (" .. #rows .. " rows)")
+  check(rows[2].name.text:find("du spielst", 1, true) and rows[3].key == "Player-4619-0ALT0001", "rows")
+
+  -- Choose the friend's character.
+  rows[5]:GetScript("OnMouseUp")(rows[5])
+  check(not FC:IsViewingPlayed() and FC:ViewOwner():find("Bob", 1, true) and not UI.viewList:IsShown(), "friend chosen")
+  check(UI.viewBack:IsShown() and UI.viewBanner.text:find("Charakter von", 1, true), "banner and back button")
+
+  local function page(id)
+    for i, p in ipairs(UI.pages) do if p.id == id then UI:SelectPage(i); return p end end
+  end
+  local ov = page("overview")
+  check(ov.name.text:find('Thr"all', 1, true) and ov.details.text:find("Charakter von", 1, true), "overview header")
+  check(ov.otherNote:IsShown() and not ov.gearPanel:IsShown() and not ov.xp:IsShown(), "live-only parts hidden")
+  local kills, tracked
+  for _, tile in ipairs(ov.tiles) do
+    if tile.def.key == "kills" then kills = tile.value.text end
+    if tile.def.key == "tracked_time" then tracked = tile.value.text end
+  end
+  check(kills == "2" and tracked and tracked ~= "-", "friend stats (kills " .. tostring(kills) .. ", tracked " .. tostring(tracked) .. ")")
+
+  local chron = page("chronicle")
+  local shown = 0
+  for _, row in ipairs(chron.list.rows) do if row:IsShown() then shown = shown + 1 end end
+  check(shown == 6, "friend's chronicle (" .. shown .. " entries)")
+
+  local map = page("map")
+  check(#map.points >= 12 and map.viewMap == 1413 and map.canvas.marker:IsShown(), "friend's route on the map")
+
+  local prof = page("professions")
+  local profButtons = 0
+  for _, b in ipairs(prof.buttons) do if b:IsShown() then profButtons = profButtons + 1 end end
+  check(profButtons == 4 and prof.title.text == "Herbalism", "friend's professions (" .. profButtons .. ")")
+  local shots = page("screenshots")
+  check(shots.empty:IsShown(), "no screenshots for the friend in game")
+
+  -- Recording continues for the played character only.
+  local mine = #ForeverChronicleDB.characters[me].streams.events.records
+  MOCK.fire("PLAYER_DEAD")
+  check(#ForeverChronicleDB.characters[me].streams.events.records == mine + 1, "events still recorded for me")
+  check(#FC:ViewStream("events").records == 6, "the friend's data is not changed")
+
+  -- The alt, then back to me.
+  FC:SetView("Player-4619-0ALT0001")
+  page("overview")
+  check(ov.name.text:find("Altie", 1, true) and UI.viewBanner.text:find("Anderer Charakter", 1, true), "alt shown")
+  page("chronicle")
+  shown = 0
+  for _, row in ipairs(chron.list.rows) do if row:IsShown() then shown = shown + 1 end end
+  check(shown == 1, "alt's chronicle")
+  UI.viewBack:GetScript("OnClick")(UI.viewBack)
+  check(FC:IsViewingPlayed() and not UI.viewBack:IsShown(), "back to me")
+  page("overview")
+  check(ov.gearPanel:IsShown() and not ov.otherNote:IsShown(), "live parts back")
+  for i = 1, #UI.pages do UI:SelectPage(i) end
+
+  local errors = 0
+  for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
+  check(errors == 0, "no errors logged")
+end
+
 print("PHASE " .. PHASE .. " PASSED")

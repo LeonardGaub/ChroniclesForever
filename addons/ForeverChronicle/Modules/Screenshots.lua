@@ -240,8 +240,8 @@ end)
 -- Status and settings helpers (used by the UI and /fcshot)
 -------------------------------------------------------------------------------
 
-function Shots:GetRecent(limit)
-  local records = FC.Storage:GetStream("screenshots").records
+function Shots:GetRecent(limit, stream)
+  local records = (stream or FC.Storage:GetStream("screenshots")).records
   local out = {}
   for i = #records, math.max(1, #records - (limit or 20) + 1), -1 do out[#out + 1] = records[i] end
   return out

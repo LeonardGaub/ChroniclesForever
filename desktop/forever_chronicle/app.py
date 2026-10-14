@@ -35,6 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     window.show()
     if config.auto_import:
         QTimer.singleShot(200, lambda: ctx.import_all(skip_unchanged=True))
+    QTimer.singleShot(400, ctx.update_friends_data)  # keeps the addon's friends file up to date
     code = app.exec()
     db.close()
     return code

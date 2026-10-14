@@ -25,6 +25,16 @@ desktop: wow/paths ──► wow/lua_parser (literals only) ──► importing/
   (professions and recipes). They are replaced over time, and the desktop app mirrors the latest version.
 - The character key is the player GUID (globally unique in Forever). The desktop app assigns its own UUID.
 
+### Characters shown in the window (sharing, docs/Sharing_Design.md)
+Recording always writes to the played character (`FC.char`). Pages read through `Core/View.lua`:
+`FC:ViewChar()`, `FC:ViewStream(name)`, `FC:ViewSnapshot(name)`, `FC:IsViewingPlayed()`. Map, instance and
+entrance lookups go through `FC:MapInfo`, `FC:InstanceName` and `FC:StoredEntrance`, so friends' data
+counts as well. A new page that reads character data must use these helpers. A stat that needs live state can add
+`fromRecord(char)` for other characters. `UI/ViewBar.lua` is the chooser; `FC_VIEW_CHANGED` calls
+`page:OnViewChanged()` if a page has one.
+Friends' characters come from `Friends/FriendsData.lua` (`ForeverChronicleFriends`), which the desktop app
+writes (`wow/friends_data.py`) in the addon's own record shape.
+
 ### Backups and transfer (F-011)
 `storage/jsonl.py`: the JSON Lines export/import. To include a new table, add a `RecordType` with its natural key
 and merge rule. Columns come from the table itself, so new columns are exported automatically. Records of a

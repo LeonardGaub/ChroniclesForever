@@ -205,8 +205,9 @@ end
 
 function page:Refresh()
   local P = Professions()
-  local active = P:GetActive()
-  local snap = P:GetSnapshot()
+  local char = FC:ViewChar()
+  local active = P:GetActive(char)
+  local snap = P:GetSnapshot(char)
   local search = self.search:GetText()
   if type(search) ~= "string" then search = "" end
   -- Rebuild only when something changed (refresh runs every second while the window is open).
@@ -216,7 +217,8 @@ function page:Refresh()
   end
   selectedProf = selectedProf or active[1]
   self.selected = selectedProf and selectedProf.skillLine
-  local signature = table.concat({ tostring(snap.scannedAt), tostring(self.selected), search, FC:GetLanguage(),
+  local signature = table.concat({ tostring(FC:ViewKey()), tostring(snap.scannedAt), tostring(self.selected), search,
+    FC:GetLanguage(),
     tostring(selectedProf and selectedProf.recipes and selectedProf.recipes.updatedAt), #active }, "|")
   if signature == self.signature then return end
   self.signature = signature

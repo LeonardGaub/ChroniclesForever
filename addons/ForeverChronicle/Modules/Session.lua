@@ -43,10 +43,12 @@ FC:RegisterStat("played_level", { group = "session", labelKey = "STAT_PLAYED_LEV
 -- Play time since tracking began
 FC:RegisterStat("played_total", { group = "time", labelKey = "STAT_PLAYED_TOTAL", order = 10, format = "duration",
   icon = "Interface\\Icons\\INV_Misc_PocketWatch_01",
-  compute = function() return Session:GetPlayedTotal() end })
+  compute = function() return Session:GetPlayedTotal() end,
+  fromRecord = function(char) return Session.LastPlayedTotal(char) end })
 FC:RegisterStat("tracked_time", { group = "time", labelKey = "STAT_TRACKED_TIME", order = 11, format = "duration",
   icon = "Interface\\Icons\\INV_Misc_PocketWatch_02",
-  compute = function() return Session:GetTrackedSeconds() end })
+  compute = function() return Session:GetTrackedSeconds() end,
+  fromRecord = function(char) return Session.TrackedSeconds(char.streams.sessions.records) end })
 FC:RegisterStat("sessions", { group = "time", labelKey = "STAT_SESSIONS", order = 12,
   icon = "Interface\\Icons\\Spell_Nature_TimeStop" })
 
@@ -87,13 +89,26 @@ function Session:GetPlayedLevel()
   return nil
 end
 
-function Session:GetTrackedSeconds()
+function Session.TrackedSeconds(records)
   local total = 0
-  for _, s in ipairs(sessionRecords()) do
+  for _, s in ipairs(records) do
     local stop = s.endedAt or time()
     if stop > s.startedAt then total = total + (stop - s.startedAt) end
   end
   return total
+end
+
+function Session:GetTrackedSeconds()
+  return Session.TrackedSeconds(sessionRecords())
+end
+
+-- Played time of another character (alt or friend): the newest server-reported value, as recorded.
+function Session.LastPlayedTotal(char)
+  local records = char.streams and char.streams.sessions and char.streams.sessions.records or {}
+  for i = #records, 1, -1 do
+    if records[i].playedTotal then return records[i].playedTotal end
+  end
+  return char.stats and char.stats.played_total
 end
 
 function Session:Start()

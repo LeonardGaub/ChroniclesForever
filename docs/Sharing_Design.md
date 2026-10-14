@@ -81,7 +81,8 @@ The addon cannot download anything. The desktop app must hand friends' data to i
    characters, sidebar grouping. Tests incl. hostile files (bad JSON, huge files, path tricks in the ZIP).
    **Done (desktop v0.3.0).**
 2. In game: FriendsData.lua writer (safe serializer) + the character layer around the addon window (own
-   characters of the account and friends' characters; default: the played character).
+   characters of the account and friends' characters; default: the played character). Battle.net detection of
+   the game folder. **Done (addon v0.11.0, desktop v0.4.0).**
 3. Shared cloud folder: automatic write/import.
 4. Optional: compare view (two routes on one map, levelling speed side by side).
 

@@ -54,9 +54,9 @@ function FC:Record(eventType, data, opts)
   return record
 end
 
--- Newest first, at most `limit` records of the events stream.
-function FC:GetRecentEvents(limit)
-  local records = self.Storage:GetStream("events").records
+-- Newest first, at most `limit` records of an events stream (default: the played character's).
+function FC:GetRecentEvents(limit, stream)
+  local records = (stream or self.Storage:GetStream("events")).records
   local out = {}
   for i = #records, math.max(1, #records - (limit or 100) + 1), -1 do
     out[#out + 1] = records[i]

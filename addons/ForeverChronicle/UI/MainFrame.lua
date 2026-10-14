@@ -38,6 +38,9 @@ function UI:Create()
   tinsert(UISpecialFrames, FRAME_NAME) -- close with Escape
   f:Hide()
 
+  -- Character chooser (which character the tabs show) under the title.
+  self:CreateViewBar(f)
+
   -- Pages share the inset area. Tabs are icon buttons on the right edge (like the spellbook tabs);
   -- the page name is shown in the tooltip.
   f.Tabs = {}
