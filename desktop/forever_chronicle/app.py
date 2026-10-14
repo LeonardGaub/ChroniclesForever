@@ -14,6 +14,8 @@ from .storage.database import Database
 from .ui import theme
 from .ui.main_window import MainWindow
 
+DAILY = 24 * 3600
+
 
 def main(argv: list[str] | None = None) -> int:
     app = QApplication(argv if argv is not None else sys.argv)
@@ -23,6 +25,10 @@ def main(argv: list[str] | None = None) -> int:
     config = AppConfig.load()
     i18n.set_language(config.language)
     db = Database(config.database_path, config.backup_dir)
+    try:
+        db.backup_if_older(DAILY, "daily")  # spec F-011: regular local backups (newest 5 are kept)
+    except Exception:  # a failed backup must not stop the app; the import page shows the backup state
+        pass
     ctx = AppContext(config, db)
 
     window = MainWindow(ctx)

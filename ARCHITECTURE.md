@@ -25,6 +25,12 @@ desktop: wow/paths ──► wow/lua_parser (literals only) ──► importing/
   (professions and recipes). They are replaced over time, and the desktop app mirrors the latest version.
 - The character key is the player GUID (globally unique in Forever). The desktop app assigns its own UUID.
 
+### Backups and transfer (F-011)
+`storage/jsonl.py`: the JSON Lines export/import. To include a new table, add a `RecordType` with its natural key
+and merge rule. Columns come from the table itself, so new columns are exported automatically. Records of a
+character carry the character's natural key, not the local UUID. `Database.backup` keeps the newest 5 copies
+(before migrations, before JSONL imports, daily at start, on demand).
+
 ## Addon
 
 | Layer | Files | Role |

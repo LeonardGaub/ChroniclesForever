@@ -170,6 +170,26 @@ STRINGS: dict[str, dict[str, str]] = {
         "cap.recipes": "Rezepte",
 
         "tab.professions": "Berufe",
+        "backup.group": "Datensicherung",
+        "backup.status": "Letzte Sicherung: {when}  ·  {n} Sicherungen vorhanden (die neuesten 5 werden behalten)",
+        "backup.none": "Noch keine Sicherung vorhanden.",
+        "backup.hint": "Die Datenbank wird automatisch gesichert: einmal täglich beim Start, vor Updates der "
+                       "Datenbank und vor jedem Import einer Export-Datei. Der Export (JSONL) enthält alle Daten "
+                       "und eignet sich für den Umzug auf einen anderen PC; beim Import wird zusammengeführt.",
+        "backup.export": "Exportieren …",
+        "backup.import": "Export importieren …",
+        "backup.now": "Jetzt sichern",
+        "backup.folder": "Sicherungsordner öffnen",
+        "backup.export_title": "Export speichern",
+        "backup.import_title": "Export-Datei wählen",
+        "backup.exported": "{records} Datensätze von {characters} Charakter(en) exportiert: {path}",
+        "backup.import_confirm": "Die Datei wird mit den vorhandenen Daten zusammengeführt; nichts wird gelöscht. "
+                                 "Vorher wird die Datenbank automatisch gesichert. Fortfahren?",
+        "backup.imported": "Import abgeschlossen: {inserted} neu, {updated} aktualisiert, {unchanged} unverändert, "
+                           "{invalid} ungültig.",
+        "backup.import_failed": "Import nicht möglich: {message}",
+        "backup.done": "Gesichert: {name}",
+        "backup.failed": "Fehlgeschlagen: {message}",
         "stats.recipes": "Bekannte Rezepte",
         "evt.profession_learned": "Berufe",
         "evt.profession_learned.text": "Beruf erlernt: {name}",
@@ -369,6 +389,26 @@ STRINGS: dict[str, dict[str, str]] = {
         "cap.recipes": "Recipes",
 
         "tab.professions": "Professions",
+        "backup.group": "Backups",
+        "backup.status": "Last backup: {when}  ·  {n} backups available (the newest 5 are kept)",
+        "backup.none": "No backup yet.",
+        "backup.hint": "The database is backed up automatically: once a day at start, before database updates "
+                       "and before every import of an export file. The export (JSONL) contains all data and is "
+                       "meant for moving to another PC; importing it merges.",
+        "backup.export": "Export …",
+        "backup.import": "Import export …",
+        "backup.now": "Back up now",
+        "backup.folder": "Open backup folder",
+        "backup.export_title": "Save export",
+        "backup.import_title": "Choose export file",
+        "backup.exported": "Exported {records} records of {characters} character(s): {path}",
+        "backup.import_confirm": "The file is merged with the existing data; nothing is deleted. The database is "
+                                 "backed up first. Continue?",
+        "backup.imported": "Import finished: {inserted} new, {updated} updated, {unchanged} unchanged, "
+                           "{invalid} invalid.",
+        "backup.import_failed": "Import not possible: {message}",
+        "backup.done": "Backed up: {name}",
+        "backup.failed": "Failed: {message}",
         "stats.recipes": "Known recipes",
         "evt.profession_learned": "Professions",
         "evt.profession_learned.text": "Profession learned: {name}",

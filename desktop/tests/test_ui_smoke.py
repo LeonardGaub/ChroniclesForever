@@ -60,6 +60,12 @@ def test_main_window_with_data(app, db, tmp_path, monkeypatch, addon_fixture):
     assert professions.recipe_table.rowCount() == 0
     professions.search.clear()
 
+    import_page = next(p for p in window.pages if p.title_key == "tab.import")
+    window.tabs.setCurrentWidget(import_page)
+    assert import_page.backup_box.title() == "Datensicherung" and import_page.backup_label.text()
+    import_page._backup_now()
+    assert import_page.backup_message.text().startswith("Gesichert: ") and "Letzte Sicherung" in import_page.backup_label.text()
+
     i18n.set_language("en")
     assert window.tabs.tabText(0) == "Overview"
     window.tabs.setCurrentIndex(0)  # pages refresh when shown

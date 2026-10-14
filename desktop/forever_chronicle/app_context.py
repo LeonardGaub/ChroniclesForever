@@ -10,6 +10,7 @@ from .config import AppConfig
 from .importing.screenshot_matcher import match_screenshots
 from .importing.sv_importer import ImportResult, SavedVariablesImporter
 from .storage.database import Database
+from .storage.jsonl import ExportResult, JsonlImportResult, export_jsonl, import_jsonl
 from .storage.repository import Repository
 from .wow.paths import ClientInstall, SavedVariablesFile, client_from_path, find_forever_installs, find_saved_variables
 
@@ -57,6 +58,19 @@ class AppContext(QObject):
         if matched or any(r.status != "unchanged" for r in results):
             self.data_changed.emit()
         return results
+
+    # -- backups and JSONL transfer (spec F-011) ------------------------------------------
+
+    def export_jsonl(self, path: Path) -> ExportResult:
+        return export_jsonl(self.db, path)
+
+    def import_jsonl(self, path: Path) -> JsonlImportResult:
+        """Merges an export into the database (a backup is made first) and links screenshots on this computer."""
+        result = import_jsonl(self.db, path)
+        if result.status in ("ok", "partial"):
+            self.match_screenshots()
+            self.data_changed.emit()
+        return result
 
     def match_screenshots(self) -> int:
         """Links screenshot records to files in the client's Screenshots folder."""

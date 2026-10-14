@@ -298,3 +298,16 @@ class Database:
             old.unlink(missing_ok=True)
         return target
 
+    def backups(self) -> list[Path]:
+        """Backup files, oldest first (the names start with a sortable timestamp)."""
+        if not self.backup_dir or not self.backup_dir.is_dir():
+            return []
+        return sorted(self.backup_dir.glob(f"{self.path.stem}-*.db"))
+
+    def backup_if_older(self, max_age_seconds: int, label: str) -> Path | None:
+        """Makes a backup unless the newest one is younger than max_age_seconds (e.g. once a day)."""
+        newest = self.backups()[-1:]
+        if newest and time.time() - newest[0].stat().st_mtime < max_age_seconds:
+            return None
+        return self.backup(label)
+

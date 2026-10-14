@@ -94,6 +94,19 @@
   and quests show what was gained in the window (`relative`); quests are drawn as steps at the exact times; gold
   shows the money held. Clock times along the bottom, and hovering shows the time and value of the nearest point.
   Graph defs now provide `series(since)` instead of hourly values (`UI:LineGraph` replaces the bar graph).
+- **Desktop v0.2.0: JSONL export/import and backups (spec F-011).**
+  - `storage/jsonl.py` exports the whole database as JSON Lines: a header line (`format: "forever-chronicle"`,
+    `format_version` 1, app version, DB schema), then one line per record with `record_type`. Character
+    records are referenced by their natural key (GUID), never by the local UUID. Local-only columns (IDs,
+    import bookkeeping, screenshot file paths) are not exported.
+  - Import is a merge: idempotent, row by row, and invalid rows are reported with their line numbers. Unknown
+    record types are skipped and counted. Merge rule per type (`RECORD_TYPES`): events are immutable; sessions,
+    positions, professions, characters and counters take the more complete or newer version. It runs in one
+    transaction, recorded in `import_runs` (`source_type` jsonl), with a DB backup first.
+  - Backups: before migrations (as before), before every JSONL import, daily at app start, and on demand. The
+    newest 5 are kept. The Import tab has a "Datensicherung" section: Exportieren, Export importieren,
+    Jetzt sichern, Sicherungsordner öffnen.
+  - Checked against a copy of the real database: 175 records round-trip; re-import changes nothing.
 - **Desktop:** the icon overhaul was reverted at the user's request; text UI stays.
   - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
   - Open question for the user: real WoW icons for the desktop. Options: export from the local client with
@@ -106,7 +119,7 @@
   - Map art: the user's 52 explored-zone maps were imported into `%APPDATA%\ForeverChronicle\maps\<uiMapID>.jpg`.
     The Import tab has "Kartenbilder importieren …". Coordinates were verified against real probe data
     (Orgrimmar/Cleft of Shadow, Kalimdor rectangle).
-- Tests: `tests/addon` (`npm test`: 14 queue tests and 11 phases) and `desktop` (`pytest`, 69 tests). All pass.
+- Tests: `tests/addon` (`npm test`: 14 queue tests and 11 phases) and `desktop` (`pytest`, 77 tests). All pass.
 - In-game confirmed by the user: window, import, Screenshots tab (v0.2.0). Not yet seen in game: v0.2.1 and v0.3.0 changes.
 
 ## Confirmed client facts
@@ -135,4 +148,4 @@
 ## Next steps
 1. User: quick check: `/reload`, walk a bit, `/reload`, then open the desktop Karte tab.
 2. User: open each profession window once in game and check the Berufe tab (in game and desktop).
-3. JSONL export/import and backups (F-011), QA and packaging.
+3. QA and packaging.
