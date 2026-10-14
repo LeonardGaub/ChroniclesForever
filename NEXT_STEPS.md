@@ -79,6 +79,16 @@
     (1414/1415, recorded between zones). `Route.ZoneFor` / `Route.view_for` map them to the smallest known zone
     containing them. Projection now also works from continent to zone, and following switches whenever the zone
     changes. A map picked by hand stays until then.
+- **Addon v0.10.2: dungeon moments at the entrance (user request).** The client gives no position inside
+  instances, so dungeon points and events (Chronicle click, pins, playback marker) are shown at the dungeon
+  entrance, with the notice "am Eingang gezeigt". Entrances are kept in `FC.db.entrances`:
+  - `journal`: `C_EncounterJournal.GetDungeonEntrancesForMap` and `EJ_GetInstanceInfo` (10th value = instance
+    ID), queried once per zone. Not yet confirmed to exist in Forever.
+  - `walked`: the last outdoor sample at most 60 s before entering, skipped for dungeon-finder groups.
+  - Older data: derived from the route by the same rule (`Route.DerivedEntrances` / `Route.entrance`).
+  - Desktop: migration 7 `instance_entrances`; `EventRow.instance_id`.
+  - Dungeon maps: art can be shown later (the Classic dungeon maps have uiMapIDs), but without positions inside
+    instances only as a picture with the dungeon's events listed, not with a route.
 - **Desktop:** the icon overhaul was reverted at the user's request; text UI stays.
   - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
   - Open question for the user: real WoW icons for the desktop. Options: export from the local client with
@@ -91,7 +101,7 @@
   - Map art: the user's 52 explored-zone maps were imported into `%APPDATA%\ForeverChronicle\maps\<uiMapID>.jpg`.
     The Import tab has "Kartenbilder importieren …". Coordinates were verified against real probe data
     (Orgrimmar/Cleft of Shadow, Kalimdor rectangle).
-- Tests: `tests/addon` (`npm test`: 14 queue tests and 11 phases) and `desktop` (`pytest`, 66 tests). All pass.
+- Tests: `tests/addon` (`npm test`: 14 queue tests and 11 phases) and `desktop` (`pytest`, 69 tests). All pass.
 - In-game confirmed by the user: window, import, Screenshots tab (v0.2.0). Not yet seen in game: v0.2.1 and v0.3.0 changes.
 
 ## Confirmed client facts

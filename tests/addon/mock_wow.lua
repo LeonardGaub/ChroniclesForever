@@ -287,6 +287,16 @@ local OUTPUT = {
   [2149] = { itemID = 2302, hyperlink = "|cff1eff00|Hitem:2302::::::::22:::::|h[Handstitched Leather Boots]|h|r" },
 }
 C_TradeSkillUI.GetRecipeOutputItemData = function(id) return OUTPUT[id] or {} end
+-- Encounter journal: Orgrimmar lists the Ragefire Chasm entrance (journal 226 = instance 389).
+C_EncounterJournal = {
+  GetDungeonEntrancesForMap = function(mapID)
+    if mapID ~= 1454 then return {} end
+    return { { journalInstanceID = 226, name = "Ragefire Chasm", position = { x = 0.5195, y = 0.4911 } } }
+  end,
+}
+function EJ_GetInstanceInfo(id)
+  if id == 226 then return "Ragefire Chasm", "", 0, 0, 0, 0, 213, "", false, 389 end
+end
 C_Item = { GetItemQualityByID = function(itemID) return itemID == 4231 and 1 or nil end }
 C_Spell = { GetSpellName = function(id) return id == 2149 and "Handstitched Leather Boots" or nil end }
 

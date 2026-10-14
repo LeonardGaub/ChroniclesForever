@@ -44,6 +44,7 @@ FC:RegisterLocale("enUS", {
   MAP_NO_POINTS = "No route points yet - move around a little.",
   MAP_NO_ART = "The client provides no map image for this map.",
   MAP_INSTANCE = "In %s - there is no position inside dungeons",
+  MAP_INSTANCE_ENTRANCE = "In %s - shown at the entrance (there is no position inside dungeons)",
   MAP_ELSEWHERE = "At this moment you are on another map: %s",
   CHRONICLE_CLICK_HINT = "Click to show this moment on the map",
   THOUSANDS_SEP = ",",

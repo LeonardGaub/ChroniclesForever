@@ -402,6 +402,10 @@ if PHASE == 9 then
   MOCK.instance, MOCK.zone = true, "Ragefire Chasm"
   MOCK.advance(4)
   local dungeonTime = MOCK.clock + math.floor(MOCK.now) - 2
+  MOCK.fire("PLAYER_DEAD")
+  local entrance = ForeverChronicleDB.entrances and ForeverChronicleDB.entrances["389"]
+  check(entrance and entrance.source == "walked" and entrance.mapID == 1413 and entrance.x == 0.5 and entrance.y == 0.4,
+    "dungeon entrance learned where the player walked in")
   MOCK.instance, MOCK.zone = nil, nil
   MOCK.mapID, MOCK.x = 1411, 0.5
   MOCK.advance(4)
@@ -465,11 +469,20 @@ if PHASE == 9 then
   for _, line in ipairs(page.canvas.lines) do if line:IsShown() then shown = shown + 1 end end
   check(shown >= 10, "route lines drawn (" .. shown .. ")")
 
-  -- Clicking a Chronicle entry inside the dungeon shows the dungeon notice.
+  -- Clicking a Chronicle entry inside the dungeon shows the dungeon entrance (user request).
+  page:StepMap(1)                                   -- some other map first
   FC.UI:FocusMap(dungeonTime)
-  check(not page.live and page.noticeFrame:IsShown() and page.notice.text:find("Ragefire", 1, true),
-    "dungeon moment shows notice: " .. tostring(page.notice.text))
-  check(not page.canvas.marker:IsShown(), "no marker inside the dungeon")
+  check(not page.live and page.viewMap == 1413 and page.canvas.marker:IsShown(),
+    "dungeon moment opens the entrance zone (" .. tostring(page.viewMap) .. ")")
+  check(page.notice.text:find("Ragefire", 1, true) and page.notice.text:find("Eingang", 1, true),
+    "notice: " .. tostring(page.notice.text))
+  local deathPin = false
+  for _, pin in ipairs(page.canvas.pins) do
+    if pin:IsShown() and pin.title and pin.title:find("Ragefire", 1, true) then deathPin = true end
+  end
+  check(deathPin, "death inside the dungeon is pinned at the entrance")
+  ForeverChronicleDB.entrances = nil
+  check(Route.Entrance(389) and Route.Entrance(389).mapID == 1413, "entrance derived from the route for older data")
 
   -- Playback from the start.
   page.current = page.range[1]
@@ -501,6 +514,17 @@ if PHASE == 9 then
   page:UpdateMarker()
   check(page.viewMap == 1411, "follows the player into the next zone (" .. tostring(page.viewMap) .. ")")
   for i = 1, #FC.UI.pages do FC.UI:SelectPage(i) end
+
+  -- The encounter journal's entrance (when the client has it) replaces the learned one.
+  MOCK.travel(1454, "Orgrimmar")
+  MOCK.x, MOCK.y = 0.6, 0.6
+  MOCK.advance(3)
+  local journal = ForeverChronicleDB.entrances["389"]
+  check(journal and journal.source == "journal" and journal.mapID == 1454 and journal.x == 0.5195, "journal entrance")
+  FC.UI:FocusMap(dungeonTime)
+  check(page.viewMap == 1454 and page.canvas.marker:IsShown(), "dungeon moment shown at the journal entrance")
+  FC:GetModule("Positions"):LearnEntrance(389, { time = time(), mapID = 1413, x = 0.1, y = 0.1 }, time())
+  check(ForeverChronicleDB.entrances["389"].source == "journal", "walking in does not replace a journal entrance")
 
   local errors = 0
   for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end

@@ -154,7 +154,8 @@ class MapPage(Page):
             self._clear("")
             return
         repo = self.ctx.repo
-        self.route = Route(repo.positions(self.character_id), repo.map_infos(), repo.instance_names())
+        self.route = Route(repo.positions(self.character_id), repo.map_infos(), repo.instance_names(),
+                           repo.entrances())
         self._fill_sessions()
         self._fill_maps()
         if not self.route:
@@ -263,25 +264,29 @@ class MapPage(Page):
         point = self.route.point_at(self.current_t)
         if point is None:
             return
-        if point.instance_id is not None:
+        # Inside a dungeon there is no position: the dungeon entrance is shown instead, if known.
+        spot = self.route.locate(point.map_id, point.x, point.y, point.instance_id)
+        if spot is None:
             if self.marker:
                 self.marker.hide()
-            self._show_notice(tr("map.instance", name=self.route.instance_name(point)))
+            self._show_notice(tr("map.instance", name=self.route.instance_name(point))
+                              if point.instance_id is not None else None)
             return
         # Follow the player's zone. A map picked by hand stays until the zone changes or the point is not on it.
         zone = self.route.view_for(point)
         moved_zone = zone != self._last_zone
         self._last_zone = zone
-        xy = self.route.project(point.map_id, point.x, point.y, self.view_map) if self.view_map else None
+        xy = self.route.project(*spot, self.view_map) if self.view_map else None
         if self.follow.isChecked() and zone is not None and zone != self.view_map and (moved_zone or xy is None):
             self._set_view(zone, redraw=True)
-            xy = self.route.project(point.map_id, point.x, point.y, self.view_map)
+            xy = self.route.project(*spot, self.view_map)
         if xy is None:
             if self.marker:
                 self.marker.hide()
-            self._show_notice(tr("map.elsewhere", name=maps.display_name(point.map_id)))
+            self._show_notice(tr("map.elsewhere", name=maps.display_name(spot[0])))
             return
-        self._show_notice(self._art_notice)
+        self._show_notice(tr("map.instance_entrance", name=self.route.instance_name(point))
+                          if point.instance_id is not None else self._art_notice)
         if self.marker:
             self.marker.setPos(QPointF(xy[0] * W, xy[1] * H))
             self.marker.show()
@@ -363,9 +368,10 @@ class MapPage(Page):
 
     def _draw_events(self, scene: QGraphicsScene, start: int | None, end: int | None) -> None:
         for e in self.ctx.repo.events(self.character_id):
-            if e.x is None or (start is not None and e.occurred_at < start) or (end is not None and e.occurred_at > end):
+            if (start is not None and e.occurred_at < start) or (end is not None and e.occurred_at > end):
                 continue
-            xy = self.route.project(e.map_id, e.x, e.y, self.view_map)
+            spot = self.route.locate(e.map_id, e.x, e.y, e.instance_id)  # dungeon events: at the entrance
+            xy = self.route.project(*spot, self.view_map) if spot else None
             if xy is None:
                 continue
             et = event_types.get(e.event_type)

@@ -9,6 +9,10 @@
 --   flags:      "T" = on a taxi
 --   instanceID: set inside instances, where the client gives no map position (zone-only sample)
 -- Coordinates are never interpolated. Standing still extends the previous sample instead of adding new ones.
+--
+-- Dungeon entrances (FC.db.entrances, account-wide): instanceID -> { mapID, x, y, source, name }.
+--   source "journal": from the encounter journal's entrance list of a zone (when the client has it)
+--   source "walked":  the last outdoor sample right before the player walked into the instance
 
 local ADDON, FC = ...
 local Util = FC.Util
@@ -25,6 +29,8 @@ FC:RegisterCapability("positions", "CAP_POSITIONS", function()
   return C_Map ~= nil and type(C_Map.GetPlayerMapPosition) == "function"
 end)
 
+local ENTRY_SECONDS = 60     -- an outdoor sample at most this old before entering counts as the entrance
+
 -------------------------------------------------------------------------------
 -- Map geometry (account-wide: FC.db.maps, FC.db.instances)
 -------------------------------------------------------------------------------
@@ -38,7 +44,7 @@ function Positions:RecordMap(mapID)
   FC.db.maps = FC.db.maps or {}
   local key = tostring(mapID)
   local known = FC.db.maps[key]
-  if known and known.build == buildNumber() then return end
+  if known and known.build == buildNumber() and known.entrancesChecked then return end
   local continentType = (Enum and Enum.UIMapType and Enum.UIMapType.Continent) or CONTINENT_TYPE
 
   local info = Util.SafeValue("table", C_Map.GetMapInfo, mapID)
@@ -67,6 +73,57 @@ function Positions:RecordMap(mapID)
     self:RecordMap(entry.continent)
   end
   FC.db.maps[key] = entry
+  if entry.mapType ~= continentType then self:RecordEntrances(mapID, entry) end
+  entry.entrancesChecked = true
+end
+
+-------------------------------------------------------------------------------
+-- Dungeon entrances
+-------------------------------------------------------------------------------
+
+local function entrances()
+  FC.db.entrances = FC.db.entrances or {}
+  return FC.db.entrances
+end
+
+-- Entrances the encounter journal lists for a zone (Mainline API; skipped if the client lacks it).
+-- When a dungeon is listed on several maps (city and zone), the smaller map wins.
+function Positions:RecordEntrances(mapID, entry)
+  local get = C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap
+  if type(get) ~= "function" or type(EJ_GetInstanceInfo) ~= "function" then return end
+  local ok, list = pcall(get, mapID)
+  if not ok or type(list) ~= "table" then return end
+  local area = entry.minX and (entry.maxX - entry.minX) * (entry.maxY - entry.minY) or nil
+  for _, e in ipairs(list) do
+    local x, y
+    local pos = type(e) == "table" and e.position
+    if type(pos) == "table" then
+      if pos.GetXY then x, y = Util.SafeValues(pos.GetXY, pos) else x, y = Util.Plain(pos.x), Util.Plain(pos.y) end
+    end
+    local journalID = type(e) == "table" and Util.Plain(e.journalInstanceID)
+    local instanceID = type(journalID) == "number" and select(10, Util.SafeValues(EJ_GetInstanceInfo, journalID))
+    if type(instanceID) == "number" and type(x) == "number" and type(y) == "number" then
+      local key = tostring(instanceID)
+      local known = entrances()[key]
+      if not known or known.source ~= "journal" or (area and known.area and area < known.area) then
+        entrances()[key] = { mapID = mapID, x = Util.Round(x, 4), y = Util.Round(y, 4), source = "journal",
+          name = Util.Plain(e.name), area = area }
+        FC.Diagnostics:Log("info", "dungeon entrance from the journal: " .. key .. " on map " .. mapID)
+      end
+    end
+  end
+end
+
+-- The player just entered an instance: the previous outdoor sample is its entrance, unless the player was
+-- teleported in by the dungeon finder or the sample is too old. Journal entrances are kept.
+function Positions:LearnEntrance(instanceID, prev, now)
+  if not (prev and prev.mapID and prev.x) or prev.taxi or prev.instanceID then return end
+  if now - (prev.untilTime or prev.time) > ENTRY_SECONDS then return end
+  if IsPartyLFG and Util.SafeValues(IsPartyLFG) == true then return end
+  local key = tostring(instanceID)
+  local known = entrances()[key]
+  if known and known.source == "journal" then return end
+  entrances()[key] = { mapID = prev.mapID, x = prev.x, y = prev.y, source = "walked" }
 end
 
 -------------------------------------------------------------------------------
@@ -122,6 +179,7 @@ function Positions:Sample()
     return
   end
   FC.Storage:AppendRaw("positions", encode(s))
+  if s.instanceID then self:LearnEntrance(s.instanceID, last, now) end
   self.last = s
   if s.mapID then self:RecordMap(s.mapID) end
   FC:ConfirmCapability("positions")

@@ -44,6 +44,7 @@ FC:RegisterLocale("deDE", {
   MAP_NO_POINTS = "Noch keine Routenpunkte – bewege dich ein wenig.",
   MAP_NO_ART = "Der Client liefert für diese Karte kein Kartenbild.",
   MAP_INSTANCE = "In %s – im Dungeon gibt es keine Position",
+  MAP_INSTANCE_ENTRANCE = "In %s – am Eingang gezeigt (im Dungeon gibt es keine Position)",
   MAP_ELSEWHERE = "In diesem Moment bist du auf einer anderen Karte: %s",
   CHRONICLE_CLICK_HINT = "Klicken: diesen Moment auf der Karte zeigen",
   THOUSANDS_SEP = ".",

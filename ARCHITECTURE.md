@@ -99,6 +99,11 @@ uses `Storage:AppendRaw` / `ReplaceLast`. Standing still extends the last point 
 client gives no position, so only the instance ID is stored. Map geometry (each map's rectangle on its
 continent) is recorded once per map in `FC.db.maps`, and instance names in `FC.db.instances`.
 
+Instances have no position. Dungeon moments are shown at the dungeon entrance (`FC.db.entrances`: from the
+encounter journal, or the last outdoor sample at most 60 s before walking in; otherwise derived from the route by
+the same rule: `Route.Entrance` / `Route.entrance`). Points the client reported only with a continent ID are
+shown on the smallest known zone that contains them (`Route.ZoneFor` / `Route.view_for`).
+
 Desktop: `domain/route.py` handles projection, segments and time lookup (pure, tested).
 `domain/maps.py` holds the Classic uiMapID table: art name and German/English names.
 `wow/map_art.py` imports the user's artwork into `%APPDATA%\ForeverChronicle\maps\<uiMapID>.jpg`.

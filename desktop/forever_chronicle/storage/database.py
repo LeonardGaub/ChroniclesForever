@@ -224,6 +224,17 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE recipes ADD COLUMN quality INTEGER;
     """,
+    # 7: dungeon entrances - instance moments are shown there (no positions inside instances)
+    """
+    CREATE TABLE instance_entrances (
+        instance_id    INTEGER PRIMARY KEY,
+        map_id         INTEGER NOT NULL,
+        x              REAL NOT NULL,
+        y              REAL NOT NULL,
+        source         TEXT,                          -- journal | walked
+        name           TEXT
+    );
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

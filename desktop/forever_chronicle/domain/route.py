@@ -15,6 +15,7 @@ from ..storage.repository import PositionPoint
 from . import maps
 
 GAP_SECONDS = 120  # longer gaps between two points split the route
+ENTRY_SECONDS = 60  # an outdoor point at most this long before entering an instance marks its entrance
 
 
 @dataclass
@@ -25,11 +26,14 @@ class Segment:
 
 class Route:
     def __init__(self, points: list[PositionPoint], map_infos: dict | None = None,
-                 instance_names: dict[int, str] | None = None):
+                 instance_names: dict[int, str] | None = None,
+                 entrances: dict[int, tuple[int, float, float]] | None = None):
         self.points = sorted(points, key=lambda p: p.time)
         self.times = [p.time for p in self.points]
         self.map_infos = map_infos or {}
         self.instance_names = instance_names or {}
+        self.recorded_entrances = entrances or {}
+        self._derived_entrances: dict[int, tuple[int, float, float]] | None = None
 
     def __bool__(self) -> bool:
         return bool(self.points)
@@ -67,22 +71,52 @@ class Route:
                 return zx, zy
         return None
 
+    # -- dungeon entrances -------------------------------------------------------------
+
+    def entrance(self, instance_id: int | None) -> tuple[int, float, float] | None:
+        """(map, x, y) of a dungeon entrance: recorded by the addon (journal or where the player walked in),
+        else derived from the route (last outdoor point shortly before entering)."""
+        if instance_id is None:
+            return None
+        if instance_id in self.recorded_entrances:
+            return self.recorded_entrances[instance_id]
+        if self._derived_entrances is None:
+            self._derived_entrances = {}
+            prev = None
+            for p in self.points:
+                if (p.instance_id is not None and prev is not None and prev.instance_id is None
+                        and prev.map_id is not None and prev.x is not None and not prev.taxi
+                        and p.time - prev.end <= ENTRY_SECONDS):
+                    self._derived_entrances[p.instance_id] = (prev.map_id, prev.x, prev.y)
+                prev = p
+        return self._derived_entrances.get(instance_id)
+
+    def locate(self, map_id: int | None, x: float | None, y: float | None,
+               instance_id: int | None = None) -> tuple[int, float, float] | None:
+        """Where something is shown: its own position, or inside an instance the dungeon entrance."""
+        if map_id is not None and x is not None:
+            return map_id, x, y
+        return self.entrance(instance_id)
+
     def view_for(self, point: PositionPoint | None) -> int | None:
         """The map to show for a point: its zone. The client sometimes reports only the continent (between
-        zones, on boats and zeppelins); then the smallest known zone containing the point is used."""
-        if point is None or point.map_id is None:
+        zones, on boats and zeppelins); then the smallest known zone containing the point is used.
+        Points inside instances use the zone of the dungeon entrance."""
+        if point is None:
             return None
-        if point.x is None:
+        spot = self.locate(point.map_id, point.x, point.y, point.instance_id)
+        if spot is None:
             return point.map_id
+        map_id, x, y = spot
         best, best_area = None, None
-        for map_id, info in self.map_infos.items():
-            if map_id == point.map_id or info["continent_id"] != point.map_id or info["min_x"] is None:
+        for zone_id, info in self.map_infos.items():
+            if zone_id == map_id or info["continent_id"] != map_id or info["min_x"] is None:
                 continue
-            if info["min_x"] <= point.x <= info["max_x"] and info["min_y"] <= point.y <= info["max_y"]:
+            if info["min_x"] <= x <= info["max_x"] and info["min_y"] <= y <= info["max_y"]:
                 area = (info["max_x"] - info["min_x"]) * (info["max_y"] - info["min_y"])
                 if best_area is None or area < best_area:
-                    best, best_area = map_id, area
-        return best if best is not None else point.map_id
+                    best, best_area = zone_id, area
+        return best if best is not None else map_id
 
     def available_views(self) -> list[int]:
         """Zone maps with points, then the continents that contain them (if their geometry is known)."""

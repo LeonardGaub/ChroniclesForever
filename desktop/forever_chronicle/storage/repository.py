@@ -46,6 +46,7 @@ class EventRow:
     x: float | None
     y: float | None
     payload: dict[str, Any]
+    instance_id: int | None = None
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "EventRow":
@@ -54,7 +55,8 @@ class EventRow:
         except (TypeError, ValueError):
             payload = {}
         return cls(row["character_id"], row["event_id"], row["event_type"], row["occurred_at"],
-                   row["zone_name"], row["subzone_name"], row["map_id"], row["x"], row["y"], payload)
+                   row["zone_name"], row["subzone_name"], row["map_id"], row["x"], row["y"], payload,
+                   row["instance_id"])
 
 
 @dataclass(frozen=True)
@@ -401,6 +403,18 @@ class Repository:
 
     def instance_names(self) -> dict[int, str]:
         return {r[0]: r[1] for r in self.conn.execute("SELECT instance_id, name FROM instances").fetchall()}
+
+    def upsert_entrance(self, instance_id: int, map_id: int, x: float, y: float, source: str | None,
+                        name: str | None) -> None:
+        self.conn.execute("""INSERT INTO instance_entrances (instance_id, map_id, x, y, source, name)
+                             VALUES (?,?,?,?,?,?) ON CONFLICT (instance_id) DO UPDATE SET map_id = excluded.map_id,
+                             x = excluded.x, y = excluded.y, source = excluded.source, name = excluded.name""",
+                          (instance_id, map_id, x, y, source, name))
+
+    def entrances(self) -> dict[int, tuple[int, float, float]]:
+        """Recorded dungeon entrances: instance ID -> (map ID, x, y)."""
+        rows = self.conn.execute("SELECT instance_id, map_id, x, y FROM instance_entrances").fetchall()
+        return {r[0]: (r[1], r[2], r[3]) for r in rows}
 
     # -- counters from the addon --------------------------------------------------
 

@@ -89,9 +89,55 @@ function Route.Project(p, view)
   return nil
 end
 
+-------------------------------------------------------------------------------
+-- Dungeon entrances: the client gives no position inside instances, so instance moments are shown at the
+-- entrance. Recorded entrances (FC.db.entrances: encounter journal or where the player walked in, see
+-- Modules/Positions.lua) come first; otherwise the entrance is derived from the route.
+-------------------------------------------------------------------------------
+
+Route.ENTRY_SECONDS = 60
+
+-- instanceID -> { mapID, x, y }: the last outdoor point shortly before each entry into an instance.
+local derived = { version = nil, list = {} }
+function Route.DerivedEntrances(points, version)
+  if version and derived.version == version then return derived.list end
+  local list, prev = {}, nil
+  for _, p in ipairs(points) do
+    if p.instanceID and prev and not prev.instanceID and prev.mapID and prev.x and not prev.taxi
+        and p.time - prev.endTime <= Route.ENTRY_SECONDS then
+      list[p.instanceID] = { mapID = prev.mapID, x = prev.x, y = prev.y }
+    end
+    prev = p
+  end
+  derived.version, derived.list = version, list
+  return list
+end
+
+function Route.Entrance(instanceID)
+  if not instanceID then return nil end
+  local stored = FC.db.entrances and FC.db.entrances[tostring(instanceID)]
+  if stored and stored.mapID and stored.x then return stored end
+  local points, version = Route.Points()
+  return Route.DerivedEntrances(points, version)[instanceID]
+end
+
+-- Where something is shown on the map: its own position, or for instance points the dungeon entrance
+-- (entrance = true). nil when neither is known.
+function Route.Locate(p)
+  if not p then return nil end
+  if p.mapID and p.x then return p end
+  if p.instanceID then
+    local e = Route.Entrance(p.instanceID)
+    if e then return { mapID = e.mapID, x = e.x, y = e.y, entrance = true, instanceID = p.instanceID } end
+  end
+  return nil
+end
+
 -- The map to show for a point: its zone. The client sometimes reports only the continent (between zones,
 -- on boats and zeppelins); then the smallest known zone containing the point is used, else the continent.
+-- Instance points use the zone of their dungeon entrance.
 function Route.ZoneFor(p)
+  if p and not p.mapID and p.instanceID then p = Route.Locate(p) end
   if not p or not p.mapID then return nil end
   if not p.x or not FC.db.maps then return p.mapID end
   local best, bestArea

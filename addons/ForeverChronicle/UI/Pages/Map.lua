@@ -211,9 +211,10 @@ function page:Redraw()
   local pins = {}
   if self.eventToggle.on then
     for _, r in ipairs(FC.Storage:GetStream("events").records) do
-      local loc = r.location
-      if loc and loc.mapID and loc.x and r.time >= self.range[1] and r.time <= self.range[2] then
-        local x, y = Route.Project({ mapID = loc.mapID, x = loc.x, y = loc.y }, self.viewMap)
+      -- Events inside dungeons are shown at the dungeon entrance.
+      local spot = r.location and r.time >= self.range[1] and r.time <= self.range[2] and Route.Locate(r.location)
+      if spot then
+        local x, y = Route.Project(spot, self.viewMap)
         if x then
           local text, icon = FC:DescribeEvent(r)
           pins[#pins + 1] = { x = x, y = y, icon = icon, title = text, text = FC.Util.FormatTime(r.time) }
@@ -243,28 +244,30 @@ function page:UpdateMarker()
 
   local p = Route.PointAt(self.points, self.current)
   if not p then return end
-  if p.instanceID then
+  -- Inside a dungeon the client gives no position: show the dungeon entrance instead, if known.
+  local shown = Route.Locate(p)
+  local instanceName = p.instanceID and (FC.db.instances and FC.db.instances[tostring(p.instanceID)] or ("#" .. p.instanceID))
+  if not shown then
     self.canvas:SetMarker(nil)
-    local name = FC.db.instances and FC.db.instances[tostring(p.instanceID)] or ("#" .. p.instanceID)
-    self:ShowNotice(string.format(L.MAP_INSTANCE, name))
+    self:ShowNotice(instanceName and string.format(L.MAP_INSTANCE, instanceName) or nil)
     return
   end
   -- Follow the player's zone. A map picked by hand stays until the player changes zones.
   local zone = Route.ZoneFor(p)
   local movedZone = zone ~= self.lastZone
   self.lastZone = zone
-  local x, y = Route.Project(p, self.viewMap)
+  local x, y = Route.Project(shown, self.viewMap)
   if zone and zone ~= self.viewMap and movedZone then
     self.viewMap = zone
     self:Redraw()
-    x, y = Route.Project(p, self.viewMap)
+    x, y = Route.Project(shown, self.viewMap)
   end
   self.canvas:SetMarker(x, y)
   if x then
-    self:ShowNotice(self.artNotice)
+    self:ShowNotice(instanceName and string.format(L.MAP_INSTANCE_ENTRANCE, instanceName) or self.artNotice)
   else
-    local info = FC.db.maps and FC.db.maps[tostring(p.mapID)]
-    self:ShowNotice(string.format(L.MAP_ELSEWHERE, info and info.name or tostring(p.mapID)))
+    local info = FC.db.maps and FC.db.maps[tostring(shown.mapID)]
+    self:ShowNotice(string.format(L.MAP_ELSEWHERE, info and info.name or tostring(shown.mapID)))
   end
 end
 

@@ -408,6 +408,7 @@ ForeverChronicleDB = {
 		["1413"] = {
 			["build"] = "70374",
 			["continent"] = 1414,
+			["entrancesChecked"] = true,
 			["mapType"] = 3,
 			["maxX"] = 0.48,
 			["maxY"] = 0.78,
@@ -418,6 +419,7 @@ ForeverChronicleDB = {
 		},
 		["1414"] = {
 			["build"] = "70374",
+			["entrancesChecked"] = true,
 			["mapType"] = 2,
 			["name"] = "Kalimdor",
 			["parent"] = 947,

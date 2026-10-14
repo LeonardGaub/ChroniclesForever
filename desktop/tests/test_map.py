@@ -158,7 +158,7 @@ def test_continent_points_open_the_zone():
              1454: {"continent_id": 1414, "min_x": 0.45, "max_x": 0.5, "min_y": 0.5, "max_y": 0.55},  # Orgrimmar
              1414: {"continent_id": None, "min_x": None, "max_x": None, "min_y": None, "max_y": None}}
     route = Route([P(0, map_id=1413), P(10, map_id=1414, x=0.5, y=0.6), P(20, map_id=1414, x=0.46, y=0.52),
-                   P(30, map_id=1414, x=0.9, y=0.9), P(40, map_id=None, x=None, y=None, instance=389)], infos)
+                   P(30, map_id=1414, x=0.9, y=0.9), P(400, map_id=None, x=None, y=None, instance=389)], infos)
     assert route.view_for(route.points[0]) == 1413
     assert route.view_for(route.points[1]) == 1413          # continent point inside the Barrens
     assert route.view_for(route.points[2]) == 1454          # smallest zone wins (city inside the zone)
@@ -168,3 +168,49 @@ def test_continent_points_open_the_zone():
     assert route.project(1414, 0.9, 0.9, 1413) is None
     # Continent points are drawn on the zone map (a map change still starts a new line, as everywhere).
     assert [[t for t, _, _ in seg.points] for seg in route.segments(1413)] == [[0], [10, 20]]
+
+
+def test_dungeon_moments_use_the_entrance():
+    """No positions inside instances: dungeon points and events are shown at the entrance (user request)."""
+    infos = {1458: {"continent_id": 1415, "min_x": 0.4, "max_x": 0.5, "min_y": 0.3, "max_y": 0.4}}
+    points = [P(0, map_id=1458, x=0.7256, y=0.1130), P(4, map_id=None, x=None, y=None, instance=2999),
+              P(100, map_id=1458, x=0.6790, y=0.1528),
+              P(500, map_id=1458, x=0.5, y=0.5), P(700, map_id=None, x=None, y=None, instance=389)]  # too late
+    route = Route(points, infos)
+    assert route.entrance(2999) == (1458, 0.7256, 0.1130)          # derived: walked in 4 s later
+    assert route.entrance(389) is None                              # last outdoor point 200 s earlier
+    assert route.view_for(points[1]) == 1458
+    assert route.locate(None, None, None, 2999) == (1458, 0.7256, 0.1130)
+    recorded = Route(points, infos, entrances={389: (1454, 0.52, 0.49)})
+    assert recorded.entrance(389) == (1454, 0.52, 0.49) and recorded.view_for(points[4]) == 1454
+
+
+def test_import_entrances(db, addon_fixture):
+    data = parse_saved_variables(addon_fixture.read_text(encoding="utf-8"))
+    data["ForeverChronicleDB"]["entrances"] = {
+        "389": {"mapID": 1454, "x": 0.5195, "y": 0.4911, "source": "journal", "name": "Ragefire Chasm"},
+        "2999": {"mapID": 1458, "x": 0.7256, "y": 0.113, "source": "walked"},
+        "bad": {"mapID": 1, "x": 0.1, "y": 0.1}, "5": {"mapID": 1, "x": 3, "y": 0.1}}
+    SavedVariablesImporter(db).import_data(data, "fixture")
+    assert Repository(db.conn).entrances() == {389: (1454, 0.5195, 0.4911), 2999: (1458, 0.7256, 0.113)}
+
+
+def test_map_page_shows_dungeon_death_at_entrance(db, addon_fixture, tmp_path, monkeypatch):
+    """The fixture's death in Ragefire Chasm (instance 389) is pinned at the entrance once it is known."""
+    from forever_chronicle.app_context import AppContext
+    from forever_chronicle.config import AppConfig
+    from forever_chronicle.ui.pages.map_page import MapPage
+    QApplication.instance() or QApplication([])
+    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
+    data = parse_saved_variables(addon_fixture.read_text(encoding="utf-8"))
+    data["ForeverChronicleDB"]["entrances"] = {"389": {"mapID": 1413, "x": 0.45, "y": 0.6, "source": "walked"}}
+    ctx = AppContext(AppConfig(client_dir=str(tmp_path / "missing")), db)
+    ctx._client_searched = True
+    ctx.importer.import_data(data, "fixture")
+    page = MapPage(ctx)
+    page.set_character(Repository(db.conn).list_characters()[0].character_id)
+    death = next(e for e in ctx.repo.events(page.character_id) if e.event_type == "player_died")
+    assert death.instance_id == 389 and death.map_id is None
+    assert page.view_map == 1413
+    tips = [item.toolTip() for item in page.view.scene().items() if item.toolTip()]
+    assert any("Ragefire" in tip for tip in tips), tips

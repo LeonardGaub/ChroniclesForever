@@ -320,6 +320,16 @@ class SavedVariablesImporter:
             instance_id = _int(key) if not isinstance(key, str) else (int(key) if key.isdigit() else None)
             if instance_id is not None and isinstance(name, str):
                 self.repo.upsert_instance(instance_id, name)
+        for key, e in as_dict(db_root.get("entrances")).items():
+            instance_id = _int(key) if not isinstance(key, str) else (int(key) if key.isdigit() else None)
+            if instance_id is None or not isinstance(e, dict):
+                continue
+            map_id, x, y = _int(e.get("mapID")), e.get("x"), e.get("y")
+            if (map_id is not None and isinstance(x, (int, float)) and isinstance(y, (int, float))
+                    and 0 <= x <= 1 and 0 <= y <= 1):
+                self.repo.upsert_entrance(instance_id, map_id, float(x), float(y),
+                                          e.get("source") if isinstance(e.get("source"), str) else None,
+                                          e.get("name") if isinstance(e.get("name"), str) else None)
 
     def _import_capabilities(self, db_root: dict[str, Any]) -> None:
         caps = as_dict(as_dict(db_root.get("diagnostics")).get("capabilities"))
