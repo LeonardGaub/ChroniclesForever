@@ -148,6 +148,14 @@
     missing, and compare hashes without that file (the desktop app owns it in the game folder).
   - Tests: desktop `test_battlenet`, `test_friends_data` (writes `tests/fixtures/FriendsData.lua`); addon
     phase 12 loads that fixture.
+- **Addon v0.12.0: gear for other characters (user request).** The `Modules/Gear.lua` snapshot `snapshots.gear` (slot,
+  slotName, link, item, icon, quality) is taken at login and on `PLAYER_EQUIPMENT_CHANGED`. The overview shows alts'
+  and friends' gear slots from it (icon, quality border, tooltip via `SetHyperlink`); only the 3D model stays for
+  the played character. Desktop: migration 9 `gear`, import, JSONL type `gear`, share category "Ausrüstung", the
+  friends file (`snapshots.gear`) and an "Ausrüstung" list on the overview. Next (open): test whether
+  `SetCustomRace` / dressing a model (`TryOn`) work in Forever, for a dressed model of other characters.
+  The addon test runner now writes `tests/fixtures/ForeverChronicle.lua` right after phase 3. When the shared data
+  changes, run npm test, pytest, then npm test again (phase 12 needs the friends file that pytest writes).
 - **Package for friends (user request).** `tools/package_for_friend.py` builds `dist/ForeverChronicle-<version>.zip`
   (about 28 MB; too big for Discord's free 10 MB limit, so share it via OneDrive, Google Drive or similar). It
   contains the addon, the desktop app source, `Forever Chronicle starten.bat`, `LIES MICH.txt` and the 52 map images

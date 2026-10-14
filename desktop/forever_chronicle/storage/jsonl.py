@@ -61,6 +61,7 @@ RECORD_TYPES: list[RecordType] = [
     RecordType("profession", "professions", ("skill_line",), merge="newer", compare="updated_at"),
     RecordType("recipe_category", "recipe_categories", ("skill_line", "category_id"), merge="replace"),
     RecordType("recipe", "recipes", ("skill_line", "recipe_id"), merge="replace"),
+    RecordType("gear", "gear", ("slot",), merge="newer", compare="updated_at"),
     RecordType("data_gap", "data_gaps", ("stream", "from_seq", "to_seq"), local=("gap_id", "import_id")),
     RecordType("stream_state", "stream_state", ("stream",), merge="newer", compare="last_seq"),
 ]

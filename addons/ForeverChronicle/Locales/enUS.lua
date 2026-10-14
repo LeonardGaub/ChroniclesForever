@@ -254,6 +254,7 @@ FC:RegisterLocale("enUS", {
   VIEW_READONLY = "read-only",
   VIEW_BACK = "Back to me",
   VIEW_LAST_SEEN = "Last seen: %s",
-  VIEW_LIVE_ONLY = "Model, gear, experience and graphs are only available for the character you are playing.",
+  VIEW_LIVE_ONLY = "The 3D model, experience, gold and graphs are only available for the character you are playing.",
+  CAP_GEAR = "Gear",
   VIEW_NO_FRIENDS = "Add friends in the desktop app (Friends tab); they appear here after /reload.",
 })

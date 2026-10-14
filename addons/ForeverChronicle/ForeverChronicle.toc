@@ -3,7 +3,7 @@
 ## Notes: Your personal adventure history: sessions, level-ups, quests, deaths, achievements, zones, routes, professions and screenshots.
 ## Notes-deDE: Deine persönliche Abenteuerchronik: Sitzungen, Stufenaufstiege, Quests, Tode, Erfolge, Gebiete, Routen, Berufe und Screenshots.
 ## Author: Forever Chronicle
-## Version: 0.11.1
+## Version: 0.12.0
 ## SavedVariables: ForeverChronicleDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 ## AddonCompartmentFunc: ForeverChronicle_OnAddonCompartmentClick
@@ -33,6 +33,7 @@ Modules\Positions.lua
 Modules\Progress.lua
 Modules\Rares.lua
 Modules\Professions.lua
+Modules\Gear.lua
 Modules\Metrics.lua
 Modules\ScreenshotQueue.lua
 Modules\Screenshots.lua

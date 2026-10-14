@@ -33,6 +33,7 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
     "chronicle": ("character_stat", "event", "profession", "recipe", "recipe_category"),
     "routes": ("position",),
     "sessions": ("session",),
+    "gear": ("gear",),
     "screenshots": ("screenshot", "screenshot_event"),
 }
 GLOBAL_TYPES: dict[str, tuple[str, ...]] = {"routes": ("map_info", "instance", "instance_entrance")}

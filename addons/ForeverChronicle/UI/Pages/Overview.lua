@@ -62,16 +62,42 @@ local function gearSlot(parent, slotName)
   b.slotID, b.slotName, b.emptyTexture = slotID, slotName, emptyTexture
   b:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    if not (self.slotID and GameTooltip:SetInventoryItem("player", self.slotID)) then
-      GameTooltip:SetText(_G[slotName:upper()] or slotName, 1, 1, 1)
+    local shown
+    if self.link then  -- another character's gear: the tooltip comes from the saved item link
+      shown = pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
+    elseif self.slotID then
+      shown = GameTooltip:SetInventoryItem("player", self.slotID)
     end
+    if not shown then GameTooltip:SetText(_G[slotName:upper()] or slotName, 1, 1, 1) end
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", GameTooltip_Hide)
   return b
 end
 
+local function showEmpty(b)
+  UI:SetIcon(b.icon, b.emptyTexture)
+  b.icon:SetTexCoord(0, 1, 0, 1)
+  b.border:SetColorTexture(0.15, 0.15, 0.15, 1)
+end
+
+-- Gear of a character that is not being played, from its snapshot (Modules/Gear.lua).
+local function updateSlotFromSnapshot(b, entry)
+  b.link = entry and entry.link
+  if not entry then
+    showEmpty(b)
+    return
+  end
+  local icon = entry.icon or (C_Item and C_Item.GetItemIconByID and entry.item
+    and Util.SafeValue(nil, C_Item.GetItemIconByID, entry.item))
+  UI:SetIcon(b.icon, icon)
+  b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  local r, g, bl = UI:QualityColor(entry.quality)
+  b.border:SetColorTexture(r or 0.3, g or 0.3, bl or 0.3, 1)
+end
+
 local function updateSlot(b)
+  b.link = nil
   local texture = b.slotID and Util.SafeValue(nil, GetInventoryItemTexture, "player", b.slotID)
   if texture then
     b.icon:SetTexture(texture)
@@ -79,9 +105,7 @@ local function updateSlot(b)
     local r, g, bl = UI:QualityColor(Util.SafeValue("number", GetInventoryItemQuality, "player", b.slotID))
     b.border:SetColorTexture(r or 0.3, g or 0.3, bl or 0.3, 1)
   else
-    UI:SetIcon(b.icon, b.emptyTexture)
-    b.icon:SetTexCoord(0, 1, 0, 1)
-    b.border:SetColorTexture(0.15, 0.15, 0.15, 1)
+    showEmpty(b)
   end
   return texture
 end
@@ -153,6 +177,7 @@ function page:Create(c)
   end
 
   local modelBg = panel:CreateTexture(nil, "BACKGROUND")
+  self.modelBg = modelBg
   modelBg:SetPoint("TOPLEFT", SLOT_SIZE + 10, 0)
   modelBg:SetPoint("BOTTOMRIGHT", -(SLOT_SIZE + 10), SLOT_SIZE + 16)
   modelBg:SetColorTexture(0, 0, 0, 0.35)
@@ -184,12 +209,13 @@ function page:Create(c)
   self.graphSubtitle:SetPoint("TOP", self.graphTitle, "BOTTOM", 0, -2)
   self.graph = UI:LineGraph(c, panel:GetWidth(), 140)
   self.graph.frame:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -8)
-  self.liveParts = { panel, prev, nextB, self.graphTitle, self.graphSubtitle, self.graph.frame }
+  self.liveParts = { prev, nextB, self.graphTitle, self.graphSubtitle, self.graph.frame }
+  if self.model then self.liveParts[#self.liveParts + 1] = self.model end
 
-  -- Other characters (alts, friends): no live model, gear, XP, gold or graph.
+  -- Other characters (alts, friends): their saved gear, but no live model, XP, gold or graph.
   self.otherNote = UI:Label(c, "VIEW_LIVE_ONLY", "GameFontDisable")
-  self.otherNote:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -40)
-  self.otherNote:SetWidth(panel:GetWidth())
+  self.otherNote:SetPoint("LEFT", self.modelBg, "LEFT", 12, 0)
+  self.otherNote:SetPoint("RIGHT", self.modelBg, "RIGHT", -12, 0)
   self.otherNote:SetJustifyH("CENTER")
 end
 
@@ -264,6 +290,9 @@ function page:Refresh()
     if owner then self.details:SetText(self.details:GetText() .. "  \194\183  " .. string.format(L.VIEW_FRIEND_OF, owner)) end
     self.xp:Hide()
     self.money:SetText(info.lastSeenAt and string.format(L.VIEW_LAST_SEEN, Util.FormatTime(info.lastSeenAt)) or "")
+    local gear = FC:GetModule("Gear"):BySlot(FC:ViewChar())
+    for _, slot in ipairs(self.slots) do updateSlotFromSnapshot(slot, slot.slotID and gear[slot.slotID]) end
+    self.gearSignature = nil -- the played character's model is refreshed when shown again
     for _, tile in ipairs(self.tiles) do
       local value = FC:GetStatValue(tile.def)
       tile.value:SetText(value ~= nil and FC:FormatStat(tile.def, value) or "-")

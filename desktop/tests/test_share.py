@@ -18,7 +18,7 @@ from forever_chronicle.wow.lua_parser import parse_saved_variables  # noqa: E402
 
 ALICE, BOB = "a" * 32, "b" * 32
 GUID = "Player-4619-0112A417"
-ALL = {"chronicle", "routes", "sessions", "screenshots"}
+ALL = {"chronicle", "routes", "sessions", "gear", "screenshots"}
 
 
 @pytest.fixture(scope="module", autouse=True)

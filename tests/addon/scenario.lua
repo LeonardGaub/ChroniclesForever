@@ -796,7 +796,13 @@ if PHASE == 12 then
   end
   local ov = page("overview")
   check(ov.name.text:find('Thr"all', 1, true) and ov.details.text:find("Charakter von", 1, true), "overview header")
-  check(ov.otherNote:IsShown() and not ov.gearPanel:IsShown() and not ov.xp:IsShown(), "live-only parts hidden")
+  check(ov.otherNote:IsShown() and ov.gearPanel:IsShown() and not ov.model:IsShown() and not ov.xp:IsShown(),
+    "model and live parts hidden, gear shown")
+  local function link(slot) return rawget(slot, "link") end   -- mock frames return functions for unset fields
+  local head = ov.slots[1]
+  check(link(head) and link(head):find("Green Tinted Goggles", 1, true) and head.icon.texture == 133001,
+    "the friend's gear from the shared snapshot")
+  check(link(ov.slots[2]) == nil, "empty slot stays empty")
   local kills, tracked
   for _, tile in ipairs(ov.tiles) do
     if tile.def.key == "kills" then kills = tile.value.text end
@@ -829,6 +835,7 @@ if PHASE == 12 then
   FC:SetView("Player-4619-0ALT0001")
   page("overview")
   check(ov.name.text:find("Altie", 1, true) and UI.viewBar.sub.text:find("Anderer Charakter", 1, true), "alt shown")
+  check(link(ov.slots[1]) == nil, "the alt has no gear snapshot: empty slots")
   check(ForeverChronicleFrame.portraitClass == "MAGE", "portrait: the alt's class emblem")
   local overviewTab = ForeverChronicleFrame.Tabs[1]
   check(overviewTab.icon.texture == "Interface\\TargetingFrame\\UI-Classes-Circles", "overview tab icon follows")
@@ -840,7 +847,11 @@ if PHASE == 12 then
   check(FC:IsViewingPlayed() and not UI.viewBack:IsShown(), "back to me")
   check(ForeverChronicleFrame.portraitUnit == "player", "portrait: back to the played character")
   page("overview")
-  check(ov.gearPanel:IsShown() and not ov.otherNote:IsShown(), "live parts back")
+  check(ov.gearPanel:IsShown() and ov.model:IsShown() and not ov.otherNote:IsShown() and link(ov.slots[1]) == nil,
+    "live parts back (gear from the live inventory again)")
+  local gear = ForeverChronicleDB.characters[me].snapshots.gear
+  check(gear and #gear.slots == 2 and gear.slots[1].slotName == "HeadSlot" and gear.slots[1].quality == 3,
+    "my gear snapshot")
   for i = 1, #UI.pages do UI:SelectPage(i) end
 
   local errors = 0

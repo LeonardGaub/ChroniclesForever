@@ -177,6 +177,14 @@ def _professions(conn: sqlite3.Connection, cid: str) -> dict[str, Any]:
     return {"list": out, "baseline": True}
 
 
+def _gear(conn: sqlite3.Connection, cid: str) -> dict[str, Any]:
+    """The addon's gear snapshot shape (Modules/Gear.lua)."""
+    rows = conn.execute("SELECT * FROM gear WHERE character_id = ? ORDER BY slot", (cid,)).fetchall()
+    return {"updatedAt": max((r["updated_at"] or 0 for r in rows), default=None) or None,
+            "slots": [{"slot": r["slot"], "slotName": r["slot_name"], "link": r["link"], "item": r["item_id"],
+                       "icon": r["icon"], "quality": r["quality"]} for r in rows]}
+
+
 def build_friends_data(conn: sqlite3.Connection, now: int | None = None) -> dict[str, Any]:
     """All friends' characters in the addon's own record shape, trimmed (see the limits above)."""
     owners = conn.execute("SELECT * FROM owners ORDER BY display_name COLLATE NOCASE").fetchall()
@@ -207,7 +215,7 @@ def build_friends_data(conn: sqlite3.Connection, now: int | None = None) -> dict
                 "stats": {k: (int(v) if float(v).is_integer() else v) for k, v in stats.items()},
                 "streams": {"events": {"records": events}, "sessions": {"records": sessions},
                             "positions": {"nextSeq": len(points) + 1, "records": points}},
-                "snapshots": {"professions": _professions(conn, cid)},
+                "snapshots": {"professions": _professions(conn, cid), "gear": _gear(conn, cid)},
             })
         friends.append({"name": o["display_name"], "sharedAt": o["shared_at"], "characters": characters})
 

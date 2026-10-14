@@ -24,6 +24,28 @@ ForeverChronicleDB = {
 				["realmNormalized"] = "ClassicBetaPvP",
 			},
 			["snapshots"] = {
+				["gear"] = {
+					["signature"] = "1=|cff0070dd|Hitem:4385::::::::22:::::|h[Green Tinted Goggles]|h|r;16=|cff0070dd|Hitem:2099::::::::22:::::|h[Dwarven Hand Cannon]|h|r",
+					["slots"] = {
+						{
+							["icon"] = 133001,
+							["item"] = 4385,
+							["link"] = "|cff0070dd|Hitem:4385::::::::22:::::|h[Green Tinted Goggles]|h|r",
+							["quality"] = 3,
+							["slot"] = 1,
+							["slotName"] = "HeadSlot",
+						}, -- [1]
+						{
+							["icon"] = 133016,
+							["item"] = 2099,
+							["link"] = "|cff0070dd|Hitem:2099::::::::22:::::|h[Dwarven Hand Cannon]|h|r",
+							["quality"] = 3,
+							["slot"] = 16,
+							["slotName"] = "MainHandSlot",
+						}, -- [2]
+					},
+					["updatedAt"] = 1791961000,
+				},
 				["professions"] = {
 					["baseline"] = true,
 					["list"] = {
@@ -338,6 +360,11 @@ ForeverChronicleDB = {
 				["confirmedAt"] = 1791961103,
 				["status"] = "confirmed",
 			},
+			["gear"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961000,
+				["status"] = "confirmed",
+			},
 			["identity"] = {
 				["build"] = "70374",
 				["confirmedAt"] = 1791961000,
@@ -392,16 +419,17 @@ ForeverChronicleDB = {
 		["log"] = {
 			"2026-10-14 08:56:40 [info] capability confirmed: identity", -- [1]
 			"2026-10-14 08:56:40 [info] capability confirmed: professions", -- [2]
-			"2026-10-14 08:56:41 [info] capability confirmed: positions", -- [3]
-			"2026-10-14 08:56:50 [info] capability confirmed: played_time", -- [4]
-			"2026-10-14 08:57:53 [info] capability confirmed: quests", -- [5]
-			"2026-10-14 08:58:23 [info] capability confirmed: deaths", -- [6]
-			"2026-10-14 08:58:53 [info] capability confirmed: level_up", -- [7]
-			"2026-10-14 08:58:53 [info] capability confirmed: achievements", -- [8]
-			"2026-10-14 08:58:53 [info] capability confirmed: kills", -- [9]
-			"2026-10-14 08:58:53 [info] capability confirmed: xp", -- [10]
-			"2026-10-14 08:58:58 [info] capability confirmed: screenshots", -- [11]
-			"2026-10-15 09:56:40 [info] capability confirmed: recipes", -- [12]
+			"2026-10-14 08:56:40 [info] capability confirmed: gear", -- [3]
+			"2026-10-14 08:56:41 [info] capability confirmed: positions", -- [4]
+			"2026-10-14 08:56:50 [info] capability confirmed: played_time", -- [5]
+			"2026-10-14 08:57:53 [info] capability confirmed: quests", -- [6]
+			"2026-10-14 08:58:23 [info] capability confirmed: deaths", -- [7]
+			"2026-10-14 08:58:53 [info] capability confirmed: level_up", -- [8]
+			"2026-10-14 08:58:53 [info] capability confirmed: achievements", -- [9]
+			"2026-10-14 08:58:53 [info] capability confirmed: kills", -- [10]
+			"2026-10-14 08:58:53 [info] capability confirmed: xp", -- [11]
+			"2026-10-14 08:58:58 [info] capability confirmed: screenshots", -- [12]
+			"2026-10-15 09:56:40 [info] capability confirmed: recipes", -- [13]
 		},
 	},
 	["maps"] = {
@@ -431,6 +459,8 @@ ForeverChronicleDB = {
 		["language"] = "deDE",
 		["modules"] = {
 			["Character"] = {
+			},
+			["Gear"] = {
 			},
 			["Metrics"] = {
 			},

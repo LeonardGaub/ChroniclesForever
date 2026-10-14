@@ -74,7 +74,7 @@ def with_friend(db, addon_fixture, tmp_path, monkeypatch):
     cid = friend.conn.execute("SELECT character_id FROM characters").fetchone()[0]
     share = tmp_path / "f.fcshare"
     monkeypatch.setattr("forever_chronicle.storage.share.time.time", lambda: 1791990000)
-    export_share(friend, share, "b" * 32, NASTY, {cid: {"chronicle", "routes", "sessions"}})
+    export_share(friend, share, "b" * 32, NASTY, {cid: {"chronicle", "routes", "sessions", "gear"}})
     friend.close()
     assert import_share(db, share, "a" * 32, tmp_path / "friends").status == "ok"
     with db.transaction():  # deterministic fixture file
@@ -112,6 +112,9 @@ def test_written_file_is_plain_data_in_real_lua(with_friend, tmp_path, monkeypat
     assert len(streams["positions"]["records"]) >= 12
     assert streams["positions"]["records"][0].count(",") == 6           # addon's compact point format
     assert char["stats"]["kills"] == 2 and data["maps"]["1413"]["continent"] == 1414
+    gear = char["snapshots"]["gear"]["slots"]
+    assert [g["slotName"] for g in gear] == ["HeadSlot", "MainHandSlot"] and gear[0]["quality"] == 3
+    assert "Green Tinted Goggles" in gear[0]["link"] and gear[0]["icon"] == 133001
     quest = next(e for e in streams["events"]["records"] if e["type"] == "quest_completed")
     assert quest["data"]["title"] == "The Runaway Shipment" and quest["location"]["mapID"] == 1413
 

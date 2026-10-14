@@ -254,6 +254,7 @@ FC:RegisterLocale("deDE", {
   VIEW_READONLY = "nur lesen",
   VIEW_BACK = "Zurück zu mir",
   VIEW_LAST_SEEN = "Zuletzt gesehen: %s",
-  VIEW_LIVE_ONLY = "Modell, Ausrüstung, Erfahrung und Verlauf gibt es nur für den Charakter, den du gerade spielst.",
+  VIEW_LIVE_ONLY = "Das 3D-Modell, Erfahrung, Gold und der Verlauf gibt es nur für den Charakter, den du gerade spielst.",
+  CAP_GEAR = "Ausrüstung",
   VIEW_NO_FRIENDS = "Freunde fügst du in der Desktop-App hinzu (Tab Freunde); nach /reload erscheinen sie hier.",
 })

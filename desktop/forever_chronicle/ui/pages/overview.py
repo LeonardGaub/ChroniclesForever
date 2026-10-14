@@ -1,12 +1,16 @@
-"""Overview: statistics from the stat registry, grouped, plus the most recent events."""
+"""Overview: statistics from the stat registry, grouped, the equipped gear and the most recent events."""
 
 from __future__ import annotations
 
+import re
+
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QFormLayout, QGroupBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QVBoxLayout
 
 from ...domain import event_types, stats
 from ...i18n import format_datetime, tr
+from .. import theme
 from ..widgets import Page, muted, value_label
 
 RECENT_EVENTS = 12
@@ -41,12 +45,20 @@ class OverviewPage(Page):
         left.addWidget(self.hint)
         root.addLayout(left, 1)
 
+        right = QVBoxLayout()
+        self.gear_box = QGroupBox()
+        gear_layout = QVBoxLayout(self.gear_box)
+        self.gear = QListWidget()
+        self.gear.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        gear_layout.addWidget(self.gear)
+        right.addWidget(self.gear_box, 1)
         self.recent_box = QGroupBox()
         recent_layout = QVBoxLayout(self.recent_box)
         self.recent = QListWidget()
         self.recent.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         recent_layout.addWidget(self.recent)
-        root.addWidget(self.recent_box, 1)
+        right.addWidget(self.recent_box, 1)
+        root.addLayout(right, 1)
 
     def refresh(self) -> None:
         for group, (box, _) in self.groups.items():
@@ -61,9 +73,20 @@ class OverviewPage(Page):
             s, v = values.get(stat.key, (stat, None))
             value.setText(stats.format_value(s, v) if self.character_id else "")
 
+        self.gear_box.setTitle(tr("overview.gear"))
+        self.gear.clear()
         self.recent.clear()
         if not self.character_id:
             return
+        rows = self.ctx.repo.gear(self.character_id)
+        for row in rows:
+            name = re.search(r"\[(.+?)\]", row["link"])
+            slot = tr(f"gear.slot.{row['slot_name']}") if row["slot_name"] else str(row["slot"])
+            item = QListWidgetItem(f"{slot}:  {name.group(1) if name else '?'}")
+            item.setForeground(QColor(theme.QUALITY_COLORS.get(row["quality"], theme.TEXT)))
+            self.gear.addItem(item)
+        if not rows:
+            self.gear.addItem(QListWidgetItem(tr("overview.gear_none")))
         for event in self.ctx.repo.events(self.character_id, limit=RECENT_EVENTS):
             et = event_types.get(event.event_type)
             item = QListWidgetItem(f"{et.glyph}  {event_types.describe(event)}")

@@ -60,6 +60,11 @@ runQueueTests();
 const p1 = runPhase(1, null, 0);
 const p2 = runPhase(2, p1, 1000);
 const p3 = runPhase(3, p2, 90000);
+// The desktop tests read this file; write it right away (phase 12 below needs a file the desktop tests write).
+const fixtures = path.join(__dirname, '..', 'fixtures');
+fs.mkdirSync(fixtures, { recursive: true });
+fs.writeFileSync(path.join(fixtures, 'ForeverChronicle.lua'), p3);
+console.log('fixture written: tests/fixtures/ForeverChronicle.lua');
 runPhase(4, null, 0);
 runPhase(5, null, 0);
 runPhase(6, null, 0);
@@ -78,8 +83,4 @@ if (fs.existsSync(friendsFixture)) {
   console.log('phase 12 skipped: run the desktop tests first (they write tests/fixtures/FriendsData.lua)');
 }
 
-const fixtures = path.join(__dirname, '..', 'fixtures');
-fs.mkdirSync(fixtures, { recursive: true });
-fs.writeFileSync(path.join(fixtures, 'ForeverChronicle.lua'), p3);
-console.log('fixture written: tests/fixtures/ForeverChronicle.lua');
 console.log('ALL PHASES PASSED');

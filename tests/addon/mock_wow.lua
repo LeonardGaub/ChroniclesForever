@@ -56,7 +56,7 @@ for e in ([[ADDON_LOADED PLAYER_LOGIN PLAYER_ENTERING_WORLD PLAYER_LOGOUT TIME_P
   LOADING_SCREEN_ENABLED LOADING_SCREEN_DISABLED SCREENSHOT_SUCCEEDED SCREENSHOT_FAILED
   PARTY_KILL PLAYER_XP_UPDATE PLAYER_TARGET_CHANGED UPDATE_MOUSEOVER_UNIT NAME_PLATE_UNIT_ADDED
   SKILL_LINES_CHANGED CHAT_MSG_SKILL TRADE_SKILL_SHOW TRADE_SKILL_LIST_UPDATE TRADE_SKILL_DATA_SOURCE_CHANGED
-  TRADE_SKILL_CLOSE NEW_RECIPE_LEARNED]]):gmatch("%S+") do
+  TRADE_SKILL_CLOSE NEW_RECIPE_LEARNED PLAYER_EQUIPMENT_CHANGED]]):gmatch("%S+") do
   VALID_EVENTS[e] = true
 end
 
@@ -204,6 +204,11 @@ local SLOT_IDS = { HeadSlot = 1, NeckSlot = 2, ShoulderSlot = 3, ShirtSlot = 4, 
 function GetInventorySlotInfo(name) return SLOT_IDS[name], "Interface\\PaperDoll\\UI-PaperDoll-Slot-" .. name end
 function GetInventoryItemTexture(_, id) if id == 1 or id == 16 then return 133000 + id end end
 function GetInventoryItemQuality(_, id) if id == 1 or id == 16 then return 3 end end
+MOCK.gearLinks = {
+  [1] = "|cff0070dd|Hitem:4385::::::::22:::::|h[Green Tinted Goggles]|h|r",
+  [16] = "|cff0070dd|Hitem:2099::::::::22:::::|h[Dwarven Hand Cannon]|h|r",
+}
+function GetInventoryItemLink(_, id) return MOCK.gearLinks[id] end
 local QUALITY_COLORS = { [1] = { 1, 1, 1 }, [2] = { 0.12, 1, 0 }, [3] = { 0, 0.44, 0.87 } }
 function GetItemQualityColor(q) local c = QUALITY_COLORS[q] or QUALITY_COLORS[3]; return c[1], c[2], c[3] end
 function GetCursorPosition() return MOCK.cursorX or 0, MOCK.cursorY or 0 end

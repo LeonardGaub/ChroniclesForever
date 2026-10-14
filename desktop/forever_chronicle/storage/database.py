@@ -246,6 +246,20 @@ MIGRATIONS: list[str] = [
     );
     ALTER TABLE characters ADD COLUMN owner_id INTEGER REFERENCES owners(owner_id);  -- NULL = my own character
     """,
+    # 9: equipped items (snapshot from the addon's Gear module)
+    """
+    CREATE TABLE gear (
+        character_id   TEXT NOT NULL REFERENCES characters(character_id),
+        slot           INTEGER NOT NULL,              -- inventory slot ID
+        slot_name      TEXT,                          -- HeadSlot, ...
+        item_id        INTEGER,
+        link           TEXT NOT NULL,                 -- item link (name and colour inside)
+        icon           INTEGER,
+        quality        INTEGER,
+        updated_at     INTEGER,
+        PRIMARY KEY (character_id, slot)
+    );
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

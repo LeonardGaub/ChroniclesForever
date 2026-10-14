@@ -517,6 +517,18 @@ class Repository:
             args.append(f"%{search}%")
         return self.conn.execute(sql + " ORDER BY p.name, category, r.name", args).fetchall()
 
+    def replace_gear(self, character_id: str, items: list[dict[str, Any]], updated_at: int | None) -> None:
+        """The equipped items as of the snapshot (slots not listed are empty)."""
+        self.conn.execute("DELETE FROM gear WHERE character_id = ?", (character_id,))
+        for it in items:
+            self.conn.execute("""INSERT OR REPLACE INTO gear (character_id, slot, slot_name, item_id, link, icon, quality,
+                                 updated_at) VALUES (?,?,?,?,?,?,?,?)""",
+                              (character_id, it["slot"], it.get("slotName"), it.get("item"), it["link"],
+                               _int_or_none(it.get("icon")), it.get("quality"), updated_at))
+
+    def gear(self, character_id: str) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM gear WHERE character_id = ? ORDER BY slot", (character_id,)).fetchall()
+
     def count_recipes(self, character_id: str) -> int:
         return self.conn.execute(
             """SELECT COUNT(*) FROM recipes r JOIN professions p ON p.character_id = r.character_id

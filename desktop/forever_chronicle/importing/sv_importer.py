@@ -259,6 +259,22 @@ class SavedVariablesImporter:
             result.positions += 1
         self._track_stream(character_id, "positions", good_points, import_id, result)
         self._import_professions(character_id, as_dict(as_dict(char.get("snapshots")).get("professions")), result)
+        self._import_gear(character_id, as_dict(as_dict(char.get("snapshots")).get("gear")), result)
+
+    def _import_gear(self, character_id: str, snap: dict[str, Any], result: ImportResult) -> None:
+        """The equipped items (snapshot): replaces the stored gear when the addon has a gear snapshot."""
+        if _int(snap.get("updatedAt")) is None:
+            return
+        items = []
+        for it in as_list(snap.get("slots")):
+            if (isinstance(it, dict) and _int(it.get("slot")) is not None and isinstance(it.get("link"), str)
+                    and it["link"].startswith("|c") and len(it["link"]) < 512):
+                items.append({"slot": _int(it["slot"]), "slotName": it.get("slotName") if isinstance(
+                    it.get("slotName"), str) else None, "item": _int(it.get("item")), "link": it["link"],
+                    "icon": it.get("icon"), "quality": _int(it.get("quality"))})
+            else:
+                result.invalid += 1
+        self.repo.replace_gear(character_id, items, _int(snap.get("updatedAt")))
 
     def _import_professions(self, character_id: str, snap: dict[str, Any], result: ImportResult) -> None:
         """Mirrors the addon's profession snapshot (spec F-008). A recipe list replaces the stored one only
