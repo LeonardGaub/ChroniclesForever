@@ -14,6 +14,7 @@ from typing import Any, Iterable
 class Character:
     character_id: str
     name: str
+    name_suffix: str | None
     realm: str | None
     level: int | None
     class_name: str | None
@@ -24,8 +25,13 @@ class Character:
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "Character":
-        return cls(row["character_id"], row["name"], row["realm"], row["level"], row["class_name"],
-                   row["class_file"], row["race_name"], row["faction"], row["last_seen_at"])
+        return cls(row["character_id"], row["name"], row["name_suffix"], row["realm"], row["level"],
+                   row["class_name"], row["class_file"], row["race_name"], row["faction"], row["last_seen_at"])
+
+    @property
+    def full_name(self) -> str:
+        """Name with the last name that Forever characters have (second value of UnitName)."""
+        return f"{self.name} {self.name_suffix}" if self.name_suffix else self.name
 
 
 @dataclass
@@ -346,6 +352,18 @@ class Repository:
 
     def instance_names(self) -> dict[int, str]:
         return {r[0]: r[1] for r in self.conn.execute("SELECT instance_id, name FROM instances").fetchall()}
+
+    # -- counters from the addon --------------------------------------------------
+
+    def set_character_stat(self, character_id: str, key: str, value: float) -> None:
+        self.conn.execute("""INSERT INTO character_stats (character_id, stat_key, value) VALUES (?,?,?)
+                             ON CONFLICT (character_id, stat_key) DO UPDATE SET value = excluded.value""",
+                          (character_id, key, value))
+
+    def character_stat(self, character_id: str, key: str) -> float | None:
+        row = self.conn.execute("SELECT value FROM character_stats WHERE character_id = ? AND stat_key = ?",
+                                (character_id, key)).fetchone()
+        return row[0] if row else None
 
     # -- capabilities -----------------------------------------------------------
 

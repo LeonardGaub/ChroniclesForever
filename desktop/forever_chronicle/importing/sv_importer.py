@@ -194,6 +194,10 @@ class SavedVariablesImporter:
         info = as_dict(char.get("info"))
         character_id = self.repo.upsert_character(key, info, account)
         result.characters += 1
+        # Counters kept by the addon (kills, experience, ...): totals, replaced on every import.
+        for stat_key, value in as_dict(char.get("stats")).items():
+            if isinstance(stat_key, str) and isinstance(value, (int, float)) and not isinstance(value, bool):
+                self.repo.set_character_stat(character_id, stat_key, value)
         streams = as_dict(char.get("streams"))
 
         events = as_list(as_dict(streams.get("events")).get("records"))

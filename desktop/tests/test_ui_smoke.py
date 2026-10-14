@@ -35,7 +35,7 @@ def test_main_window_with_data(app, db, tmp_path, monkeypatch, addon_fixture):
     ctx.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
     ctx.data_changed.emit()
     assert window.characters.count() == 1
-    assert window.char_name.text() == "Blind"
+    assert window.char_name.text() == "Blind Bullseye"  # Forever characters have a last name
 
     for i in range(window.tabs.count()):
         window.tabs.setCurrentIndex(i)
@@ -45,6 +45,7 @@ def test_main_window_with_data(app, db, tmp_path, monkeypatch, addon_fixture):
                                                           for r in range(6)]
     overview = window.pages[0]
     assert overview.rows["quests"][1].text() == "1"
+    assert overview.rows["kills"][1].text() == "2" and overview.rows["xp_earned"][1].text() == "4.200"
     assert overview.rows["played_total"][1].text() == "20 Std. 35 Min."
 
     i18n.set_language("en")

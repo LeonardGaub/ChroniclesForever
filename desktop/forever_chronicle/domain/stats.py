@@ -52,6 +52,8 @@ def format_value(stat: Stat, value: Any) -> str:
         return format_date(value)
     if stat.kind == "number" and isinstance(value, float):
         return f"{value:.1f}".replace(".", tr("common.decimal_sep"))
+    if stat.kind == "number" and isinstance(value, int):
+        return f"{value:,}".replace(",", tr("common.thousands_sep"))
     return str(value)
 
 
@@ -94,7 +96,16 @@ register(Stat("longest_session", "stats.longest_session", 13,
               lambda r, c: max(_session_durations(r, c), default=None), "duration", "time"))
 register(Stat("first_tracked", "stats.first_tracked", 14, _first_tracked, "date", "time"))
 
-register(Stat("levels_gained", "stats.levels_gained", 20, lambda r, c: r.count_events(c, "level_up")))
+def _counter(key: str) -> Callable[[Repository, str], Any]:
+    """A counter kept by the addon (imported from its saved data)."""
+    def compute(repo: Repository, cid: str) -> int | None:
+        value = repo.character_stat(cid, key)
+        return int(value) if value is not None else None
+    return compute
+
+
+register(Stat("kills", "stats.kills", 18, _counter("kills")))
+register(Stat("xp_earned", "stats.xp_earned", 19, _counter("xp_earned")))
 register(Stat("quests", "stats.quests", 21, lambda r, c: r.count_events(c, "quest_completed")))
 register(Stat("quests_per_hour", "stats.quests_per_hour", 22, _per_hour("quest_completed")))
 register(Stat("deaths", "stats.deaths", 23, lambda r, c: r.count_events(c, "player_died")))

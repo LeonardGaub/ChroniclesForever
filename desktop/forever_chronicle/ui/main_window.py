@@ -25,7 +25,7 @@ class CharacterItem(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 5, 8, 5)
         layout.setSpacing(1)
-        name = QLabel(char.name)
+        name = QLabel(char.full_name)
         name.setFont(theme.heading_font(12))
         name.setStyleSheet(f"color: {theme.class_color(char.class_file)}; background: transparent;")
         details = muted()
@@ -163,7 +163,7 @@ class MainWindow(QMainWindow):
 
     def _show_character(self, char: Character | None) -> None:
         if char:
-            self.char_name.setText(char.name)
+            self.char_name.setText(char.full_name)
             self.char_name.setStyleSheet(f"color: {theme.class_color(char.class_file)};")
             details = tr("char.details", level=char.level or "?", race=char.race_name or "", cls=char.class_name or "")
             self.char_details.setText(f"{details}  ·  {char.realm or ''}  ·  {char.faction or ''}")

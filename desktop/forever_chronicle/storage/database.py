@@ -173,6 +173,15 @@ MIGRATIONS: list[str] = [
         name           TEXT
     );
     """,
+    # 4: counters kept by the addon (kills, experience earned, ...) - totals since tracking began
+    """
+    CREATE TABLE character_stats (
+        character_id   TEXT NOT NULL REFERENCES characters(character_id),
+        stat_key       TEXT NOT NULL,
+        value          REAL NOT NULL,
+        PRIMARY KEY (character_id, stat_key)
+    );
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

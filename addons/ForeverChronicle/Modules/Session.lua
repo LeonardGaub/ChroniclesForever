@@ -32,12 +32,23 @@ FC:RegisterEventType("session_started", {
   format = function() return L.EVT_SESSION_STARTED end,
 })
 
-FC:RegisterStat("sessions", { labelKey = "STAT_SESSIONS", order = 10, icon = "Interface\\Icons\\Spell_Nature_TimeStop" })
-FC:RegisterStat("tracked_time", { labelKey = "STAT_TRACKED_TIME", order = 11, format = "duration",
+-- Current session
+FC:RegisterStat("session_time", { group = "session", labelKey = "STAT_SESSION_TIME", order = 1, format = "duration",
+  icon = "Interface\\Icons\\INV_Misc_PocketWatch_03",
+  compute = function() return FC.sessionStartedAt and (time() - FC.sessionStartedAt) or nil end })
+FC:RegisterStat("played_level", { group = "session", labelKey = "STAT_PLAYED_LEVEL", order = 2, format = "duration",
+  icon = "Interface\\Icons\\INV_Misc_Rune_01",
+  compute = function() return Session:GetPlayedLevel() end })
+
+-- Play time since tracking began
+FC:RegisterStat("played_total", { group = "time", labelKey = "STAT_PLAYED_TOTAL", order = 10, format = "duration",
+  icon = "Interface\\Icons\\INV_Misc_PocketWatch_01",
+  compute = function() return Session:GetPlayedTotal() end })
+FC:RegisterStat("tracked_time", { group = "time", labelKey = "STAT_TRACKED_TIME", order = 11, format = "duration",
   icon = "Interface\\Icons\\INV_Misc_PocketWatch_02",
   compute = function() return Session:GetTrackedSeconds() end })
-FC:RegisterStat("played_total", { labelKey = "STAT_PLAYED_TOTAL", order = 12, format = "duration",
-  icon = "Interface\\Icons\\INV_Misc_PocketWatch_01" })
+FC:RegisterStat("sessions", { group = "time", labelKey = "STAT_SESSIONS", order = 12,
+  icon = "Interface\\Icons\\Spell_Nature_TimeStop" })
 
 FC:RegisterOption({ module = "Session", key = "autoPlayed", type = "toggle", column = 2,
   labelKey = "OPT_AUTO_PLAYED", tooltipKey = "OPT_AUTO_PLAYED_TIP", order = 20 })
@@ -61,6 +72,19 @@ end
 
 function Session:GetCurrent()
   return self.current
+end
+
+-- Server-reported played time, advanced by the time since it was reported (live while playing).
+function Session:GetPlayedTotal()
+  local s = self.current
+  if s and s.playedTotal then return s.playedTotal + (time() - (s.playedAt or time())) end
+  return FC.char.stats.played_total
+end
+
+function Session:GetPlayedLevel()
+  local s = self.current
+  if s and s.playedLevel then return s.playedLevel + (time() - (s.playedAt or time())) end
+  return nil
 end
 
 function Session:GetTrackedSeconds()
@@ -171,3 +195,11 @@ end
 Session:RegisterEvent("PLAYER_ENTERING_WORLD", "OnEnteringWorld")
 Session:RegisterEvent("PLAYER_LOGOUT", "OnLogout")
 Session:RegisterEvent("TIME_PLAYED_MSG", "OnTimePlayed")
+Session:RegisterEvent("PLAYER_LEVEL_UP", function(self)
+  -- "Played on this level" starts again.
+  local s = self.current
+  if s and s.playedTotal then
+    s.playedTotal = self:GetPlayedTotal()
+    s.playedLevel, s.playedAt = 0, time()
+  end
+end)

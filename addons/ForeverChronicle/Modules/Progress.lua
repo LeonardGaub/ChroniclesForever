@@ -39,7 +39,14 @@ FC:RegisterEventType("achievement_earned", {
   format = function(r) return string.format(L.EVT_ACHIEVEMENT, r.data.name or ("#" .. tostring(r.data.achievementID))) end,
 })
 
-FC:RegisterStat("levels_gained", { labelKey = "STAT_LEVELS", order = 20, icon = "Interface\\Icons\\Spell_Holy_InnerFire" })
+FC:RegisterCapability("kills", "CAP_KILLS", function() return FC.eventStatus.PARTY_KILL == "registered" end)
+FC:RegisterCapability("xp", "CAP_XP", function()
+  return FC.eventStatus.PLAYER_XP_UPDATE == "registered" and type(UnitXP) == "function"
+end)
+
+FC:RegisterStat("kills", { labelKey = "STAT_KILLS", order = 18, icon = "Interface\\Icons\\Ability_Hunter_SniperShot" })
+FC:RegisterStat("xp_earned", { labelKey = "STAT_XP", order = 19, icon = "Interface\\Icons\\Spell_Holy_InnerFire",
+  format = function(v) return FC.Util.FormatNumber(v) end })
 FC:RegisterStat("quests_completed", { labelKey = "STAT_QUESTS", order = 21, icon = "Interface\\Icons\\INV_Misc_Note_01" })
 FC:RegisterStat("deaths", { labelKey = "STAT_DEATHS", order = 22, icon = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01" })
 FC:RegisterStat("achievements", { labelKey = "STAT_ACHIEVEMENTS", order = 23, icon = "Interface\\Icons\\INV_Misc_Ribbon_01" })
@@ -64,6 +71,38 @@ Progress:RegisterEvent("QUEST_TURNED_IN", function(_, _, questID, xpReward, mone
   })
   FC:IncrementStat("quests_completed")
   FC:ConfirmCapability("quests")
+end)
+
+-- Kills: PARTY_KILL fires for killing blows by you or your group. Counted as a statistic only
+-- (no event per kill, that would fill the chronicle).
+Progress:RegisterEvent("PARTY_KILL", function()
+  FC:IncrementStat("kills")
+  FC:ConfirmCapability("kills")
+end)
+
+-- Experience: the difference between XP readings. A level-up wraps the bar, so the rest of the old
+-- level (old max - old XP) is added to the new XP.
+function Progress:ReadXP()
+  return FC.Util.SafeValue("number", UnitXP, "player"), FC.Util.SafeValue("number", UnitXPMax, "player")
+end
+
+function Progress:OnEnable()
+  self.lastXP, self.lastMax = self:ReadXP()
+end
+
+Progress:RegisterEvent("PLAYER_XP_UPDATE", function(self, _, unit)
+  if unit and Util.Plain(unit) ~= "player" then return end
+  local xp, max = self:ReadXP()
+  if not xp or not self.lastXP then
+    self.lastXP, self.lastMax = xp, max
+    return
+  end
+  local gained = xp >= self.lastXP and (xp - self.lastXP) or ((self.lastMax or 0) - self.lastXP + xp)
+  if gained > 0 then
+    FC:IncrementStat("xp_earned", gained)
+    FC:ConfirmCapability("xp")
+  end
+  self.lastXP, self.lastMax = xp, max
 end)
 
 Progress:RegisterEvent("PLAYER_DEAD", function()

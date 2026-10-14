@@ -53,7 +53,8 @@ end
 local VALID_EVENTS = {}
 for e in ([[ADDON_LOADED PLAYER_LOGIN PLAYER_ENTERING_WORLD PLAYER_LOGOUT TIME_PLAYED_MSG PLAYER_LEVEL_UP
   QUEST_TURNED_IN PLAYER_DEAD ACHIEVEMENT_EARNED ZONE_CHANGED_NEW_AREA PLAYER_CONTROL_GAINED
-  LOADING_SCREEN_ENABLED LOADING_SCREEN_DISABLED SCREENSHOT_SUCCEEDED SCREENSHOT_FAILED]]):gmatch("%S+") do
+  LOADING_SCREEN_ENABLED LOADING_SCREEN_DISABLED SCREENSHOT_SUCCEEDED SCREENSHOT_FAILED
+  PARTY_KILL PLAYER_XP_UPDATE]]):gmatch("%S+") do
   VALID_EVENTS[e] = true
 end
 
@@ -67,6 +68,7 @@ local function newRegion()
   r.SetShown = function(self, v) self.shown = v and true or false end
   r.IsShown = function(self) return self.shown end
   r.IsVisible = function(self) return self.shown end
+  r.GetWidth = function() return 360 end
   r.GetStringWidth = function(self) return #(self.text or "") * 6 end
   r.GetStringHeight = function() return 12 end
   r.GetChecked = function(self) return self.checked end
@@ -174,6 +176,18 @@ function GetAchievementInfo(id) return id, "Level 10", 10, true, 10, 14, 26, "Re
 MOCK.screenshots = {}
 function IsShiftKeyDown() return false end
 function InCombatLockdown() return MOCK.combat == true end
+function UnitXP() return MOCK.xp or 1000 end
+function UnitXPMax() return MOCK.xpMax or 5000 end
+function GetXPExhaustion() return 2500 end
+function GetMoney() return 123456 end
+function GetCoinTextureString(m) return tostring(m) .. "c" end
+local SLOT_IDS = { HeadSlot = 1, NeckSlot = 2, ShoulderSlot = 3, ShirtSlot = 4, ChestSlot = 5, WaistSlot = 6,
+  LegsSlot = 7, FeetSlot = 8, WristSlot = 9, HandsSlot = 10, Finger0Slot = 11, Finger1Slot = 12, Trinket0Slot = 13,
+  Trinket1Slot = 14, BackSlot = 15, MainHandSlot = 16, SecondaryHandSlot = 17, RangedSlot = 18, TabardSlot = 19 }
+function GetInventorySlotInfo(name) return SLOT_IDS[name], "Interface\\PaperDoll\\UI-PaperDoll-Slot-" .. name end
+function GetInventoryItemTexture(_, id) if id == 1 or id == 16 then return 133000 + id end end
+function GetInventoryItemQuality(_, id) if id == 1 or id == 16 then return 3 end end
+function GetItemQualityColor() return 0, 0.44, 0.87 end
 function GetCursorPosition() return MOCK.cursorX or 0, MOCK.cursorY or 0 end
 function Screenshot()
   table.insert(MOCK.screenshots, MOCK.now)

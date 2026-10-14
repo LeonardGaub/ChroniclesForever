@@ -36,11 +36,13 @@ ForeverChronicleDB = {
 			["stats"] = {
 				["achievements"] = 1,
 				["deaths"] = 1,
+				["kills"] = 2,
 				["levels_gained"] = 1,
 				["played_total"] = 74113,
 				["quests_completed"] = 1,
 				["screenshots"] = 1,
 				["sessions"] = 2,
+				["xp_earned"] = 4200,
 			},
 			["streams"] = {
 				["events"] = {
@@ -214,9 +216,9 @@ ForeverChronicleDB = {
 							["endReason"] = "logout",
 							["endedAt"] = 1791962120,
 							["id"] = "6acf27a800018512d60ea397e0",
-							["playedAt"] = 1791961010,
-							["playedLevel"] = 7574,
-							["playedTotal"] = 74113,
+							["playedAt"] = 1791961133,
+							["playedLevel"] = 0,
+							["playedTotal"] = 74236,
 							["reloads"] = 1,
 							["seq"] = 1,
 							["startLevel"] = 22,
@@ -258,6 +260,11 @@ ForeverChronicleDB = {
 				["confirmedAt"] = 1791961000,
 				["status"] = "confirmed",
 			},
+			["kills"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961133,
+				["status"] = "confirmed",
+			},
 			["level_up"] = {
 				["build"] = "70374",
 				["confirmedAt"] = 1791961133,
@@ -283,6 +290,11 @@ ForeverChronicleDB = {
 				["confirmedAt"] = 1791961138,
 				["status"] = "confirmed",
 			},
+			["xp"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961133,
+				["status"] = "confirmed",
+			},
 		},
 		["log"] = {
 			"2026-10-14 08:56:40 [info] capability confirmed: identity", -- [1]
@@ -292,7 +304,9 @@ ForeverChronicleDB = {
 			"2026-10-14 08:58:23 [info] capability confirmed: deaths", -- [5]
 			"2026-10-14 08:58:53 [info] capability confirmed: level_up", -- [6]
 			"2026-10-14 08:58:53 [info] capability confirmed: achievements", -- [7]
-			"2026-10-14 08:58:58 [info] capability confirmed: screenshots", -- [8]
+			"2026-10-14 08:58:53 [info] capability confirmed: kills", -- [8]
+			"2026-10-14 08:58:53 [info] capability confirmed: xp", -- [9]
+			"2026-10-14 08:58:58 [info] capability confirmed: screenshots", -- [10]
 		},
 	},
 	["maps"] = {

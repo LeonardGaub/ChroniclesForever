@@ -31,6 +31,19 @@
   - New option "Interface für Screenshots ausblenden" (default off; `SetUIVisibility`/`UIParent:Hide`;
     skipped in combat; always restored on confirmation, failure or after 1.5 s).
   - Not yet seen in game: whether all icon/texture paths exist in Forever (missing ones show a question mark).
+- **Addon v0.6.0: overview reworked after user feedback ("only icons is not readable"):**
+  - Full name with last name ("Blind Bullseye" = `UnitName` second value), XP bar with rested XP, gold.
+  - Stat groups with heading and short description (`FC:RegisterStatGroup`): Aktuelle Sitzung, Spielzeit,
+    Fortschritt. Tiles show icon, name and value.
+  - Reloads and levels-gained tiles removed. New stats: kills (`PARTY_KILL`, counts group killing blows too)
+    and XP earned (`PLAYER_XP_UPDATE` deltas, wraps across level-ups). Neither event is verified in Forever yet.
+  - Character model (PlayerModel, drag to rotate) with 19 gear slots like the Classic character window
+    (quality borders, item tooltips).
+  - Storage bars moved to Einstellungen (own section).
+- **Desktop:** the icon overhaul was reverted at the user's request; text UI stays.
+  - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
+  - Open question for the user: real WoW icons for the desktop. Options: export from the local client with
+    wow.export, or the Wowhead icon CDN.
 - **Desktop** (`desktop/`, start with `desktop/Forever Chronicle.bat`). Tabs: Übersicht, Chronik, Karte,
   Screenshots, Import, Diagnose.
   - The Karte tab shows your map art with the route, event markers, a time slider, play/pause and 1×/2×/4×/10× speeds

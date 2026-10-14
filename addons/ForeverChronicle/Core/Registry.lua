@@ -39,12 +39,33 @@ end
 -------------------------------------------------------------------------------
 
 FC.statDefs = {}
+FC.statGroups = {}
 
+-- Groups are shown as sections on the overview: heading (labelKey) and a short description (descKey).
+function FC:RegisterStatGroup(key, labelKey, descKey, order)
+  table.insert(self.statGroups, { key = key, labelKey = labelKey, descKey = descKey, order = order or 100 })
+  table.sort(self.statGroups, function(a, b) return a.order < b.order end)
+end
+
+FC:RegisterStatGroup("session", "STATGROUP_SESSION", "STATGROUP_SESSION_DESC", 10)
+FC:RegisterStatGroup("time", "STATGROUP_TIME", "STATGROUP_TIME_DESC", 20)
+FC:RegisterStatGroup("progress", "STATGROUP_PROGRESS", "STATGROUP_PROGRESS_DESC", 30)
+
+-- def.group: key of a stat group (default "progress").
 function FC:RegisterStat(key, def)
   def.key = key
   def.order = def.order or 100
+  def.group = def.group or "progress"
   table.insert(self.statDefs, def)
   table.sort(self.statDefs, function(a, b) return a.order < b.order end)
+end
+
+function FC:GetStatsInGroup(group)
+  local out = {}
+  for _, def in ipairs(self.statDefs) do
+    if def.group == group then out[#out + 1] = def end
+  end
+  return out
 end
 
 function FC:IncrementStat(key, amount)

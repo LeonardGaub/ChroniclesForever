@@ -95,6 +95,16 @@ function Util.FormatDuration(seconds)
   return string.format(L.DURATION_M, m)
 end
 
+-- 1234567 -> "1.234.567" (German) / "1,234,567" (English)
+function Util.FormatNumber(n)
+  if type(n) ~= "number" then return FC.L.UNKNOWN end
+  local s = tostring(math.floor(n))
+  local sep = FC.L.THOUSANDS_SEP
+  local out = s:reverse():gsub("(%d%d%d)", "%1" .. sep):reverse()
+  if out:sub(1, #sep) == sep then out = out:sub(#sep + 1) end
+  return out
+end
+
 function Util.FormatTime(t)
   if type(t) ~= "number" then return FC.L.UNKNOWN end
   return date(FC.L.DATETIME_FORMAT, t)

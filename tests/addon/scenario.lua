@@ -96,6 +96,17 @@ if PHASE == 1 then
   local stats = ForeverChronicleDB.characters["Player-4619-0112A417"].stats
   check(stats.quests_completed == 1 and stats.deaths == 1 and stats.levels_gained == 1 and stats.sessions == 1, "stats counted")
 
+  -- Kills and experience (a level-up wraps the XP bar: rest of the old level is added).
+  MOCK.fire("PARTY_KILL", "Player-4619-0112A417", "Creature-1")
+  MOCK.fire("PARTY_KILL", "Player-4619-0112A417", "Creature-2")
+  MOCK.xp = 1500; MOCK.fire("PLAYER_XP_UPDATE", "player")
+  MOCK.xp, MOCK.xpMax = 4800, 5000; MOCK.fire("PLAYER_XP_UPDATE", "player")
+  MOCK.xp, MOCK.xpMax = 200, 6000; MOCK.fire("PLAYER_XP_UPDATE", "player")
+  MOCK.fire("PLAYER_XP_UPDATE", "target")
+  check(stats.kills == 2, "kills counted (" .. tostring(stats.kills) .. ")")
+  check(stats.xp_earned == 500 + 3300 + 400, "experience counted across a level-up (" .. tostring(stats.xp_earned) .. ")")
+  check(FC.Util.FormatNumber(1234567) == "1.234.567", "German number format")
+
   -- UI: open, visit every page, switch language, run commands.
   SlashCmdList.FOREVERCHRONICLE("")
   check(ForeverChronicleFrame and ForeverChronicleFrame:IsShown(), "window opens with /fc")
@@ -104,6 +115,22 @@ if PHASE == 1 then
   SlashCmdList.FOREVERCHRONICLE("lang en")
   check(FC.L.TAB_OVERVIEW == "Overview", "language switched to English")
   check(#ForeverChronicleFrame.Tabs == 6 and ForeverChronicleFrame.Tabs[2].page.icon ~= nil, "icon tabs, one per page")
+  local overview = FC.UI.pages[1]
+  FC.UI:SelectPage(1)
+  check(overview.name.text:find("Blind Bullseye", 1, true) ~= nil, "full name with last name: " .. tostring(overview.name.text))
+  local tileNames = {}
+  for _, tile in ipairs(overview.tiles) do tileNames[#tileNames + 1] = tile.def.key end
+  local names = table.concat(tileNames, ",")
+  check(names:find("kills", 1, true) and names:find("xp_earned", 1, true) and not names:find("levels_gained", 1, true)
+    and not names:find("reload", 1, true), "tiles: kills and XP, no levels/reloads (" .. names .. ")")
+  local kills
+  for _, tile in ipairs(overview.tiles) do if tile.def.key == "kills" then kills = tile end end
+  check(kills.value.text == "2" and kills.name.text ~= nil, "tile shows name and value")
+  check(#overview.slots == 19 and overview.slots[1].border ~= nil, "19 gear slots")
+  local settingsIndex
+  for i, pg in ipairs(FC.UI.pages) do if pg.id == "settings" then settingsIndex = i end end
+  FC.UI:SelectPage(settingsIndex)
+  check(#FC.UI.pages[settingsIndex].bars == 4, "storage bars on the settings page (" .. #FC.UI.pages[settingsIndex].bars .. ")")
   SlashCmdList.FOREVERCHRONICLE("lang de")
   SlashCmdList.FOREVERCHRONICLE("status")
   SlashCmdList.FOREVERCHRONICLE("help")

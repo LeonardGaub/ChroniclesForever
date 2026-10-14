@@ -21,10 +21,49 @@ function page:Create(c)
     for _, control in ipairs(controls) do self.controls[#self.controls + 1] = control end
     anchor, offset = header, controls.bottom
   end
+
+  -- Addon storage: one bar per stream (limits of the SavedVariables file).
+  self.storageHeader = UI:Header(c, "SECTION_STORAGE", "Interface\\Icons\\INV_Misc_Book_09")
+  self.storageHeader:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, offset - 14)
+  self.storageDesc = UI:Label(c, "STORAGE_DESC", "GameFontDisableSmall")
+  self.storageDesc:SetPoint("TOPLEFT", self.storageHeader, "BOTTOMLEFT", 0, -10)
+  self.storageDesc:SetPoint("RIGHT", c, "RIGHT", -14, 0)
+  self.bars = {}
+end
+
+local function storageRow(self, c, i, usage)
+  local row = self.bars[i]
+  if row then return row end
+  row = CreateFrame("Frame", nil, c)
+  row:SetSize(370, 24)
+  local col, line = (i - 1) % 2, math.floor((i - 1) / 2)
+  row:SetPoint("TOPLEFT", self.storageDesc, "BOTTOMLEFT", col * 390, -8 - line * 30)
+  row.icon = row:CreateTexture(nil, "ARTWORK")
+  row.icon:SetSize(22, 22)
+  row.icon:SetPoint("LEFT")
+  row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  UI:SetIcon(row.icon, usage.icon)
+  row.label = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  row.label:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
+  row.label:SetWidth(100)
+  row.label:SetJustifyH("LEFT")
+  row.bar = UI:Bar(row, 230)
+  row.bar:SetPoint("LEFT", row.label, "RIGHT", 6, 0)
+  self.bars[i] = row
+  return row
 end
 
 function page:Refresh()
   UI:SyncOptions(self.controls)
+  local L = FC.L
+  for i, u in ipairs(FC.Storage:GetUsage()) do
+    local row = storageRow(self, self.container, i, u)
+    local ratio = u.cap > 0 and u.count / u.cap or 0
+    row.label:SetText(L["STREAM_" .. u.name:upper()])
+    row.bar:SetValue(ratio)
+    if ratio >= 0.8 then row.bar:SetStatusBarColor(1, 0.5, 0) else row.bar:SetStatusBarColor(0.2, 0.6, 0.2) end
+    row.bar.text:SetText(string.format("%s / %s", FC.Util.FormatNumber(u.count), FC.Util.FormatNumber(u.cap)))
+  end
 end
 
 UI:RegisterPage(page)

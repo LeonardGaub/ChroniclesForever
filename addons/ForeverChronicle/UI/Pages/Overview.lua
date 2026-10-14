@@ -1,6 +1,7 @@
 -- Forever Chronicle - Overview page
--- Character header, current session, statistics (from the stat registry) and storage usage as icon tiles.
--- Names and explanations are in the tooltips.
+-- Left: full name, level line, XP bar and gold, then the stat groups (heading, short description,
+-- tiles with icon, name and value). Right: the character model with the equipped gear around it,
+-- like the Classic character window. Stats and groups come from the registry (FC:RegisterStat/StatGroup).
 
 local ADDON, FC = ...
 local L = FC.L
@@ -8,104 +9,215 @@ local UI = FC.UI
 local Util = FC.Util
 
 local page = { id = "overview", labelKey = "TAB_OVERVIEW", icon = "portrait", order = 10 }
-local TILE_W, TILE_GAP, COLUMNS = 196, 8, 3
-local I = "Interface\\Icons\\"
+local TILE_W, TILE_H, TILE_COLUMNS = 178, 40, 2
+local SLOT_SIZE, SLOT_GAP = 37, 4
 
-local function divider(c, anchor, y)
-  local line = c:CreateTexture(nil, "ARTWORK")
-  line:SetColorTexture(1, 0.82, 0, 0.2)
-  line:SetHeight(1)
-  line:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, y)
-  line:SetPoint("RIGHT", c, "RIGHT", -14, 0)
-  return line
+-- Gear slots as in the Classic character window: left column, right column, weapons at the bottom.
+local LEFT_SLOTS = { "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot", "ShirtSlot", "TabardSlot", "WristSlot" }
+local RIGHT_SLOTS = { "HandsSlot", "WaistSlot", "LegsSlot", "FeetSlot", "Finger0Slot", "Finger1Slot", "Trinket0Slot", "Trinket1Slot" }
+local WEAPON_SLOTS = { "MainHandSlot", "SecondaryHandSlot", "RangedSlot" }
+
+-------------------------------------------------------------------------------
+-- Stat tiles: icon, name (gold, small) and value (white)
+-------------------------------------------------------------------------------
+
+local function statTile(parent, def)
+  local t = CreateFrame("Frame", nil, parent)
+  t:SetSize(TILE_W, TILE_H)
+  local bg = t:CreateTexture(nil, "BACKGROUND")
+  bg:SetSize(34, 34)
+  bg:SetPoint("LEFT")
+  bg:SetColorTexture(0, 0, 0, 0.7)
+  t.icon = t:CreateTexture(nil, "ARTWORK")
+  t.icon:SetPoint("TOPLEFT", bg, 2, -2)
+  t.icon:SetPoint("BOTTOMRIGHT", bg, -2, 2)
+  t.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  UI:SetIcon(t.icon, def.icon)
+  t.name = UI:Label(t, def.labelKey, "GameFontNormalSmall")
+  t.name:SetPoint("TOPLEFT", bg, "TOPRIGHT", 8, -2)
+  t.name:SetPoint("RIGHT", t, "RIGHT")
+  t.name:SetWordWrap(false)
+  t.value = t:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  t.value:SetPoint("BOTTOMLEFT", bg, "BOTTOMRIGHT", 8, 2)
+  t.value:SetPoint("RIGHT", t, "RIGHT")
+  t.value:SetJustifyH("LEFT")
+  t.def = def
+  return t
 end
 
--- Places tiles in a grid below `anchor`; returns the last row's first tile for further anchoring.
-local function grid(tiles, anchor, y)
-  for i, tile in ipairs(tiles) do
-    local col = (i - 1) % COLUMNS
-    local row = math.floor((i - 1) / COLUMNS)
-    tile:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", col * (TILE_W + TILE_GAP), y - row * 46)
+-------------------------------------------------------------------------------
+-- Gear slots
+-------------------------------------------------------------------------------
+
+local function qualityColor(quality)
+  if type(quality) ~= "number" then return nil end
+  if C_Item and C_Item.GetItemQualityColor then
+    local r, g, b = Util.SafeValues(C_Item.GetItemQualityColor, quality)
+    if r then return r, g, b end
   end
+  if GetItemQualityColor then return Util.SafeValues(GetItemQualityColor, quality) end
 end
+
+local function gearSlot(parent, slotName)
+  local slotID, emptyTexture = Util.SafeValues(GetInventorySlotInfo, slotName)
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(SLOT_SIZE, SLOT_SIZE)
+  b.border = b:CreateTexture(nil, "BACKGROUND")
+  b.border:SetPoint("TOPLEFT", -2, 2)
+  b.border:SetPoint("BOTTOMRIGHT", 2, -2)
+  b.icon = b:CreateTexture(nil, "ARTWORK")
+  b.icon:SetAllPoints()
+  b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+  b.slotID, b.slotName, b.emptyTexture = slotID, slotName, emptyTexture
+  b:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    if not (self.slotID and GameTooltip:SetInventoryItem("player", self.slotID)) then
+      GameTooltip:SetText(_G[slotName:upper()] or slotName, 1, 1, 1)
+    end
+    GameTooltip:Show()
+  end)
+  b:SetScript("OnLeave", GameTooltip_Hide)
+  return b
+end
+
+local function updateSlot(b)
+  local texture = b.slotID and Util.SafeValue(nil, GetInventoryItemTexture, "player", b.slotID)
+  if texture then
+    b.icon:SetTexture(texture)
+    b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    local r, g, bl = qualityColor(Util.SafeValue("number", GetInventoryItemQuality, "player", b.slotID))
+    b.border:SetColorTexture(r or 0.3, g or 0.3, bl or 0.3, 1)
+  else
+    UI:SetIcon(b.icon, b.emptyTexture)
+    b.icon:SetTexCoord(0, 1, 0, 1)
+    b.border:SetColorTexture(0.15, 0.15, 0.15, 1)
+  end
+  return texture
+end
+
+-------------------------------------------------------------------------------
+-- Page
+-------------------------------------------------------------------------------
 
 function page:Create(c)
-  -- Character
+  -- Character header
   self.name = c:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
   self.name:SetPoint("TOPLEFT", 16, -14)
   self.details = c:CreateFontString(nil, "OVERLAY", "GameFontDisable")
   self.details:SetPoint("TOPLEFT", self.name, "BOTTOMLEFT", 0, -4)
 
-  -- Current session
-  local sessionLine = divider(c, self.details, -12)
-  self.sessionTiles = {
-    UI:Tile(c, I .. "INV_Misc_PocketWatch_03", "FIELD_SESSION_TIME", TILE_W),
-    UI:Tile(c, I .. "Spell_Nature_Reincarnation", "FIELD_RELOADS", TILE_W),
-    UI:Tile(c, I .. "INV_Misc_Rune_01", "FIELD_PLAYED_LEVEL", TILE_W),
-  }
-  grid(self.sessionTiles, sessionLine, -10)
+  self.xp = UI:Bar(c, 360)
+  self.xp:SetPoint("TOPLEFT", self.details, "BOTTOMLEFT", 0, -10)
+  self.xp:SetStatusBarColor(0.58, 0, 0.55)
+  self.rested = self.xp:CreateTexture(nil, "BORDER")
+  self.rested:SetColorTexture(0.0, 0.39, 0.88, 0.6)
+  self.rested:SetPoint("TOPLEFT", self.xp, "TOPLEFT")
+  self.rested:SetPoint("BOTTOMLEFT", self.xp, "BOTTOMLEFT")
+  self.xp:EnableMouse(true)
+  UI:Tooltip(self.xp, "XP_BAR", function() return self.xpTip end)
+  self.money = c:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  self.money:SetPoint("TOPLEFT", self.xp, "BOTTOMLEFT", 0, -8)
 
-  -- Statistics since tracking began
-  local statsLine = divider(c, self.sessionTiles[1], -10)
-  self.statTiles = {}
-  for i, def in ipairs(FC.statDefs) do
-    local tile = UI:Tile(c, def.icon, def.labelKey, TILE_W)
-    tile.def = def
-    self.statTiles[i] = tile
+  -- Stat groups
+  local anchor, y = self.money, -16
+  self.tiles = {}
+  for _, group in ipairs(FC.statGroups) do
+    local defs = FC:GetStatsInGroup(group.key)
+    if #defs > 0 then
+      local header = UI:Label(c, group.labelKey, "GameFontNormal")
+      header:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, y)
+      local desc = UI:Label(c, group.descKey, "GameFontDisableSmall")
+      desc:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -2)
+      local rows = math.ceil(#defs / TILE_COLUMNS)
+      for i, def in ipairs(defs) do
+        local tile = statTile(c, def)
+        local col, row = (i - 1) % TILE_COLUMNS, math.floor((i - 1) / TILE_COLUMNS)
+        tile:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", col * (TILE_W + 8), -6 - row * (TILE_H + 4))
+        self.tiles[#self.tiles + 1] = tile
+      end
+      anchor, y = desc, -6 - rows * (TILE_H + 4) - 10
+    end
   end
-  grid(self.statTiles, statsLine, -10)
-  local lastRowFirst = self.statTiles[math.floor((#self.statTiles - 1) / COLUMNS) * COLUMNS + 1]
 
-  -- Storage: icon + bar per stream, two columns
-  self.storageLine = divider(c, lastRowFirst, -10)
-  self.bars = {}
-end
+  -- Character model with gear (right side)
+  local panel = CreateFrame("Frame", nil, c)
+  panel:SetPoint("TOPRIGHT", -16, -16)
+  panel:SetSize(2 * SLOT_SIZE + 260 + 2 * 10, 8 * (SLOT_SIZE + SLOT_GAP) + SLOT_SIZE + 16)
+  self.slots = {}
+  for i, name in ipairs(LEFT_SLOTS) do
+    local b = gearSlot(panel, name)
+    b:SetPoint("TOPLEFT", 0, -(i - 1) * (SLOT_SIZE + SLOT_GAP))
+    self.slots[#self.slots + 1] = b
+  end
+  for i, name in ipairs(RIGHT_SLOTS) do
+    local b = gearSlot(panel, name)
+    b:SetPoint("TOPRIGHT", 0, -(i - 1) * (SLOT_SIZE + SLOT_GAP))
+    self.slots[#self.slots + 1] = b
+  end
+  for i, name in ipairs(WEAPON_SLOTS) do
+    local b = gearSlot(panel, name)
+    b:SetPoint("BOTTOM", panel, "BOTTOM", (i - 2) * (SLOT_SIZE + 10), 0)
+    self.slots[#self.slots + 1] = b
+  end
 
-local function storageRow(self, c, i, usage)
-  local row = self.bars[i]
-  if row then return row end
-  row = CreateFrame("Frame", nil, c)
-  row:SetSize(296, 24)
-  local col, line = (i - 1) % 2, math.floor((i - 1) / 2)
-  row:SetPoint("TOPLEFT", self.storageLine, "BOTTOMLEFT", col * 304, -10 - line * 30)
-  row.icon = row:CreateTexture(nil, "ARTWORK")
-  row.icon:SetSize(22, 22)
-  row.icon:SetPoint("LEFT")
-  row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-  UI:SetIcon(row.icon, usage.icon)
-  row.bar = UI:Bar(row, 262)
-  row.bar:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
-  row:EnableMouse(true)
-  UI:Tooltip(row, function(r) return L["STREAM_" .. r.name:upper()] end,
-    function(r) return string.format(L.STORAGE_TIP, r.count, r.cap) end)
-  self.bars[i] = row
-  return row
+  local modelBg = panel:CreateTexture(nil, "BACKGROUND")
+  modelBg:SetPoint("TOPLEFT", SLOT_SIZE + 10, 0)
+  modelBg:SetPoint("BOTTOMRIGHT", -(SLOT_SIZE + 10), SLOT_SIZE + 16)
+  modelBg:SetColorTexture(0, 0, 0, 0.35)
+  local ok, model = pcall(CreateFrame, "PlayerModel", nil, panel)
+  if ok and model then
+    model:SetPoint("TOPLEFT", modelBg)
+    model:SetPoint("BOTTOMRIGHT", modelBg)
+    model:EnableMouse(true)
+    -- Drag to rotate.
+    model:SetScript("OnMouseDown", function(m) m.dragX, m.dragFacing = GetCursorPosition(), m:GetFacing() or 0 end)
+    model:SetScript("OnMouseUp", function(m) m.dragX = nil end)
+    model:SetScript("OnUpdate", function(m)
+      if m.dragX then m:SetFacing(m.dragFacing + (GetCursorPosition() - m.dragX) * 0.015) end
+    end)
+    model:SetScript("OnShow", function(m) m:SetUnit("player") end)
+    UI:Tooltip(model, "MODEL_TITLE", "MODEL_TIP")
+    self.model = model
+  end
 end
 
 function page:Refresh()
-  local c = self.container
   local info = FC.char.info
-  self.name:SetText(UI:ClassColored(info.name or "?", info.classFile))
+  local fullName = info.name or "?"
+  if info.nameSuffix and info.nameSuffix ~= "" then fullName = fullName .. " " .. info.nameSuffix end
+  self.name:SetText(UI:ClassColored(fullName, info.classFile))
   self.details:SetText(string.format(L.CHAR_DETAILS, info.level or "?", info.raceName or "", info.className or "")
     .. "  \194\183  " .. (info.realm or ""))
 
-  local session = FC:GetModule("Session"):GetCurrent()
-  self.sessionTiles[1]:SetValue(FC.sessionStartedAt and Util.FormatDuration(time() - FC.sessionStartedAt) or "-")
-  self.sessionTiles[2]:SetValue(session and tostring(session.reloads or 0) or "-")
-  self.sessionTiles[3]:SetValue(session and session.playedLevel and Util.FormatDuration(session.playedLevel) or "-")
+  -- XP bar with rested XP
+  local xp, max = Util.SafeValue("number", UnitXP, "player"), Util.SafeValue("number", UnitXPMax, "player")
+  if xp and max and max > 0 then
+    local rested = Util.SafeValue("number", GetXPExhaustion) or 0
+    self.xp:SetValue(xp / max)
+    self.xp.text:SetText(string.format("%s / %s", Util.FormatNumber(xp), Util.FormatNumber(max)))
+    local restedEnd = math.min(1, (xp + rested) / max)
+    self.rested:SetWidth(math.max(1, self.xp:GetWidth() * restedEnd))
+    self.rested:SetShown(rested > 0)
+    self.xpTip = string.format(L.XP_TIP, Util.FormatNumber(max - xp), Util.FormatNumber(rested))
+    self.xp:Show()
+  else
+    self.xp:Hide()
+  end
+  local money = Util.SafeValue("number", GetMoney)
+  self.money:SetText(money and GetCoinTextureString and GetCoinTextureString(money) or "")
 
-  for _, tile in ipairs(self.statTiles) do
+  for _, tile in ipairs(self.tiles) do
     local value = FC:GetStatValue(tile.def)
-    tile:SetValue(value ~= nil and FC:FormatStat(tile.def, value) or "-")
+    tile.value:SetText(value ~= nil and FC:FormatStat(tile.def, value) or "-")
   end
 
-  for i, u in ipairs(FC.Storage:GetUsage()) do
-    local row = storageRow(self, c, i, u)
-    row.name, row.count, row.cap = u.name, u.count, u.cap
-    local ratio = u.cap > 0 and u.count / u.cap or 0
-    row.bar:SetValue(ratio)
-    if ratio >= 0.8 then row.bar:SetStatusBarColor(1, 0.5, 0) else row.bar:SetStatusBarColor(0.2, 0.6, 0.2) end
-    row.bar.text:SetText(string.format("%d%%", math.floor(ratio * 100)))
+  -- Gear; the model is refreshed when the equipment changed.
+  local signature = {}
+  for _, slot in ipairs(self.slots) do signature[#signature + 1] = tostring(updateSlot(slot)) end
+  signature = table.concat(signature, ",")
+  if self.model and signature ~= self.gearSignature then
+    self.gearSignature = signature
+    self.model:SetUnit("player")
   end
 end
 

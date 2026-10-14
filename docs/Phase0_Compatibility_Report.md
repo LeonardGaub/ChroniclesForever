@@ -38,6 +38,7 @@ Status legend: **Confirmed** = observed working in game · **Present** = functio
 ### Character (F-001)
 - `UnitGUID("player")` = `Player-4619-0112A417`. The GUID contains the server ID, so it is unique across realms → use it as the natural key on its own and keep the realm as information only.
 - `UnitName("player")` returns `"Blind", "Bullseye"` while `GetRealmName()` returns `"Classic Beta PvP"`. Store both (`realm` from `GetRealmName`, `name_suffix` from `UnitName`). Re-check on live servers.
+  **Update:** the second value is the character's **last name** (Forever characters have one; confirmed by the user). Both apps show the full name "Blind Bullseye".
 - `GetAddOnMetadata` is missing → use `C_AddOns.GetAddOnMetadata`.
 
 ### Sessions (F-004)
