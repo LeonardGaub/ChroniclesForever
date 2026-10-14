@@ -13,6 +13,7 @@ local L = FC.L
 local Shots = FC:NewModule("Screenshots", { order = 50, defaults = {
   enabled = true,
   countdown = true,   -- on-screen countdown; hidden before the capture
+  hideUI = false,     -- hide the whole interface for the screenshot (not possible in combat)
   delay = 5,          -- seconds between the event and the screenshot (all automatic triggers)
   cooldown = 30,
   bypass = true,
@@ -20,11 +21,13 @@ local Shots = FC:NewModule("Screenshots", { order = 50, defaults = {
   triggers = { level = true, achievement = true, zone = true, quest = false, death = false },
 } })
 
-FC.Storage:DefineStream("screenshots", 2000)
+FC.Storage:DefineStream("screenshots", 2000, "Interface\\Icons\\INV_Misc_Spyglass_02")
 
 local TICK = 0.2
 local CONFIRM_TIMEOUT = 5
-local HIDE_BEFORE_CAPTURE = 0.15 -- seconds between hiding the countdown and taking the screenshot
+local HIDE_BEFORE_CAPTURE = 0.15    -- seconds between hiding the countdown and taking the screenshot
+local HIDE_UI_BEFORE_CAPTURE = 0.25 -- same, when the whole interface is hidden
+local UI_RESTORE_TIMEOUT = 1.5      -- the interface is shown again at the latest after this time
 
 -------------------------------------------------------------------------------
 -- Triggers: which recorded event types request a screenshot. Other modules can add their own.
@@ -54,7 +57,7 @@ Shots:RegisterTrigger("quest", { eventType = "quest_completed", priority = 5, ma
 Shots:RegisterTrigger("death", { eventType = "player_died", priority = 6, maxAge = 30 })
 
 FC:RegisterCapability("screenshots", "CAP_SCREENSHOTS", function() return type(Screenshot) == "function" end)
-FC:RegisterStat("screenshots", { labelKey = "STAT_SCREENSHOTS", order = 30 })
+FC:RegisterStat("screenshots", { labelKey = "STAT_SCREENSHOTS", order = 30, icon = "Interface\\Icons\\INV_Misc_Spyglass_02" })
 
 -------------------------------------------------------------------------------
 -- Queue handling
@@ -138,15 +141,43 @@ function Shots:UpdateCountdown(seconds)
   end
 end
 
--- The countdown is hidden first and the screenshot taken a few frames later, so it never shows up
--- in the image.
+-- The countdown (and, if enabled, the whole interface) is hidden first and the screenshot taken a few
+-- frames later, so neither shows up in the image.
 function Shots:Capture(req, now)
   self.queue:MarkCaptured(req, now)
   self.capturing = true
   self:UpdateCountdown(nil)
-  FC:After(HIDE_BEFORE_CAPTURE, function()
+  local hidden = self:HideInterface()
+  FC:After(hidden and HIDE_UI_BEFORE_CAPTURE or HIDE_BEFORE_CAPTURE, function()
     self.capturing = false
     self:TakeScreenshot(req)
+  end)
+end
+
+-- Hides the interface like Alt+Z. The client does not allow this in combat; the screenshot then shows the UI.
+-- Returns true if the interface was hidden. It is always shown again (confirmation, failure or timeout).
+function Shots:HideInterface()
+  if not self:GetSettings().hideUI or self.uiHidden or not UIParent:IsVisible() then return false end
+  if InCombatLockdown and InCombatLockdown() then
+    FC.Diagnostics:Log("info", "interface not hidden for the screenshot: in combat")
+    return false
+  end
+  local useVisibility = type(SetUIVisibility) == "function"
+  local ok = pcall(function()
+    if useVisibility then SetUIVisibility(false) else UIParent:Hide() end
+  end)
+  if not ok then return false end
+  self.uiHidden = { useVisibility = useVisibility }
+  FC:After(UI_RESTORE_TIMEOUT, function() self:RestoreInterface() end)
+  return true
+end
+
+function Shots:RestoreInterface()
+  local hidden = self.uiHidden
+  if not hidden then return end
+  self.uiHidden = nil
+  pcall(function()
+    if hidden.useVisibility then SetUIVisibility(true) else UIParent:Show() end
   end)
 end
 
@@ -161,6 +192,7 @@ function Shots:TakeScreenshot(req)
   if not ok then
     rec.status, rec.error = "failed", tostring(err)
     FC.Diagnostics:Log("error", "Screenshot() failed: " .. tostring(err))
+    self:RestoreInterface()
     return
   end
   self.awaiting = rec
@@ -179,6 +211,7 @@ Shots:RegisterMessage("FC_EVENT_RECORDED", function(self, _, record)
 end)
 
 Shots:RegisterEvent("SCREENSHOT_SUCCEEDED", function(self)
+  self:RestoreInterface()
   local rec = self.awaiting
   if not rec then return end -- a screenshot taken by the player, not by us
   self.awaiting = nil
@@ -188,6 +221,7 @@ Shots:RegisterEvent("SCREENSHOT_SUCCEEDED", function(self)
 end)
 
 Shots:RegisterEvent("SCREENSHOT_FAILED", function(self)
+  self:RestoreInterface()
   local rec = self.awaiting
   if not rec then return end
   self.awaiting = nil
@@ -198,6 +232,7 @@ end)
 Shots:RegisterEvent("PLAYER_LOGOUT", function(self)
   self.queue:Drain(function(r, outcome) self:OnRequestDone(r, outcome) end)
   self:UpdateCountdown(nil)
+  self:RestoreInterface()
 end)
 
 -------------------------------------------------------------------------------
@@ -222,13 +257,16 @@ end
 
 local function settings() return Shots:GetSettings() end
 
-FC:RegisterOptionSection("screenshots", "SECTION_SHOT_TRIGGERS", 20)
+FC:RegisterOptionSection("screenshots", "SECTION_SHOT_TRIGGERS", 20, "Interface\\Icons\\INV_Misc_Spyglass_02")
 FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_ENABLED", order = 1,
   get = function() return settings().enabled end, set = function(v) settings().enabled = v end })
 for i, name in ipairs({ "level", "achievement", "zone", "quest", "death" }) do
   FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_" .. name:upper(), order = 1 + i,
     get = function() return settings().triggers[name] end, set = function(v) settings().triggers[name] = v end })
 end
+FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_HIDE_UI",
+  tooltipKey = "OPT_SHOT_HIDE_UI_TIP", order = 7,
+  get = function() return settings().hideUI end, set = function(v) settings().hideUI = v end })
 FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_COUNTDOWN",
   tooltipKey = "OPT_SHOT_COUNTDOWN_TIP", order = 8,
   get = function() return settings().countdown end, set = function(v) settings().countdown = v end })

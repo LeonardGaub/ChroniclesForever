@@ -8,7 +8,7 @@ local L = FC.L
 local UI = FC.UI
 local Route = FC.Route
 
-local page = { id = "map", labelKey = "TAB_MAP", order = 25, width = 820, height = 700 }
+local page = { id = "map", labelKey = "TAB_MAP", icon = "Interface\\Icons\\INV_Misc_Map_01", order = 25 }
 local CANVAS_W, CANVAS_H = 780, 520
 local BASE_SPEED = 60
 local SPEEDS = { 1, 2, 4, 10 }
@@ -17,23 +17,17 @@ local SPEEDS = { 1, 2, 4, 10 }
 -- Small controls
 -------------------------------------------------------------------------------
 
-local function arrowButton(parent, text, onClick)
-  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-  b:SetSize(26, 22)
-  b:SetText(text)
-  b:SetScript("OnClick", onClick)
-  return b
-end
+local I = "Interface\\Icons\\"
 
--- "<  label  >" selector
+-- Classic page arrows around a label: [<] label [>]
 local function cycler(parent, width, onStep)
-  local prev = arrowButton(parent, "<", function() onStep(-1) end)
+  local prev = UI:ArrowButton(parent, "Prev", function() onStep(-1) end)
   local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   label:SetWidth(width)
   label:SetWordWrap(false)
-  label:SetPoint("LEFT", prev, "RIGHT", 4, 0)
-  local nextB = arrowButton(parent, ">", function() onStep(1) end)
-  nextB:SetPoint("LEFT", label, "RIGHT", 4, 0)
+  label:SetPoint("LEFT", prev, "RIGHT", 2, 0)
+  local nextB = UI:ArrowButton(parent, "Next", function() onStep(1) end)
+  nextB:SetPoint("LEFT", label, "RIGHT", 2, 0)
   return { prev = prev, label = label, next = nextB }
 end
 
@@ -59,17 +53,27 @@ function page:Create(c)
   self.points, self.views, self.viewIndex, self.sessionIndex = {}, {}, 1, 0
   self.speedIndex, self.live, self.playing = 1, true, false
 
-  -- Top row: map, session, toggles
-  self.mapSel = cycler(c, 170, function(step) self:StepMap(step) end)
-  self.mapSel.prev:SetPoint("TOPLEFT", 12, -10)
-  self.sessionSel = cycler(c, 190, function(step) self:StepSession(step) end)
-  self.sessionSel.prev:SetPoint("LEFT", self.mapSel.next, "RIGHT", 16, 0)
-  self.routeToggle = UI:CheckBox(c, "MAP_ROUTE", nil, function() self.dirty = true; self:Refresh() end)
-  self.routeToggle:SetPoint("LEFT", self.sessionSel.next, "RIGHT", 14, 0)
-  self.routeToggle:SetChecked(true)
-  self.eventToggle = UI:CheckBox(c, "MAP_EVENTS", nil, function() self.dirty = true; self:Refresh() end)
-  self.eventToggle:SetPoint("LEFT", self.routeToggle.label, "RIGHT", 10, -1)
-  self.eventToggle:SetChecked(true)
+  -- Top row: map, session, icon toggles, help
+  self.mapSel = cycler(c, 190, function(step) self:StepMap(step) end)
+  self.mapSel.prev:SetPoint("TOPLEFT", 14, -8)
+  self.sessionSel = cycler(c, 220, function(step) self:StepSession(step) end)
+  self.sessionSel.prev:SetPoint("LEFT", self.mapSel.next, "RIGHT", 18, 0)
+  local function toggle(icon, title)
+    local b = UI:IconButton(c, 28, icon, title, nil)
+    b:SetScript("OnClick", function(btn)
+      UI:SetToggle(btn, not btn.on)
+      self.dirty = true
+      self:Refresh()
+    end)
+    UI:SetToggle(b, true)
+    return b
+  end
+  self.help = UI:IconButton(c, 28, I .. "INV_Misc_QuestionMark", "MAP_HELP_TITLE", "MAP_HELP")
+  self.help:SetPoint("TOPRIGHT", -14, -8)
+  self.eventToggle = toggle(I .. "INV_Misc_Note_01", "MAP_EVENTS")
+  self.eventToggle:SetPoint("RIGHT", self.help, "LEFT", -12, 0)
+  self.routeToggle = toggle(I .. "INV_Boots_05", "MAP_ROUTE")
+  self.routeToggle:SetPoint("RIGHT", self.eventToggle, "LEFT", -6, 0)
 
   -- Map
   self.canvas = UI.MapCanvas.New(c, CANVAS_W, CANVAS_H)
@@ -90,8 +94,11 @@ function page:Create(c)
   self.noticeFrame = noticeFrame
 
   -- Bottom row: play, speeds, slider, time, live
-  self.play = UI:Button(c, "MAP_PLAY", 100, function() self:TogglePlay() end)
-  self.play:SetPoint("TOPLEFT", self.canvas.frame, "BOTTOMLEFT", 0, -12)
+  self.play = UI:ArrowButton(c, "Next", function() self:TogglePlay() end)
+  self.play:SetSize(30, 30)
+  self.play.selection = UI:SelectionBorder(self.play)
+  UI:Tooltip(self.play, function() return self.playing and L.MAP_PAUSE or L.MAP_PLAY end)
+  self.play:SetPoint("TOPLEFT", self.canvas.frame, "BOTTOMLEFT", 0, -10)
   self.speedButtons = {}
   local prev = self.play
   for i, speed in ipairs(SPEEDS) do
@@ -101,25 +108,19 @@ function page:Create(c)
     b:SetPoint("LEFT", prev, "RIGHT", i == 1 and 10 or 4, 0)
     b.selection = UI:SelectionBorder(b)
     b:SetScript("OnClick", function() self.speedIndex = i; self:SyncSpeed() end)
-    b:SetScript("OnEnter", function(btn)
-      GameTooltip:SetOwner(btn, "ANCHOR_TOP")
-      GameTooltip:SetText(L.MAP_SPEED_TIP, 1, 1, 1, 1, true)
-      GameTooltip:Show()
-    end)
-    b:SetScript("OnLeave", GameTooltip_Hide)
+    UI:Tooltip(b, "MAP_SPEED", "MAP_SPEED_TIP")
     self.speedButtons[i] = b
     prev = b
   end
   self.live = true
-  self.liveButton = UI:Button(c, "MAP_LIVE", 70, function()
+  self.liveButton = UI:IconButton(c, 30, I .. "Ability_EyeOfTheOwl", "MAP_LIVE", "MAP_LIVE_TIP", function()
     self.live, self.playing = true, false
     self.sessionIndex = 0
     self.dirty = true
     self:SyncPlay()
     self:Refresh()
   end)
-  self.liveButton:SetPoint("TOPRIGHT", self.canvas.frame, "BOTTOMRIGHT", 0, -12)
-  self.liveButton.selection = UI:SelectionBorder(self.liveButton)
+  self.liveButton:SetPoint("TOPRIGHT", self.canvas.frame, "BOTTOMRIGHT", 0, -10)
   self.time = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   self.time:SetPoint("RIGHT", self.liveButton, "LEFT", -10, 0)
   self.time:SetWidth(120)
@@ -204,11 +205,11 @@ function page:Redraw()
   self.mapSel.label:SetText((info and info.name) or tostring(self.viewMap))
   self.artNotice = not hasArt and L.MAP_NO_ART or nil
 
-  local segments = self.routeToggle:GetChecked() and Route.Segments(self.points, self.viewMap, self.range[1], self.range[2]) or {}
+  local segments = self.routeToggle.on and Route.Segments(self.points, self.viewMap, self.range[1], self.range[2]) or {}
   self.canvas:DrawRoute(segments)
 
   local pins = {}
-  if self.eventToggle:GetChecked() then
+  if self.eventToggle.on then
     for _, r in ipairs(FC.Storage:GetStream("events").records) do
       local loc = r.location
       if loc and loc.mapID and loc.x and r.time >= self.range[1] and r.time <= self.range[2] then
@@ -294,8 +295,8 @@ function page:SyncSpeed()
 end
 
 function page:SyncPlay()
-  self.play:SetText(self.playing and L.MAP_PAUSE or L.MAP_PLAY)
-  UI:SetSelected(self.liveButton, self.live)
+  UI:SetSelected(self.play, self.playing)
+  UI:SetToggle(self.liveButton, self.live)
 end
 
 function page:TogglePlay()

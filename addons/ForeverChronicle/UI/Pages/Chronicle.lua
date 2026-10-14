@@ -5,7 +5,7 @@ local ADDON, FC = ...
 local L = FC.L
 local UI = FC.UI
 
-local page = { id = "chronicle", labelKey = "TAB_CHRONICLE", order = 20 }
+local page = { id = "chronicle", labelKey = "TAB_CHRONICLE", icon = "Interface\\Icons\\INV_Misc_Book_09", order = 20 }
 local ROW_HEIGHT = 30
 local MAX_ROWS = 200
 
@@ -52,10 +52,8 @@ local function updateRow(row, record)
 end
 
 function page:Create(c)
-  self.count = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  self.count:SetPoint("TOPLEFT", 12, -10)
   self.list = UI:List(c, ROW_HEIGHT, createRow, updateRow)
-  self.list.scroll:SetPoint("TOPLEFT", 6, -28)
+  self.list.scroll:SetPoint("TOPLEFT", 6, -8)
   self.list.scroll:SetPoint("BOTTOMRIGHT", -28, 8)
   self.empty = UI:Label(c, "CHRONICLE_EMPTY", "GameFontDisable")
   self.empty:SetPoint("CENTER")
@@ -69,7 +67,6 @@ function page:Refresh()
   local items = FC:GetRecentEvents(MAX_ROWS)
   self.list:SetItems(items)
   self.empty:SetShown(#items == 0)
-  self.count:SetText(string.format(L.CHRONICLE_COUNT, #stream.records, MAX_ROWS))
 end
 
 UI:RegisterPage(page)

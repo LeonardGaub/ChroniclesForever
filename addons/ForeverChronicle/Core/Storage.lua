@@ -106,9 +106,9 @@ end
 -- Streams (bounded, append-only record lists)
 -------------------------------------------------------------------------------
 
--- Declare a stream. cap = number of records kept in SavedVariables.
-function Storage:DefineStream(name, cap)
-  self.streams[name] = { cap = cap }
+-- Declare a stream. cap = number of records kept in SavedVariables; icon is shown in the storage overview.
+function Storage:DefineStream(name, cap, icon)
+  self.streams[name] = { cap = cap, icon = icon }
 end
 
 function Storage:GetStream(name)
@@ -182,7 +182,7 @@ function Storage:GetUsage()
   if not FC.char then return usage end
   for name, def in pairs(self.streams) do
     local s = self:GetStream(name)
-    usage[#usage + 1] = { name = name, count = #s.records, cap = def.cap, dropped = s.dropped }
+    usage[#usage + 1] = { name = name, count = #s.records, cap = def.cap, dropped = s.dropped, icon = def.icon }
   end
   table.sort(usage, function(a, b) return a.name < b.name end)
   return usage

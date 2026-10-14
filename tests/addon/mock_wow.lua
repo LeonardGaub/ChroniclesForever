@@ -66,6 +66,7 @@ local function newRegion()
   r.Hide = function(self) self.shown = false end
   r.SetShown = function(self, v) self.shown = v and true or false end
   r.IsShown = function(self) return self.shown end
+  r.IsVisible = function(self) return self.shown end
   r.GetStringWidth = function(self) return #(self.text or "") * 6 end
   r.GetStringHeight = function() return 12 end
   r.GetChecked = function(self) return self.checked end
@@ -90,6 +91,10 @@ function CreateFrame(kind, name, parent, template)
   f.CreateFontString = function() return newRegion() end
   f.CreateLine = function() return newRegion() end
   f.GetFrameLevel = function() return 1 end
+  f.GetEffectiveScale = function() return 1 end
+  f.GetLeft = function() return 0 end
+  f.GetTop = function() return 0 end
+  f.SetScale = function(self, s) self.scale = s end
   f.CreateTexture = function() return newRegion() end
   f.GetChecked = function(self) return self.checked end
   f.SetChecked = function(self, v) self.checked = v end
@@ -168,9 +173,12 @@ C_QuestLog = { GetTitleForQuestID = function(id) return id == 3513 and "The Runa
 function GetAchievementInfo(id) return id, "Level 10", 10, true, 10, 14, 26, "Reach level 10", 0, 236565 end
 MOCK.screenshots = {}
 function IsShiftKeyDown() return false end
+function InCombatLockdown() return MOCK.combat == true end
+function GetCursorPosition() return MOCK.cursorX or 0, MOCK.cursorY or 0 end
 function Screenshot()
   table.insert(MOCK.screenshots, MOCK.now)
   MOCK.countdownVisibleAtCapture = ForeverChronicleCountdown ~= nil and ForeverChronicleCountdown:IsShown()
+  MOCK.uiVisibleAtCapture = UIParent:IsShown()
   C_Timer.After(0.3, function() MOCK.fire("SCREENSHOT_SUCCEEDED") end)
 end
 

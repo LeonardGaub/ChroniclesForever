@@ -20,6 +20,17 @@
   - Clicking a Chronik row jumps the map to that moment (`UI:FocusMap`).
   - Shared route logic lives in `Core/Route.lua` (cached incremental parsing, same rules as `desktop/domain/route.py`).
   - The desktop app stays for the full history (the addon keeps ~55 h of route) and for screenshots.
+- **Addon v0.5.0: UI overhaul (user: "use icons more, reduce text"):**
+  - One fixed window size, 820×670, for all pages (user request).
+  - Icon tabs on the right edge (`page.icon`; "portrait" = player portrait). Names are in tooltips.
+  - Übersicht uses tiles (icon + value, name in tooltip); stat icons come from `RegisterStat{icon}`,
+    stream icons from `DefineStream(name, cap, icon)`.
+  - Screenshots and Diagnose use status icons (ReadyCheck textures). Settings section headers get icons.
+  - Map: page-arrow cyclers, icon toggles, play arrow with glow, live eye.
+    Zoom: mouse wheel at the cursor up to 6×, drag to pan, right-click to reset (`MapCanvas` content layer).
+  - New option "Interface für Screenshots ausblenden" (default off; `SetUIVisibility`/`UIParent:Hide`;
+    skipped in combat; always restored on confirmation, failure or after 1.5 s).
+  - Not yet seen in game: whether all icon/texture paths exist in Forever (missing ones show a question mark).
 - **Desktop** (`desktop/`, start with `desktop/Forever Chronicle.bat`). Tabs: Übersicht, Chronik, Karte,
   Screenshots, Import, Diagnose.
   - The Karte tab shows your map art with the route, event markers, a time slider, play/pause and 1×/2×/4×/10× speeds

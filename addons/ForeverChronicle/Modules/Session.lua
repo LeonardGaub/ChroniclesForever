@@ -14,7 +14,7 @@ local L = FC.L
 
 local Session = FC:NewModule("Session", { order = 20, defaults = { autoPlayed = true } })
 
-FC.Storage:DefineStream("sessions", 1000)
+FC.Storage:DefineStream("sessions", 1000, "Interface\\Icons\\INV_Misc_PocketWatch_02")
 
 local PLAYED_REQUEST_DELAY = 10
 local PLAYED_TIMEOUT = 10
@@ -32,10 +32,12 @@ FC:RegisterEventType("session_started", {
   format = function() return L.EVT_SESSION_STARTED end,
 })
 
-FC:RegisterStat("sessions", { labelKey = "STAT_SESSIONS", order = 10 })
+FC:RegisterStat("sessions", { labelKey = "STAT_SESSIONS", order = 10, icon = "Interface\\Icons\\Spell_Nature_TimeStop" })
 FC:RegisterStat("tracked_time", { labelKey = "STAT_TRACKED_TIME", order = 11, format = "duration",
+  icon = "Interface\\Icons\\INV_Misc_PocketWatch_02",
   compute = function() return Session:GetTrackedSeconds() end })
-FC:RegisterStat("played_total", { labelKey = "STAT_PLAYED_TOTAL", order = 12, format = "duration" })
+FC:RegisterStat("played_total", { labelKey = "STAT_PLAYED_TOTAL", order = 12, format = "duration",
+  icon = "Interface\\Icons\\INV_Misc_PocketWatch_01" })
 
 FC:RegisterOption({ module = "Session", key = "autoPlayed", type = "toggle", column = 2,
   labelKey = "OPT_AUTO_PLAYED", tooltipKey = "OPT_AUTO_PLAYED_TIP", order = 20 })

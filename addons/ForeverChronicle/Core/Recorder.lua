@@ -7,7 +7,7 @@
 local ADDON, FC = ...
 local Util = FC.Util
 
-FC.Storage:DefineStream("events", 10000)
+FC.Storage:DefineStream("events", 10000, "Interface\\Icons\\INV_Misc_Book_09")
 
 -- Current location. Inside instances only the zone and instance ID are available (Phase 0).
 function FC:GetLocation()

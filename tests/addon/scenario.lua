@@ -103,7 +103,7 @@ if PHASE == 1 then
   check(#FC.UI.pages == 6, "six pages registered")
   SlashCmdList.FOREVERCHRONICLE("lang en")
   check(FC.L.TAB_OVERVIEW == "Overview", "language switched to English")
-  check(ForeverChronicleFrameTab1.text == "Overview", "tab relabelled")
+  check(#ForeverChronicleFrame.Tabs == 6 and ForeverChronicleFrame.Tabs[2].page.icon ~= nil, "icon tabs, one per page")
   SlashCmdList.FOREVERCHRONICLE("lang de")
   SlashCmdList.FOREVERCHRONICLE("status")
   SlashCmdList.FOREVERCHRONICLE("help")
@@ -241,6 +241,20 @@ if PHASE == 5 then
     "test screenshot waits for the delay with countdown")
   MOCK.advance(1.5)
   check(statuses():find("manual:", 1, true), "test screenshot taken after the delay")
+  -- Hide the interface for the screenshot (not in combat) and show it again afterwards.
+  FC:GetModule("Screenshots"):GetSettings().hideUI = true
+  MOCK.advance(3)
+  SlashCmdList.FOREVERCHRONICLESHOT("test")
+  MOCK.advance(3.5)
+  check(MOCK.uiVisibleAtCapture == false, "interface hidden when the screenshot is taken")
+  check(UIParent:IsShown(), "interface shown again after the screenshot")
+  MOCK.combat = true
+  MOCK.advance(3)
+  SlashCmdList.FOREVERCHRONICLESHOT("test")
+  MOCK.advance(3.5)
+  check(MOCK.uiVisibleAtCapture == true and UIParent:IsShown(), "in combat the interface stays visible")
+  MOCK.combat = false
+  FC:GetModule("Screenshots"):GetSettings().hideUI = false
   SlashCmdList.FOREVERCHRONICLESHOT("status")
   SlashCmdList.FOREVERCHRONICLESHOT("api")
   SlashCmdList.FOREVERCHRONICLESHOT("bogus")
@@ -347,6 +361,26 @@ if PHASE == 9 then
   page:StepMap(-1)
   check(page.viewMap == 1413, "previous map: The Barrens")
   page:Refresh()
+
+  -- Zoom: limits, point under the cursor stays, reset.
+  local canvas = page.canvas
+  MOCK.cursorX, MOCK.cursorY = 390, -260          -- centre of the 780 x 520 map
+  canvas:ZoomAtCursor(2)
+  check(canvas.zoom == 2 and canvas.content.scale == 2, "zoomed in (" .. canvas.zoom .. ")")
+  check(math.abs(canvas.offX + 390) < 1e-6 and math.abs(canvas.offY + 260) < 1e-6, "zoom keeps the point under the cursor")
+  for _ = 1, 20 do canvas:ZoomAtCursor(2) end
+  check(canvas.zoom == 6, "zoom limited to 6x")
+  canvas:SetView(2, 500, 500)
+  check(canvas.offX == 0 and canvas.offY == 0, "panning is limited to the map")
+  canvas:ResetZoom()
+  check(canvas.zoom == 1 and canvas.offX == 0, "right-click resets the zoom")
+
+  -- Icon toggle hides the route.
+  page.routeToggle:GetScript("OnClick")(page.routeToggle)
+  local visible = 0
+  for _, line in ipairs(page.canvas.lines) do if line:IsShown() then visible = visible + 1 end end
+  check(not page.routeToggle.on and visible == 0, "route toggle hides the lines")
+  page.routeToggle:GetScript("OnClick")(page.routeToggle)
   check(page.viewMap == 1413 and page.notice.text:find("Durotar", 1, true) == nil and page.noticeFrame:IsShown(),
     "a map picked by hand stays while live (" .. tostring(page.notice.text) .. ")")
   local shown = 0

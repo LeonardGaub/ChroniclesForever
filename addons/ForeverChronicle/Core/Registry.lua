@@ -34,7 +34,7 @@ end
 
 -------------------------------------------------------------------------------
 -- Stats: per-character counters/values shown in the overview.
---   def = { labelKey, order, format = "number" | "duration" | function(value),
+--   def = { labelKey, icon, order, format = "number" | "duration" | function(value),
 --           compute = function() -> value }   -- optional; otherwise the stored counter is used
 -------------------------------------------------------------------------------
 
@@ -81,12 +81,12 @@ end
 FC.optionDefs = {}
 FC.optionSections = {}
 
-function FC:RegisterOptionSection(key, labelKey, order)
-  table.insert(self.optionSections, { key = key, labelKey = labelKey, order = order or 100 })
+function FC:RegisterOptionSection(key, labelKey, order, icon)
+  table.insert(self.optionSections, { key = key, labelKey = labelKey, order = order or 100, icon = icon })
   table.sort(self.optionSections, function(a, b) return a.order < b.order end)
 end
 
-FC:RegisterOptionSection("general", "SECTION_GENERAL", 1)
+FC:RegisterOptionSection("general", "SECTION_GENERAL", 1, "Interface\\Icons\\INV_Misc_Gear_01")
 
 function FC:RegisterOption(def)
   def.order = def.order or 100

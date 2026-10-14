@@ -5,13 +5,13 @@
 local ADDON, FC = ...
 local UI = FC.UI
 
-local page = { id = "settings", labelKey = "TAB_SETTINGS", order = 80 }
+local page = { id = "settings", labelKey = "TAB_SETTINGS", icon = "Interface\\Icons\\INV_Misc_Gear_01", order = 80 }
 
 function page:Create(c)
   self.controls = {}
   local anchor, offset = nil, 0
   for _, section in ipairs(FC.optionSections) do
-    local header = UI:Header(c, section.labelKey)
+    local header = UI:Header(c, section.labelKey, section.icon)
     if anchor then
       header:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, offset - 14)
     else
@@ -21,9 +21,6 @@ function page:Create(c)
     for _, control in ipairs(controls) do self.controls[#self.controls + 1] = control end
     anchor, offset = header, controls.bottom
   end
-  local hint = UI:Label(c, "HINT_COMMANDS", "GameFontDisableSmall")
-  hint:SetPoint("BOTTOMLEFT", 14, 10)
-  hint:SetPoint("RIGHT", c, "RIGHT", -14, 0)
 end
 
 function page:Refresh()

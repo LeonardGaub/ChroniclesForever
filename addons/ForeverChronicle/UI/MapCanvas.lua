@@ -2,6 +2,10 @@
 -- Draws a map with the client's own map art (the same tiles and explored-area overlays as the world map),
 -- route lines, event icons and a position marker. If the client cannot provide the art, a plain
 -- parchment-coloured area with the map name is shown instead.
+--
+-- Zoom: mouse wheel (at the cursor), drag to pan, right-click to reset. The visible area (frame) clips a
+-- content frame that is scaled and moved; lines, icons and the marker are counter-scaled so they keep
+-- their on-screen size.
 
 local ADDON, FC = ...
 local Util = FC.Util
@@ -14,11 +18,14 @@ UI.MapCanvas = Canvas
 local TILE = 256
 local MIN_LINE_PIXELS = 3   -- route points closer than this (on screen) are merged into one line
 local MAX_LINES = 4000
+local LINE_THICKNESS = 2.5
+local DOT_SIZE, MARKER_SIZE = 5, 18
+local MAX_ZOOM, ZOOM_STEP = 6, 1.25
 local ROUTE_COLOR = { 1, 0.82, 0, 0.95 }
 local TAXI_COLOR = { 0.41, 0.8, 0.94, 0.9 }
 
 function Canvas.New(parent, width, height)
-  local self = setmetatable({}, Canvas)
+  local self = setmetatable({ zoom = 1, offX = 0, offY = 0 }, Canvas)
   local f = CreateFrame("Frame", nil, parent)
   f:SetSize(width, height)
   f:SetClipsChildren(true)
@@ -27,29 +34,93 @@ function Canvas.New(parent, width, height)
   local bg = f:CreateTexture(nil, "BACKGROUND", nil, -8)
   bg:SetAllPoints()
   bg:SetColorTexture(0.32, 0.25, 0.16, 1)
-  self.background = bg
+
+  local content = CreateFrame("Frame", nil, f)
+  content:SetSize(width, height)
+  content:SetPoint("TOPLEFT")
+  self.content = content
 
   -- Map art is laid out in map units (e.g. 1002 x 668) on a scaled child frame.
-  self.art = CreateFrame("Frame", nil, f)
+  self.art = CreateFrame("Frame", nil, content)
   self.art:SetPoint("TOPLEFT")
   self.tiles, self.overlays = {}, {}
 
-  self.name = f:CreateFontString(nil, "ARTWORK", "GameFontDisableHuge")
+  self.name = content:CreateFontString(nil, "ARTWORK", "GameFontDisableHuge")
   self.name:SetPoint("CENTER")
 
   self.lines, self.dots, self.pins = {}, {}, {}
-  self.lineLayer = CreateFrame("Frame", nil, f)
+  self.lineLayer = CreateFrame("Frame", nil, content)
   self.lineLayer:SetAllPoints()
-  self.lineLayer:SetFrameLevel(f:GetFrameLevel() + 2)
-  self.pinLayer = CreateFrame("Frame", nil, f)
+  self.lineLayer:SetFrameLevel(content:GetFrameLevel() + 2)
+  self.pinLayer = CreateFrame("Frame", nil, content)
   self.pinLayer:SetAllPoints()
-  self.pinLayer:SetFrameLevel(f:GetFrameLevel() + 4)
+  self.pinLayer:SetFrameLevel(content:GetFrameLevel() + 4)
 
   self.marker = self.pinLayer:CreateTexture(nil, "OVERLAY", nil, 7)
-  self.marker:SetSize(18, 18)
+  self.marker:SetSize(MARKER_SIZE, MARKER_SIZE)
   self.marker:SetTexture("Interface\\Common\\Indicator-Yellow")
   self.marker:Hide()
+
+  -- Mouse: wheel zoom, drag to pan, right-click to reset.
+  f:EnableMouse(true)
+  f:EnableMouseWheel(true)
+  f:SetScript("OnMouseWheel", function(_, delta) self:ZoomAtCursor(delta > 0 and ZOOM_STEP or 1 / ZOOM_STEP) end)
+  f:SetScript("OnMouseDown", function(_, button)
+    if button == "RightButton" then
+      self:ResetZoom()
+    elseif button == "LeftButton" and self.zoom > 1 then
+      local cx, cy = self:CursorPosition()
+      self.drag = { cx = cx, cy = cy, offX = self.offX, offY = self.offY }
+    end
+  end)
+  f:SetScript("OnMouseUp", function() self.drag = nil end)
+  f:SetScript("OnHide", function() self.drag = nil end)
+  f:SetScript("OnUpdate", function()
+    if not self.drag then return end
+    local cx, cy = self:CursorPosition()
+    self:SetView(self.zoom, self.drag.offX + (cx - self.drag.cx), self.drag.offY + (cy - self.drag.cy))
+  end)
   return self
+end
+
+-------------------------------------------------------------------------------
+-- Zoom and pan
+-------------------------------------------------------------------------------
+
+-- Cursor position in the visible area, in pixels from its top-left corner.
+function Canvas:CursorPosition()
+  local x, y = GetCursorPosition()
+  local scale = self.frame:GetEffectiveScale()
+  return x / scale - (self.frame:GetLeft() or 0), (self.frame:GetTop() or 0) - y / scale
+end
+
+-- zoom >= 1; offX/offY: position of the content's top-left corner in the visible area (<= 0).
+function Canvas:SetView(zoom, offX, offY)
+  zoom = math.max(1, math.min(MAX_ZOOM, zoom))
+  self.zoom = zoom
+  self.offX = math.max(self.width - self.width * zoom, math.min(0, offX))
+  self.offY = math.max(self.height - self.height * zoom, math.min(0, offY))
+  self.content:SetScale(zoom)
+  self.content:ClearAllPoints()
+  self.content:SetPoint("TOPLEFT", self.frame, "TOPLEFT", self.offX / zoom, -self.offY / zoom)
+  -- Keep lines, dots, icons and the marker at their on-screen size.
+  for _, line in ipairs(self.lines) do line:SetThickness(LINE_THICKNESS / zoom) end
+  for _, dot in ipairs(self.dots) do dot:SetSize(DOT_SIZE / zoom, DOT_SIZE / zoom) end
+  self.marker:SetSize(MARKER_SIZE / zoom, MARKER_SIZE / zoom)
+  for _, pin in ipairs(self.pins) do self:PlacePin(pin) end
+end
+
+function Canvas:ZoomAtCursor(factor)
+  local cx, cy = self:CursorPosition()
+  local newZoom = math.max(1, math.min(MAX_ZOOM, self.zoom * factor))
+  -- Keep the map point under the cursor in place.
+  local px, py = (cx - self.offX) / self.zoom, (cy - self.offY) / self.zoom
+  self:SetView(newZoom, cx - px * newZoom, cy - py * newZoom)
+end
+
+function Canvas:ResetZoom()
+  self.drag = nil
+  self:SetView(1, 0, 0)
 end
 
 -------------------------------------------------------------------------------
@@ -60,6 +131,7 @@ local function hideAll(list) for _, r in ipairs(list) do r:Hide() end end
 
 -- Returns true if the client provided art for this map.
 function Canvas:SetMap(mapID, fallbackName)
+  if mapID ~= self.mapID then self:ResetZoom() end
   self.mapID = mapID
   hideAll(self.tiles)
   hideAll(self.overlays)
@@ -149,9 +221,9 @@ local function lineRegion(self, i)
   local line = self.lines[i]
   if not line then
     line = self.lineLayer:CreateLine(nil, "ARTWORK")
-    line:SetThickness(2.5)
     self.lines[i] = line
   end
+  line:SetThickness(LINE_THICKNESS / self.zoom)
   return line
 end
 
@@ -159,14 +231,15 @@ local function dotRegion(self, i)
   local dot = self.dots[i]
   if not dot then
     dot = self.lineLayer:CreateTexture(nil, "ARTWORK", nil, 1)
-    dot:SetSize(5, 5)
     dot:SetTexture("Interface\\Common\\Indicator-Gray")
     self.dots[i] = dot
   end
+  dot:SetSize(DOT_SIZE / self.zoom, DOT_SIZE / self.zoom)
   return dot
 end
 
 -- segments: from FC.Route.Segments. Ends of every segment get a small grey dot (recorded data starts or stops).
+-- Points closer than MIN_LINE_PIXELS at zoom 1 are merged, so long routes stay cheap to draw.
 function Canvas:DrawRoute(segments)
   local lineCount, dotCount = 0, 0
   local canLine = self.lineLayer.CreateLine ~= nil
@@ -183,8 +256,8 @@ function Canvas:DrawRoute(segments)
           lineCount = lineCount + 1
           local line = lineRegion(self, lineCount)
           line:SetColorTexture(color[1], color[2], color[3], color[4])
-          line:SetStartPoint("TOPLEFT", self.frame, lastX, -lastY)
-          line:SetEndPoint("TOPLEFT", self.frame, px, -py)
+          line:SetStartPoint("TOPLEFT", self.content, lastX, -lastY)
+          line:SetEndPoint("TOPLEFT", self.content, px, -py)
           line:Show()
         end
         lastX, lastY = px, py
@@ -195,7 +268,7 @@ function Canvas:DrawRoute(segments)
       local dot = dotRegion(self, dotCount)
       local px, py = self:ToPixels(pt[1], pt[2])
       dot:ClearAllPoints()
-      dot:SetPoint("CENTER", self.frame, "TOPLEFT", px, -py)
+      dot:SetPoint("CENTER", self.content, "TOPLEFT", px, -py)
       dot:Show()
     end
   end
@@ -206,6 +279,15 @@ end
 -------------------------------------------------------------------------------
 -- Event icons and marker
 -------------------------------------------------------------------------------
+
+-- Icons are counter-scaled: a frame's anchor offsets are in its own (scaled) units, so they are
+-- multiplied by the zoom to stay on their map position.
+function Canvas:PlacePin(pin)
+  if not pin.px then return end
+  pin:SetScale(1 / self.zoom)
+  pin:ClearAllPoints()
+  pin:SetPoint("CENTER", self.content, "TOPLEFT", pin.px * self.zoom, -pin.py * self.zoom)
+end
 
 -- pins: list of { x, y, icon, title, text }
 function Canvas:SetPins(pins)
@@ -218,19 +300,12 @@ function Canvas:SetPins(pins)
       pin.icon:SetAllPoints()
       pin.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
       pin:EnableMouse(true)
-      pin:SetScript("OnEnter", function(p)
-        GameTooltip:SetOwner(p, "ANCHOR_RIGHT")
-        GameTooltip:SetText(p.title, 1, 0.82, 0)
-        if p.text then GameTooltip:AddLine(p.text, 1, 1, 1) end
-        GameTooltip:Show()
-      end)
-      pin:SetScript("OnLeave", GameTooltip_Hide)
+      UI:Tooltip(pin, function(p) return p.title end, function(p) return p.text end)
       self.pins[i] = pin
     end
-    local px, py = self:ToPixels(data.x, data.y)
-    pin:ClearAllPoints()
-    pin:SetPoint("CENTER", self.frame, "TOPLEFT", px, -py)
-    pin.icon:SetTexture(data.icon)
+    pin.px, pin.py = self:ToPixels(data.x, data.y)
+    self:PlacePin(pin)
+    UI:SetIcon(pin.icon, data.icon)
     pin.title, pin.text = data.title, data.text
     pin:Show()
   end
@@ -244,6 +319,6 @@ function Canvas:SetMarker(x, y)
   end
   local px, py = self:ToPixels(x, y)
   self.marker:ClearAllPoints()
-  self.marker:SetPoint("CENTER", self.frame, "TOPLEFT", px, -py)
+  self.marker:SetPoint("CENTER", self.content, "TOPLEFT", px, -py)
   self.marker:Show()
 end

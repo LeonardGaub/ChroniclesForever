@@ -1,70 +1,83 @@
 -- Forever Chronicle - Overview page
--- Character header, current session, statistics (from the stat registry) and storage usage.
+-- Character header, current session, statistics (from the stat registry) and storage usage as icon tiles.
+-- Names and explanations are in the tooltips.
 
 local ADDON, FC = ...
 local L = FC.L
 local UI = FC.UI
 local Util = FC.Util
 
-local page = { id = "overview", labelKey = "TAB_OVERVIEW", order = 10 }
+local page = { id = "overview", labelKey = "TAB_OVERVIEW", icon = "portrait", order = 10 }
+local TILE_W, TILE_GAP, COLUMNS = 196, 8, 3
+local I = "Interface\\Icons\\"
 
-function page:Create(c)
-  -- Character header
-  self.name = c:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  self.name:SetPoint("TOPLEFT", 14, -12)
-  self.details = c:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  self.details:SetPoint("TOPLEFT", self.name, "BOTTOMLEFT", 0, -4)
-  self.realm = c:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  self.realm:SetPoint("TOPLEFT", self.details, "BOTTOMLEFT", 0, -3)
-
-  -- Session
-  local sessionHeader = UI:Header(c, "SECTION_SESSION")
-  sessionHeader:SetPoint("TOPLEFT", self.realm, "BOTTOMLEFT", 0, -16)
-  self.sessionTime = UI:Field(c, "FIELD_SESSION_TIME", sessionHeader, 0, -10)
-  self.reloads = UI:Field(c, "FIELD_RELOADS", self.sessionTime.label)
-  self.played = UI:Field(c, "FIELD_PLAYED", self.reloads.label)
-  self.playedLevel = UI:Field(c, "FIELD_PLAYED_LEVEL", self.played.label)
-
-  -- Statistics: one field per registered stat, in two columns.
-  local statsHeader = UI:Header(c, "SECTION_STATS")
-  statsHeader:SetPoint("TOPLEFT", self.playedLevel.label, "BOTTOMLEFT", 0, -16)
-  self.statFields = {}
-  local half = math.ceil(#FC.statDefs / 2)
-  for i, def in ipairs(FC.statDefs) do
-    local field
-    if i == 1 then
-      field = UI:Field(c, def.labelKey, statsHeader, 0, -10, 130)
-    elseif i == half + 1 then
-      field = UI:Field(c, def.labelKey, statsHeader, 260, -10, 130)
-    else
-      field = UI:Field(c, def.labelKey, self.statFields[i - 1].field.label, 0, -6, 130)
-    end
-    self.statFields[i] = { def = def, field = field }
-  end
-  local lastLeft = self.statFields[half] and self.statFields[half].field.label or statsHeader
-
-  -- Storage usage per stream
-  local storageHeader = UI:Header(c, "SECTION_STORAGE")
-  storageHeader:SetPoint("TOPLEFT", lastLeft, "BOTTOMLEFT", 0, -16)
-  self.storageHeader = storageHeader
-  self.bars = {}
-
-  self.hint = UI:Label(c, "HINT_SAVED", "GameFontDisableSmall")
-  self.hint:SetPoint("BOTTOMLEFT", 14, 10)
-  self.hint:SetPoint("RIGHT", c, "RIGHT", -14, 0)
+local function divider(c, anchor, y)
+  local line = c:CreateTexture(nil, "ARTWORK")
+  line:SetColorTexture(1, 0.82, 0, 0.2)
+  line:SetHeight(1)
+  line:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, y)
+  line:SetPoint("RIGHT", c, "RIGHT", -14, 0)
+  return line
 end
 
-local function storageBar(self, c, i)
+-- Places tiles in a grid below `anchor`; returns the last row's first tile for further anchoring.
+local function grid(tiles, anchor, y)
+  for i, tile in ipairs(tiles) do
+    local col = (i - 1) % COLUMNS
+    local row = math.floor((i - 1) / COLUMNS)
+    tile:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", col * (TILE_W + TILE_GAP), y - row * 46)
+  end
+end
+
+function page:Create(c)
+  -- Character
+  self.name = c:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+  self.name:SetPoint("TOPLEFT", 16, -14)
+  self.details = c:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+  self.details:SetPoint("TOPLEFT", self.name, "BOTTOMLEFT", 0, -4)
+
+  -- Current session
+  local sessionLine = divider(c, self.details, -12)
+  self.sessionTiles = {
+    UI:Tile(c, I .. "INV_Misc_PocketWatch_03", "FIELD_SESSION_TIME", TILE_W),
+    UI:Tile(c, I .. "Spell_Nature_Reincarnation", "FIELD_RELOADS", TILE_W),
+    UI:Tile(c, I .. "INV_Misc_Rune_01", "FIELD_PLAYED_LEVEL", TILE_W),
+  }
+  grid(self.sessionTiles, sessionLine, -10)
+
+  -- Statistics since tracking began
+  local statsLine = divider(c, self.sessionTiles[1], -10)
+  self.statTiles = {}
+  for i, def in ipairs(FC.statDefs) do
+    local tile = UI:Tile(c, def.icon, def.labelKey, TILE_W)
+    tile.def = def
+    self.statTiles[i] = tile
+  end
+  grid(self.statTiles, statsLine, -10)
+  local lastRowFirst = self.statTiles[math.floor((#self.statTiles - 1) / COLUMNS) * COLUMNS + 1]
+
+  -- Storage: icon + bar per stream, two columns
+  self.storageLine = divider(c, lastRowFirst, -10)
+  self.bars = {}
+end
+
+local function storageRow(self, c, i, usage)
   local row = self.bars[i]
   if row then return row end
-  local label = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  label:SetWidth(150)
-  label:SetJustifyH("LEFT")
-  local anchor = i == 1 and self.storageHeader or self.bars[i - 1].label
-  label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, i == 1 and -10 or -8)
-  local bar = UI:Bar(c, 260)
-  bar:SetPoint("LEFT", label, "RIGHT", 6, 0)
-  row = { label = label, bar = bar }
+  row = CreateFrame("Frame", nil, c)
+  row:SetSize(296, 24)
+  local col, line = (i - 1) % 2, math.floor((i - 1) / 2)
+  row:SetPoint("TOPLEFT", self.storageLine, "BOTTOMLEFT", col * 304, -10 - line * 30)
+  row.icon = row:CreateTexture(nil, "ARTWORK")
+  row.icon:SetSize(22, 22)
+  row.icon:SetPoint("LEFT")
+  row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  UI:SetIcon(row.icon, usage.icon)
+  row.bar = UI:Bar(row, 262)
+  row.bar:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
+  row:EnableMouse(true)
+  UI:Tooltip(row, function(r) return L["STREAM_" .. r.name:upper()] end,
+    function(r) return string.format(L.STORAGE_TIP, r.count, r.cap) end)
   self.bars[i] = row
   return row
 end
@@ -72,34 +85,27 @@ end
 function page:Refresh()
   local c = self.container
   local info = FC.char.info
-
   self.name:SetText(UI:ClassColored(info.name or "?", info.classFile))
-  self.details:SetText(string.format(L.CHAR_DETAILS, info.level or "?", info.raceName or "", info.className or ""))
-  self.realm:SetText(info.realm or "")
+  self.details:SetText(string.format(L.CHAR_DETAILS, info.level or "?", info.raceName or "", info.className or "")
+    .. "  \194\183  " .. (info.realm or ""))
 
   local session = FC:GetModule("Session"):GetCurrent()
-  self.sessionTime:SetText(FC.sessionStartedAt and Util.FormatDuration(time() - FC.sessionStartedAt) or L.UNKNOWN)
-  self.reloads:SetText(session and tostring(session.reloads or 0) or L.UNKNOWN)
-  local total = session and session.playedTotal or FC.char.stats.played_total
-  self.played:SetText(total and Util.FormatDuration(total + (session and session.playedAt and (time() - session.playedAt) or 0))
-    or L.PLAYED_UNKNOWN)
-  self.playedLevel:SetText(session and session.playedLevel and Util.FormatDuration(session.playedLevel) or L.UNKNOWN)
+  self.sessionTiles[1]:SetValue(FC.sessionStartedAt and Util.FormatDuration(time() - FC.sessionStartedAt) or "-")
+  self.sessionTiles[2]:SetValue(session and tostring(session.reloads or 0) or "-")
+  self.sessionTiles[3]:SetValue(session and session.playedLevel and Util.FormatDuration(session.playedLevel) or "-")
 
-  for _, entry in ipairs(self.statFields) do
-    entry.field:SetText(FC:FormatStat(entry.def, FC:GetStatValue(entry.def)))
+  for _, tile in ipairs(self.statTiles) do
+    local value = FC:GetStatValue(tile.def)
+    tile:SetValue(value ~= nil and FC:FormatStat(tile.def, value) or "-")
   end
 
   for i, u in ipairs(FC.Storage:GetUsage()) do
-    local row = storageBar(self, c, i)
+    local row = storageRow(self, c, i, u)
+    row.name, row.count, row.cap = u.name, u.count, u.cap
     local ratio = u.cap > 0 and u.count / u.cap or 0
-    row.label:SetText(L["STREAM_" .. u.name:upper()])
     row.bar:SetValue(ratio)
-    if ratio >= 0.8 then
-      row.bar:SetStatusBarColor(1, 0.5, 0)
-    else
-      row.bar:SetStatusBarColor(0.2, 0.6, 0.2)
-    end
-    row.bar.text:SetText(string.format("%d / %d", u.count, u.cap))
+    if ratio >= 0.8 then row.bar:SetStatusBarColor(1, 0.5, 0) else row.bar:SetStatusBarColor(0.2, 0.6, 0.2) end
+    row.bar.text:SetText(string.format("%d%%", math.floor(ratio * 100)))
   end
 end
 

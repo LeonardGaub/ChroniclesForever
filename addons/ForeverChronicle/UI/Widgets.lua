@@ -26,9 +26,14 @@ function UI:Label(parent, key, font, layer)
   return fs
 end
 
--- Gold section header with a thin divider line below it.
-function UI:Header(parent, key)
+-- Gold section header with a thin divider line below it; optionally with a small inline icon in front.
+function UI:Header(parent, key, icon)
   local fs = self:Label(parent, key, "GameFontNormal")
+  if icon then
+    local entry = localized[#localized]
+    entry.prefix = "|T" .. icon .. ":16:16:0:0:64:64:5:59:5:59|t  "
+    fs:SetText(entry.prefix .. L[key])
+  end
   local line = parent:CreateTexture(nil, "ARTWORK")
   line:SetColorTexture(1, 0.82, 0, 0.25)
   line:SetHeight(1)
@@ -56,7 +61,7 @@ function UI:Track(region, key)
 end
 
 function UI:Relocalize()
-  for _, entry in ipairs(localized) do entry.region:SetText(L[entry.key]) end
+  for _, entry in ipairs(localized) do entry.region:SetText((entry.prefix or "") .. L[entry.key]) end
 end
 
 function UI:ClassColored(text, classFile)
@@ -113,6 +118,104 @@ function UI:Bar(parent, width)
   bar.text = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   bar.text:SetPoint("CENTER")
   return bar
+end
+
+-------------------------------------------------------------------------------
+-- Icons
+-------------------------------------------------------------------------------
+
+UI.ICON_FALLBACK = "Interface\\Icons\\INV_Misc_QuestionMark"
+UI.STATUS_ICONS = {
+  ok = "Interface\\RaidFrame\\ReadyCheck-Ready",
+  wait = "Interface\\RaidFrame\\ReadyCheck-Waiting",
+  bad = "Interface\\RaidFrame\\ReadyCheck-NotReady",
+}
+
+-- Sets a texture; falls back to the question mark icon if the client does not have the file.
+function UI:SetIcon(tex, path)
+  local ok = tex:SetTexture(path or self.ICON_FALLBACK)
+  if ok == false then tex:SetTexture(self.ICON_FALLBACK) end
+  return ok ~= false
+end
+
+-- Tooltip with a gold title (locale key or function) and an optional white line (key, text or function).
+function UI:Tooltip(frame, title, line)
+  frame:SetScript("OnEnter", function(owner)
+    local t = type(title) == "function" and title(owner) or L[title]
+    if not t then return end
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    GameTooltip:SetText(t, 1, 0.82, 0)
+    local l = type(line) == "function" and line(owner) or (line and L[line])
+    if l and l ~= "" then GameTooltip:AddLine(l, 1, 1, 1, true) end
+    GameTooltip:Show()
+  end)
+  frame:SetScript("OnLeave", GameTooltip_Hide)
+end
+
+-- Square icon button (action-button style) with tooltip. Use UI:SetSelected for a gold "active" border.
+function UI:IconButton(parent, size, icon, title, line, onClick)
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(size, size)
+  local bg = b:CreateTexture(nil, "BACKGROUND")
+  bg:SetAllPoints()
+  bg:SetColorTexture(0, 0, 0, 0.7)
+  b.icon = b:CreateTexture(nil, "ARTWORK")
+  b.icon:SetPoint("TOPLEFT", 2, -2)
+  b.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+  b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  self:SetIcon(b.icon, icon)
+  b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+  b.selection = self:SelectionBorder(b)
+  self:Tooltip(b, title, line)
+  if onClick then b:SetScript("OnClick", onClick) end
+  return b
+end
+
+-- On/off icon button: desaturated when off, gold border when on.
+function UI:SetToggle(button, on)
+  button.on = on
+  button.icon:SetDesaturated(not on)
+  button.icon:SetAlpha(on and 1 or 0.6)
+  self:SetSelected(button, on)
+end
+
+-- Classic page arrow (spellbook style). dir: "Prev" or "Next".
+function UI:ArrowButton(parent, dir, onClick)
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(26, 26)
+  b:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-" .. dir .. "Page-Up")
+  b:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-" .. dir .. "Page-Down")
+  b:SetDisabledTexture("Interface\\Buttons\\UI-SpellbookIcon-" .. dir .. "Page-Disabled")
+  b:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+  b:SetScript("OnClick", onClick)
+  return b
+end
+
+-- Stat tile: icon and value; the name is shown in the tooltip. title: locale key; line: optional extra text.
+function UI:Tile(parent, icon, title, width)
+  local t = CreateFrame("Frame", nil, parent)
+  t:SetSize(width or 160, 40)
+  local bg = t:CreateTexture(nil, "BACKGROUND")
+  bg:SetSize(36, 36)
+  bg:SetPoint("LEFT")
+  bg:SetColorTexture(0, 0, 0, 0.7)
+  t.icon = t:CreateTexture(nil, "ARTWORK")
+  t.icon:SetPoint("TOPLEFT", bg, 2, -2)
+  t.icon:SetPoint("BOTTOMRIGHT", bg, -2, 2)
+  t.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  self:SetIcon(t.icon, icon)
+  t.value = t:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+  t.value:SetPoint("LEFT", bg, "RIGHT", 8, 0)
+  t.value:SetPoint("RIGHT", t, "RIGHT", -2, 0)
+  t.value:SetJustifyH("LEFT")
+  t.value:SetWordWrap(false)
+  t:EnableMouse(true)
+  self:Tooltip(t, title, function(owner) return owner.extra end)
+  function t:SetValue(text, extra)
+    self.value:SetText(text)
+    self.extra = extra
+  end
+  return t
 end
 
 -------------------------------------------------------------------------------

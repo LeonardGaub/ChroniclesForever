@@ -7,7 +7,7 @@ local L = FC.L
 local UI = FC.UI
 
 local FRAME_NAME = "ForeverChronicleFrame"
-local WIDTH, HEIGHT = 560, 500
+local WIDTH, HEIGHT = 820, 670 -- one size for all pages (fits the map)
 
 local function playSound(kit)
   if SOUNDKIT and SOUNDKIT[kit] and PlaySound then PlaySound(SOUNDKIT[kit]) end
@@ -38,7 +38,8 @@ function UI:Create()
   tinsert(UISpecialFrames, FRAME_NAME) -- close with Escape
   f:Hide()
 
-  -- Pages share the inset area; tabs sit below the frame.
+  -- Pages share the inset area. Tabs are icon buttons on the right edge (like the spellbook tabs);
+  -- the page name is shown in the tooltip.
   f.Tabs = {}
   for i, page in ipairs(self.pages) do
     local container = CreateFrame("Frame", nil, f.Inset or f)
@@ -47,22 +48,14 @@ function UI:Create()
     page.container = container
     page:Create(container)
 
-    local tab = CreateFrame("Button", FRAME_NAME .. "Tab" .. i, f, "PanelTabButtonTemplate")
-    tab:SetID(i)
-    tab:SetText(L[page.labelKey])
-    if i == 1 then
-      tab:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 12, 2)
-    else
-      tab:SetPoint("TOPLEFT", f.Tabs[i - 1], "TOPRIGHT", 4, 0)
-    end
-    tab:SetScript("OnClick", function()
+    local tab = self:IconButton(f, 38, page.icon, page.labelKey, nil, function()
       playSound("IG_CHARACTER_INFO_TAB")
       UI:SelectPage(i)
     end)
-    if PanelTemplates_TabResize then PanelTemplates_TabResize(tab, 0) end
+    tab:SetPoint("TOPLEFT", f, "TOPRIGHT", 1, -56 - (i - 1) * 46)
+    tab.page = page
     f.Tabs[i] = tab
   end
-  if PanelTemplates_SetNumTabs then PanelTemplates_SetNumTabs(f, #self.pages) end
 
   -- Refresh the visible page once per second while open (session timer, new events).
   local elapsed = 0
@@ -75,6 +68,13 @@ function UI:Create()
   end)
   f:SetScript("OnShow", function()
     setPortrait(f)
+    -- Pages with icon = "portrait" show the character's portrait on their tab.
+    for _, tab in ipairs(f.Tabs) do
+      if tab.page.icon == "portrait" and SetPortraitTexture then
+        SetPortraitTexture(tab.icon, "player")
+        tab.icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
+      end
+    end
     playSound("IG_CHARACTER_INFO_OPEN")
     UI:RefreshCurrent()
   end)
@@ -86,12 +86,10 @@ end
 
 function UI:SelectPage(index)
   self.current = index
-  local selected = self.pages[index]
-  self.frame:SetSize(selected.width or WIDTH, selected.height or HEIGHT) -- e.g. the map needs more room
   for i, page in ipairs(self.pages) do
     page.container:SetShown(i == index)
+    self:SetSelected(self.frame.Tabs[i], i == index)
   end
-  if PanelTemplates_SetTab then PanelTemplates_SetTab(self.frame, index) end
   self:RefreshCurrent()
 end
 
@@ -111,17 +109,10 @@ function UI:Toggle()
   self.frame:SetShown(not self.frame:IsShown())
 end
 
--- Language switch: relabel everything that was created with UI:Label / UI:Button and the tabs.
+-- Language switch: relabel everything created with UI:Label / UI:Button. Tooltips read the locale when shown.
 FC:NewModule("UI", { order = 1000 }):RegisterMessage("FC_LANGUAGE_CHANGED", function()
   UI:Relocalize()
-  if UI.frame then
-    for i, page in ipairs(UI.pages) do
-      local tab = UI.frame.Tabs[i]
-      tab:SetText(L[page.labelKey])
-      if PanelTemplates_TabResize then PanelTemplates_TabResize(tab, 0) end
-    end
-    UI:RefreshCurrent()
-  end
+  if UI.frame then UI:RefreshCurrent() end
 end)
 
 -- Addon compartment button (minimap addon menu), declared in the .toc.

@@ -335,6 +335,7 @@ ForeverChronicleDB = {
 				["countdown"] = true,
 				["delay"] = 5,
 				["enabled"] = true,
+				["hideUI"] = false,
 				["triggers"] = {
 					["achievement"] = true,
 					["death"] = false,

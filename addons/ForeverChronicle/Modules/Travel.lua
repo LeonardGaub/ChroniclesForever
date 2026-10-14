@@ -19,7 +19,7 @@ FC:RegisterEventType("zone_discovered", {
   format = function(r) return string.format(L.EVT_ZONE_DISCOVERED, r.data.zone or "?") end,
 })
 
-FC:RegisterStat("zones_discovered", { labelKey = "STAT_ZONES", order = 25 })
+FC:RegisterStat("zones_discovered", { labelKey = "STAT_ZONES", order = 25, icon = "Interface\\Icons\\INV_Misc_Map_01" })
 
 -------------------------------------------------------------------------------
 -- Zone identity

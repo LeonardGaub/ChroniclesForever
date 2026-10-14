@@ -16,7 +16,7 @@ local Util = FC.Util
 local Positions = FC:NewModule("Positions", { order = 26, defaults = { enabled = true, interval = 2 } })
 
 -- ~55 hours of movement at 2 s; standing still adds no points.
-FC.Storage:DefineStream("positions", 100000)
+FC.Storage:DefineStream("positions", 100000, "Interface\\Icons\\INV_Boots_05")
 
 local MOVE_THRESHOLD = 0.002 -- 0.2 % of the map size
 local CONTINENT_TYPE = 2     -- Enum.UIMapType.Continent
@@ -159,7 +159,7 @@ Positions:RegisterEvent("PLAYER_ENTERING_WORLD", sampleSoon)
 -- Options
 -------------------------------------------------------------------------------
 
-FC:RegisterOptionSection("travel", "SECTION_TRAVEL", 15)
+FC:RegisterOptionSection("travel", "SECTION_TRAVEL", 15, "Interface\\Icons\\INV_Boots_05")
 FC:RegisterOption({ section = "travel", module = "Positions", key = "enabled", type = "toggle",
   labelKey = "OPT_POSITIONS", tooltipKey = "OPT_POSITIONS_TIP", order = 1,
   onChange = function() Positions:Restart() end })

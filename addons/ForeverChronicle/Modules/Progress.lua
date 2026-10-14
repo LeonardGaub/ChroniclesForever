@@ -39,10 +39,10 @@ FC:RegisterEventType("achievement_earned", {
   format = function(r) return string.format(L.EVT_ACHIEVEMENT, r.data.name or ("#" .. tostring(r.data.achievementID))) end,
 })
 
-FC:RegisterStat("levels_gained", { labelKey = "STAT_LEVELS", order = 20 })
-FC:RegisterStat("quests_completed", { labelKey = "STAT_QUESTS", order = 21 })
-FC:RegisterStat("deaths", { labelKey = "STAT_DEATHS", order = 22 })
-FC:RegisterStat("achievements", { labelKey = "STAT_ACHIEVEMENTS", order = 23 })
+FC:RegisterStat("levels_gained", { labelKey = "STAT_LEVELS", order = 20, icon = "Interface\\Icons\\Spell_Holy_InnerFire" })
+FC:RegisterStat("quests_completed", { labelKey = "STAT_QUESTS", order = 21, icon = "Interface\\Icons\\INV_Misc_Note_01" })
+FC:RegisterStat("deaths", { labelKey = "STAT_DEATHS", order = 22, icon = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01" })
+FC:RegisterStat("achievements", { labelKey = "STAT_ACHIEVEMENTS", order = 23, icon = "Interface\\Icons\\INV_Misc_Ribbon_01" })
 
 -------------------------------------------------------------------------------
 -- Handlers
