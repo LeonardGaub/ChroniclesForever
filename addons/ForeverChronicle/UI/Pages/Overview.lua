@@ -181,11 +181,12 @@ function page:Create(c)
   self.graphTitle:SetPoint("RIGHT", nextB, "LEFT", -4, 6)
   self.graphSubtitle = c:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   self.graphSubtitle:SetPoint("TOP", self.graphTitle, "BOTTOM", 0, -2)
-  self.graph = UI:BarGraph(c, panel:GetWidth(), 140)
+  self.graph = UI:LineGraph(c, panel:GetWidth(), 140)
   self.graph.frame:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -8)
 end
 
-local GRAPH_HOURS = 12
+local GRAPH_SECONDS = 2 * 3600   -- the graph shows the last 2 hours of played time
+local TICK_SECONDS = 30 * 60
 
 function page:StepGraph(step)
   local defs = FC.graphDefs
@@ -204,23 +205,39 @@ function page:RefreshGraph()
   if #defs == 0 then return end
   local def = defs[1]
   for _, d in ipairs(defs) do if d.key == FC.db.settings.overviewGraph then def = d end end
+  -- The window moves with the clock while playing: recompute at most once per minute.
   local version = table.concat({ def.key, FC:GetLanguage(), FC.Storage:GetStream("metrics").nextSeq,
-    FC.Storage:GetStream("events").nextSeq, FC.Storage:GetStream("sessions").nextSeq, date("%H") }, ":")
+    FC.Storage:GetStream("events").nextSeq, FC.Storage:GetStream("sessions").nextSeq, date("%H%M") }, ":")
   if version == self.graphVersion then return end
   self.graphVersion = version
 
-  local hours = FC.Metrics:PlayedHours(GRAPH_HOURS)
-  local values = def.values(hours)
-  local labels = {}
-  for i, h in ipairs(hours) do labels[i] = date("%H", h) end
-  self.graphTitle:SetText(L[def.labelKey])
-  self.graphSubtitle:SetText(string.format(L.GRAPH_SUBTITLE, #hours))
+  local Metrics = FC.Metrics
+  local spans, length = Metrics:PlayedWindow(GRAPH_SECONDS)
+  local points = spans[1] and Metrics:WindowPoints(def.series(spans[1].from), spans, def) or {}
   local format = def.format or function(v) return Util.FormatNumber(v) end
-  self.graph:SetData(labels, values, def.color, format, function(i)
-    local h = hours[i]
-    return string.format(L.GRAPH_BAR_TITLE, date(L.GRAPH_DAY_FORMAT, h), date("%H", h), date("%H", h + 3600)),
-      format(values[i])
-  end, L.GRAPH_EMPTY)
+
+  -- Time labels: start, every 30 minutes of play, end. Faint lines where sessions were joined.
+  local ticks, breaks = {}, {}
+  if length > 0 then
+    ticks[1] = { x = 0, label = date("%H:%M", spans[1].from) }
+    for x = TICK_SECONDS, length - TICK_SECONDS / 3, TICK_SECONDS do
+      ticks[#ticks + 1] = { x = x, label = date("%H:%M", Metrics.TimeAt(spans, x)) }
+    end
+    ticks[#ticks + 1] = { x = length, label = date("%H:%M", spans[#spans].to) }
+    for i = 2, #spans do breaks[#breaks + 1] = spans[i].x end
+  end
+
+  self.graphTitle:SetText(L[def.labelKey])
+  local subtitle = string.format(L.GRAPH_SUBTITLE, Util.FormatDuration(length))
+  if #points >= 2 then
+    local change = points[#points].value - points[1].value
+    subtitle = subtitle .. "  \194\183  " .. (change > 0 and "+" or "") .. format(change)
+  end
+  self.graphSubtitle:SetText(subtitle)
+  self.graph:SetData(points, length, { color = def.color, format = format, emptyText = L.GRAPH_EMPTY,
+    ticks = ticks, breaks = breaks, tooltip = function(p)
+      return date(L.GRAPH_POINT_TIME, p.time), format(p.value)
+    end })
 end
 
 function page:Refresh()

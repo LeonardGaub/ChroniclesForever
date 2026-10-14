@@ -475,6 +475,6 @@ ForeverChronicleDB = {
 			["UI"] = {
 			},
 		},
-		["overviewGraph"] = "gold",
+		["overviewGraph"] = "xp",
 	},
 }

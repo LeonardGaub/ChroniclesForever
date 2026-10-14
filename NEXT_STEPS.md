@@ -89,6 +89,11 @@
   - Desktop: migration 7 `instance_entrances`; `EventRow.instance_id`.
   - Dungeon maps: art can be shown later (the Classic dungeon maps have uiMapIDs), but without positions inside
     instances only as a picture with the dungeon's events listed, not with a route.
+- **Addon v0.10.3: line graph (user request).** The overview graph is now a line over the last 2 hours of
+  played time (`Metrics:PlayedWindow`; time between sessions is skipped and marked with a faint line). XP, kills
+  and quests show what was gained in the window (`relative`); quests are drawn as steps at the exact times; gold
+  shows the money held. Clock times along the bottom, and hovering shows the time and value of the nearest point.
+  Graph defs now provide `series(since)` instead of hourly values (`UI:LineGraph` replaces the bar graph).
 - **Desktop:** the icon overhaul was reverted at the user's request; text UI stays.
   - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
   - Open question for the user: real WoW icons for the desktop. Options: export from the local client with

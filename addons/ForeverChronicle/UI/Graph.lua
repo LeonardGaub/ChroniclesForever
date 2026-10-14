@@ -1,6 +1,7 @@
--- Forever Chronicle - bar graph
--- One bar per value, a zero line (negative values are drawn below it in red), the largest value as a
--- label, hour labels under the bars and a tooltip per bar.
+-- Forever Chronicle - line graph
+-- A value over time: one line through the points, the largest and smallest value as labels, clock times
+-- along the bottom, faint vertical lines where play sessions were joined, and a tooltip with the value
+-- under the cursor.
 
 local ADDON, FC = ...
 local UI = FC.UI
@@ -8,86 +9,172 @@ local UI = FC.UI
 local Graph = {}
 Graph.__index = Graph
 
-local LABEL_H = 14   -- space for the hour labels under the bars
+local LABEL_H = 14   -- space for the time labels under the plot
 local TOP_PAD = 14   -- space for the max label
+local THICKNESS = 2
 
-function UI:BarGraph(parent, width, height)
-  local self = setmetatable({ bars = {}, labels = {} }, Graph)
+function UI:LineGraph(parent, width, height)
+  local self = setmetatable({ lines = {}, ticks = {}, breaks = {}, points = {} }, Graph)
   local f = CreateFrame("Frame", nil, parent)
   f:SetSize(width, height)
-  self.frame, self.width, self.height = f, width, height
+  self.frame = f
 
   local bg = f:CreateTexture(nil, "BACKGROUND")
   bg:SetAllPoints()
   bg:SetColorTexture(0, 0, 0, 0.35)
 
-  self.zero = f:CreateTexture(nil, "ARTWORK", nil, 2)
-  self.zero:SetHeight(1)
-  self.zero:SetColorTexture(1, 0.82, 0, 0.35)
+  local plot = CreateFrame("Frame", nil, f)
+  plot:SetPoint("TOPLEFT", 0, -TOP_PAD)
+  plot:SetPoint("BOTTOMRIGHT", 0, LABEL_H)
+  self.plot, self.plotW, self.plotH = plot, width, height - TOP_PAD - LABEL_H
+
+  self.base = plot:CreateTexture(nil, "ARTWORK", nil, 1)
+  self.base:SetHeight(1)
+  self.base:SetColorTexture(1, 0.82, 0, 0.3)
 
   self.maxLabel = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   self.maxLabel:SetPoint("TOPLEFT", 4, -2)
+  self.minLabel = plot:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  self.minLabel:SetPoint("BOTTOMLEFT", 4, 3)
   self.empty = f:CreateFontString(nil, "OVERLAY", "GameFontDisable")
   self.empty:SetPoint("CENTER")
+
+  -- Hover: dot on the nearest point and a tooltip with its time and value.
+  self.dot = plot:CreateTexture(nil, "OVERLAY")
+  self.dot:SetSize(7, 7)
+  self.dot:SetTexture("Interface\\Buttons\\WHITE8X8")
+  self.dot:Hide()
+  plot:EnableMouse(true)
+  plot:SetScript("OnEnter", function() self.hovering = true end)
+  plot:SetScript("OnLeave", function()
+    self.hovering = false
+    self.dot:Hide()
+    GameTooltip:Hide()
+  end)
+  plot:SetScript("OnUpdate", function()
+    if not self.hovering then return end
+    local left, scale = plot:GetLeft(), plot:GetEffectiveScale()
+    if not left then return end
+    self:ShowPointAt(GetCursorPosition() / scale - left)
+  end)
   return self
 end
 
--- labels, values: lists of the same length; color = { r, g, b }; format(value) -> text; tooltip(i) -> title, line
-function Graph:SetData(labels, values, color, format, tooltip, emptyText)
-  format = format or function(v) return tostring(v) end
-  local n = #values
-  local maxV, minV = 0, 0
-  for _, v in ipairs(values) do
-    if v > maxV then maxV = v end
-    if v < minV then minV = v end
+local function line(self, i)
+  local l = self.lines[i]
+  if not l then
+    l = self.plot:CreateLine(nil, "ARTWORK", nil, 3)
+    l:SetThickness(THICKNESS)
+    self.lines[i] = l
   end
-  local hasData = maxV ~= 0 or minV ~= 0
-  self.empty:SetText(emptyText or "")
+  return l
+end
+
+-- points: { { x, value, time } } ascending by x (x in seconds of the window); length: window length in seconds.
+-- opts = { color = { r, g, b }, format(value) -> text, emptyText, ticks = { { x, label } }, breaks = { x },
+--          tooltip(point) -> title, line }
+function Graph:SetData(points, length, opts)
+  local format = opts.format or function(v) return tostring(v) end
+  self.points, self.opts, self.format = points, opts, format
+  local minV, maxV
+  for _, p in ipairs(points) do
+    if not minV or p.value < minV then minV = p.value end
+    if not maxV or p.value > maxV then maxV = p.value end
+  end
+  local hasData = #points >= 2 and length > 0
+  self.empty:SetText(opts.emptyText or "")
   self.empty:SetShown(not hasData)
-  self.maxLabel:SetText(hasData and format(maxV ~= 0 and maxV or minV) or "")
+  self.maxLabel:SetText(hasData and format(maxV) or "")
+  self.minLabel:SetText(hasData and maxV ~= minV and format(minV) or "")
+  self.base:SetShown(hasData)
 
-  local plotH = self.height - LABEL_H - TOP_PAD
-  local range = math.max(maxV - minV, 1)
-  local zeroY = LABEL_H + plotH * (-minV / range) -- from the bottom
-  self.zero:ClearAllPoints()
-  self.zero:SetPoint("BOTTOMLEFT", self.frame, "BOTTOMLEFT", 0, zeroY)
-  self.zero:SetPoint("RIGHT", self.frame, "RIGHT")
+  local range = (hasData and maxV > minV) and (maxV - minV) or 1
+  local function pos(p)
+    return self.plotW * p.x / math.max(length, 1), self.plotH * (p.value - (minV or 0)) / range
+  end
+  self.pos = pos
+  self.base:ClearAllPoints()
+  self.base:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", 0, 0)
+  self.base:SetPoint("RIGHT", self.plot, "RIGHT")
 
-  local slot = n > 0 and (self.width / n) or self.width
-  local barW = math.max(2, slot * 0.7)
-  for i = 1, n do
-    local bar = self.bars[i]
-    if not bar then
-      bar = CreateFrame("Frame", nil, self.frame)
-      bar.tex = bar:CreateTexture(nil, "ARTWORK")
-      bar.tex:SetAllPoints()
-      bar:EnableMouse(true)
-      UI:Tooltip(bar, function(b) return b.title end, function(b) return b.line end)
-      self.bars[i] = bar
-      self.labels[i] = self.frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  local n = 0
+  if hasData then
+    local c = opts.color or { 1, 0.82, 0 }
+    for i = 2, #points do
+      local x1, y1 = pos(points[i - 1])
+      local x2, y2 = pos(points[i])
+      n = n + 1
+      local l = line(self, n)
+      l:SetColorTexture(c[1], c[2], c[3], 0.95)
+      l:SetStartPoint("BOTTOMLEFT", self.plot, x1, y1)
+      l:SetEndPoint("BOTTOMLEFT", self.plot, x2, y2)
+      l:Show()
     end
-    local v = values[i]
-    local h = math.max(1, plotH * math.abs(v) / range)
-    local x = (i - 1) * slot + (slot - barW) / 2
-    bar:ClearAllPoints()
-    bar:SetSize(barW, v == 0 and 1 or h)
-    if v >= 0 then
-      bar:SetPoint("BOTTOMLEFT", self.frame, "BOTTOMLEFT", x, zeroY)
-      bar.tex:SetColorTexture(color[1], color[2], color[3], v == 0 and 0.25 or 0.9)
-    else
-      bar:SetPoint("TOPLEFT", self.frame, "BOTTOMLEFT", x, zeroY)
-      bar.tex:SetColorTexture(0.85, 0.2, 0.2, 0.9)
+    self.dot:SetVertexColor(c[1], c[2], c[3])
+  end
+  for i = n + 1, #self.lines do self.lines[i]:Hide() end
+  self.lineCount = n
+
+  -- Session joins.
+  local breaks = hasData and opts.breaks or {}
+  for i, bx in ipairs(breaks) do
+    local b = self.breaks[i]
+    if not b then
+      b = self.plot:CreateTexture(nil, "ARTWORK", nil, 2)
+      b:SetWidth(1)
+      b:SetColorTexture(1, 1, 1, 0.15)
+      self.breaks[i] = b
     end
-    if tooltip then bar.title, bar.line = tooltip(i) end
-    bar:Show()
-    local label = self.labels[i]
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", self.plot, "TOPLEFT", self.plotW * bx / math.max(length, 1), 0)
+    b:SetPoint("BOTTOM", self.plot, "BOTTOM")
+    b:Show()
+  end
+  for i = #breaks + 1, #self.breaks do self.breaks[i]:Hide() end
+
+  -- Time labels.
+  local ticks = hasData and opts.ticks or {}
+  for i, t in ipairs(ticks) do
+    local label = self.ticks[i]
+    if not label then
+      label = self.frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+      self.ticks[i] = label
+    end
+    local x = self.plotW * t.x / math.max(length, 1)
     label:ClearAllPoints()
-    label:SetPoint("BOTTOM", self.frame, "BOTTOMLEFT", x + barW / 2, 1)
-    label:SetText(labels[i] or "")
+    if i == 1 then
+      label:SetPoint("BOTTOMLEFT", self.frame, "BOTTOMLEFT", x + 2, 1)
+    elseif i == #ticks then
+      label:SetPoint("BOTTOMRIGHT", self.frame, "BOTTOMLEFT", x - 2, 1)
+    else
+      label:SetPoint("BOTTOM", self.frame, "BOTTOMLEFT", x, 1)
+    end
+    label:SetText(t.label)
     label:Show()
   end
-  for i = n + 1, #self.bars do
-    self.bars[i]:Hide()
-    self.labels[i]:Hide()
+  for i = #ticks + 1, #self.ticks do self.ticks[i]:Hide() end
+end
+
+-- Highlights the point nearest to plot x coordinate px and shows its tooltip.
+function Graph:ShowPointAt(px)
+  local points = self.points
+  if #points < 2 or not self.pos then return end
+  local best, bestD
+  for _, p in ipairs(points) do
+    local x = self.pos(p)
+    local d = math.abs(x - px)
+    if not bestD or d < bestD then best, bestD = p, d end
   end
+  local x, y = self.pos(best)
+  self.dot:ClearAllPoints()
+  self.dot:SetPoint("CENTER", self.plot, "BOTTOMLEFT", x, y)
+  self.dot:Show()
+  if self.opts.tooltip then
+    local title, text = self.opts.tooltip(best)
+    GameTooltip:SetOwner(self.plot, "ANCHOR_CURSOR")
+    GameTooltip:SetText(title, 1, 0.82, 0)
+    if text then GameTooltip:AddLine(text, 1, 1, 1) end
+    GameTooltip:Show()
+  end
+  return best
 end

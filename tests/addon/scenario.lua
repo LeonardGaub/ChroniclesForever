@@ -176,23 +176,29 @@ if PHASE == 1 then
   check(ForeverChronicleDB.maps["1413"].continent == 1414 and ForeverChronicleDB.maps["1413"].minX == 0.4,
     "map geometry recorded")
 
-  -- Graphs: XP per played hour from the metrics stream, switchable.
-  local sum = 0
-  for _, v in pairs(FC.Metrics:HourlyDeltas("xp")) do sum = sum + v end
-  check(sum == 4200, "XP time series matches the earned XP (" .. sum .. ")")
-  local hours = FC.Metrics:PlayedHours(12)
-  check(#hours >= 1 and #hours <= 12, "played hours (" .. #hours .. ")")
+  -- Graphs: line over the last 2 hours of played time, switchable.
+  local spans, length = FC.Metrics:PlayedWindow(7200)
+  check(#spans == 1 and length > 600 and length < 7200, "played window covers the session (" .. length .. " s)")
   FC.UI:SelectPage(1)
   local ov = FC.UI.pages[1]
   ov.graphVersion = nil
   ov:RefreshGraph()
-  local shownBars = 0
-  for _, bar in ipairs(ov.graph.bars) do if bar:IsShown() then shownBars = shownBars + 1 end end
-  check(shownBars == #hours and ov.graphTitle.text == "Erfahrung pro Stunde", "XP graph drawn (" .. shownBars .. " bars)")
+  local pts = ov.graph.points
+  check(#pts >= 3 and pts[1].value == 0 and pts[#pts].value == 4200 and pts[#pts].x == length,
+    "XP line from 0 to the earned 4200 (" .. #pts .. " points)")
+  check(ov.graph.lineCount == #pts - 1 and ov.graphTitle.text == "Gesammelte Erfahrung", "XP line drawn")
+  check(ov.graphSubtitle.text:find("+4.200", 1, true), "subtitle shows the change: " .. ov.graphSubtitle.text)
+  check(ov.graph.ticks[1]:IsShown() and ov.graph.ticks[1].text:match("^%d%d:%d%d$"), "time labels")
+  check(ov.graph:ShowPointAt(ov.graph.plotW) == pts[#pts] and ov.graph.dot:IsShown(), "hover shows the nearest point")
   ov:StepGraph(1)
-  check(FC.db.settings.overviewGraph == "kills" and ov.graphTitle.text == "Getötete Gegner pro Stunde", "switch to kills graph")
-  ov:StepGraph(-2)
-  check(FC.db.settings.overviewGraph == "gold", "switching wraps around")
+  check(FC.db.settings.overviewGraph == "kills" and ov.graphTitle.text == "Getötete Gegner" and
+    ov.graph.points[#ov.graph.points].value == 2, "switch to kills graph")
+  ov:StepGraph(1)
+  check(ov.graph.points[#ov.graph.points].value == 1, "quests graph counts the completed quest")
+  ov:StepGraph(1)
+  check(FC.db.settings.overviewGraph == "gold" and ov.graph.points[1].value == 123456, "gold graph shows the money held")
+  ov:StepGraph(1)
+  check(FC.db.settings.overviewGraph == "xp", "switching wraps around")
   local shots = ForeverChronicleDB.characters["Player-4619-0112A417"].streams.screenshots.records
   for _, r in ipairs(shots) do print("    shot", r.trigger, r.status, #r.events) end
   check(#shots == 1 and #MOCK.screenshots == 1, "level-up and achievement produced one screenshot")
@@ -224,6 +230,14 @@ elseif PHASE == 3 then
   MOCK.advance(1)
   MOCK.closeProfession()
   MOCK.advance(300)
+  -- Graph window: the last 2 hours of played time join both sessions; a short window stays in the last one.
+  local Metrics = ForeverChronicle.Metrics
+  local spans, length = Metrics:PlayedWindow(7200)
+  check(#spans == 2 and spans[2].x == spans[1].to - spans[1].from and length == spans[2].x + spans[2].to - spans[2].from,
+    "window joins two sessions (" .. length .. " s)")
+  check(Metrics.TimeAt(spans, spans[2].x + 10) == spans[2].from + 10, "window position -> clock time")
+  local short, shortLength = Metrics:PlayedWindow(200)
+  check(#short == 1 and shortLength == 200 and short[1].to - short[1].from == 200, "short window")
   MOCK.fire("PLAYER_LOGOUT")
   SAVED_OUT = save()
 

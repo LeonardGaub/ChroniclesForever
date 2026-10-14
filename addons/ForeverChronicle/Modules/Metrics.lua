@@ -1,7 +1,7 @@
 -- Forever Chronicle - Metrics module
 -- A small time series for graphs: every minute (and on logout) the current totals are stored in the compact
 -- "metrics" stream when something changed:  time,xpEarned,kills,money,level
--- Graphs use FC.Metrics:HourlyDeltas(field) and FC.Metrics:PlayedHours(n) (hours overlapped by sessions).
+-- Graphs show a window over the last hours of played time (Metrics:PlayedWindow, Metrics:WindowPoints).
 
 local ADDON, FC = ...
 local Util = FC.Util
@@ -61,75 +61,116 @@ end
 Metrics:RegisterEvent("PLAYER_LOGOUT", function(self) self:Sample() end)
 
 -------------------------------------------------------------------------------
--- Queries for graphs
+-- Queries for graphs: a window over the last hours of *played* time (time between sessions is skipped)
 -------------------------------------------------------------------------------
 
-local function hourOf(t) return t - (t % 3600) end
-
--- Start times of the last n clock hours in which the character played (ascending).
-function Metrics:PlayedHours(n)
-  local set = {}
-  for _, s in ipairs(FC.Storage:GetStream("sessions").records) do
+-- The last `seconds` of played time as spans { from, to, x } (x = where the span starts in the window,
+-- in seconds), oldest first, and the window length (shorter if less has been played).
+function Metrics:PlayedWindow(seconds)
+  local sessions = FC.Storage:GetStream("sessions").records
+  local spans, remaining = {}, seconds
+  for i = #sessions, 1, -1 do
+    local s = sessions[i]
     local stop = s.endedAt or time()
-    for h = hourOf(s.startedAt), hourOf(stop), 3600 do set[h] = true end
+    local start = math.max(s.startedAt, stop - remaining)
+    if stop > start then
+      table.insert(spans, 1, { from = start, to = stop })
+      remaining = remaining - (stop - start)
+    end
+    if remaining <= 0 then break end
   end
-  local hours = {}
-  for h in pairs(set) do hours[#hours + 1] = h end
-  table.sort(hours)
+  local x = 0
+  for _, span in ipairs(spans) do
+    span.x = x
+    x = x + (span.to - span.from)
+  end
+  return spans, x
+end
+
+-- Wall-clock time at window position x.
+function Metrics.TimeAt(spans, x)
+  for _, span in ipairs(spans) do
+    if x <= span.x + (span.to - span.from) then return span.from + (x - span.x) end
+  end
+  local last = spans[#spans]
+  return last and last.to
+end
+
+-- Samples of a metrics field since `since` (plus the one before it): { { time, value } } ascending.
+function Metrics:FieldSeries(field, since)
+  local records = FC.Storage:GetStream("metrics").records
   local out = {}
-  for i = math.max(1, #hours - n + 1), #hours do out[#out + 1] = hours[i] end
+  for i = #records, 1, -1 do
+    local s = Metrics.Parse(records[i])
+    if s and s[field] then
+      table.insert(out, 1, { time = s.time, value = s[field] })
+      if s.time <= since then break end
+    end
+  end
   return out
 end
 
--- Change of a metric per clock hour: { [hourStart] = delta }. Each change counts in the hour it was sampled.
-function Metrics:HourlyDeltas(field)
-  local out, prev = {}, nil
-  for _, text in ipairs(FC.Storage:GetStream("metrics").records) do
-    local s = Metrics.Parse(text)
-    if s then
-      if prev and s[field] and prev[field] then
-        local h = hourOf(s.time)
-        out[h] = (out[h] or 0) + (s[field] - prev[field])
+-- Running count of events of a type: { { time, value } } ascending (value = events up to that time).
+function Metrics:EventSeries(eventType, since)
+  local records, times = FC.Storage:GetStream("events").records, {}
+  for i = #records, 1, -1 do
+    local r = records[i]
+    if r.time and r.time < since then break end
+    if r.type == eventType and r.time then table.insert(times, 1, r.time) end
+  end
+  local out = { { time = since, value = 0 } }
+  for i, t in ipairs(times) do out[#out + 1] = { time = t, value = i } end
+  return out
+end
+
+-- Points of a series inside the window: { { x, value, time } }. The value at a time is the last sample at or
+-- before it. def.step draws changes as steps (exact event times); def.relative shows the change since the
+-- start of the window instead of the value itself.
+function Metrics:WindowPoints(series, spans, def)
+  local function valueAt(t)
+    local v
+    for _, p in ipairs(series) do
+      if p.time <= t then v = p.value else break end
+    end
+    return v
+  end
+  local points = {}
+  local function add(x, t, v)
+    if v ~= nil then points[#points + 1] = { x = x, time = t, value = v } end
+  end
+  for _, span in ipairs(spans) do
+    add(span.x, span.from, valueAt(span.from))
+    for _, p in ipairs(series) do
+      if p.time > span.from and p.time <= span.to then
+        local x = span.x + (p.time - span.from)
+        if def.step then add(x, p.time, valueAt(p.time - 1)) end
+        add(x, p.time, p.value)
       end
-      prev = s
     end
+    add(span.x + (span.to - span.from), span.to, valueAt(span.to))
   end
-  return out
-end
-
--- Number of events of a type per clock hour.
-function Metrics:HourlyEventCounts(eventType)
-  local out = {}
-  for _, r in ipairs(FC.Storage:GetStream("events").records) do
-    if r.type == eventType and r.time then
-      local h = hourOf(r.time)
-      out[h] = (out[h] or 0) + 1
-    end
+  if def.relative and points[1] then
+    local base = points[1].value
+    for _, p in ipairs(points) do p.value = p.value - base end
   end
-  return out
+  return points
 end
 
 -------------------------------------------------------------------------------
--- Graphs (FC:RegisterGraph): values for the given hours
+-- Graphs (FC:RegisterGraph): series(since) -> { { time, value } }
 -------------------------------------------------------------------------------
 
--- Builds a values function from a function that returns { [hourStart] = value } (computed once per call).
-local function fromMap(map) return function(hours)
-  local byHour, values = map(), {}
-  for i, h in ipairs(hours) do values[i] = byHour[h] or 0 end
-  return values
-end end
+local function coins(v)
+  local sign = v < 0 and "-" or ""
+  return sign .. (GetCoinTextureString and GetCoinTextureString(math.abs(v)) or tostring(math.abs(v)))
+end
 
-FC:RegisterGraph("xp", { labelKey = "GRAPH_XP", order = 10, color = { 0.58, 0.2, 0.85 },
-  values = fromMap(function() return Metrics:HourlyDeltas("xp") end),
+FC:RegisterGraph("xp", { labelKey = "GRAPH_XP", order = 10, color = { 0.58, 0.2, 0.85 }, relative = true,
+  series = function(since) return Metrics:FieldSeries("xp", since) end,
   format = function(v) return FC.Util.FormatNumber(v) end })
-FC:RegisterGraph("kills", { labelKey = "GRAPH_KILLS", order = 20, color = { 0.85, 0.2, 0.2 },
-  values = fromMap(function() return Metrics:HourlyDeltas("kills") end) })
-FC:RegisterGraph("quests", { labelKey = "GRAPH_QUESTS", order = 30, color = { 1, 0.82, 0 },
-  values = fromMap(function() return Metrics:HourlyEventCounts("quest_completed") end) })
+FC:RegisterGraph("kills", { labelKey = "GRAPH_KILLS", order = 20, color = { 0.85, 0.2, 0.2 }, relative = true,
+  series = function(since) return Metrics:FieldSeries("kills", since) end })
+FC:RegisterGraph("quests", { labelKey = "GRAPH_QUESTS", order = 30, color = { 1, 0.82, 0 }, relative = true,
+  step = true, series = function(since) return Metrics:EventSeries("quest_completed", since) end })
 FC:RegisterGraph("gold", { labelKey = "GRAPH_GOLD", order = 40, color = { 0.95, 0.8, 0.3 },
-  values = fromMap(function() return Metrics:HourlyDeltas("money") end),
-  format = function(v)
-    local sign = v < 0 and "-" or ""
-    return sign .. (GetCoinTextureString and GetCoinTextureString(math.abs(v)) or tostring(math.abs(v)))
-  end })
+  series = function(since) return Metrics:FieldSeries("money", since) end, format = coins })

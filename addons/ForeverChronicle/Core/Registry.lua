@@ -61,9 +61,10 @@ function FC:RegisterStat(key, def)
 end
 
 -------------------------------------------------------------------------------
--- Graphs: shown under the character on the overview, switchable.
---   def = { labelKey, order, color = { r, g, b }, values = function(hours) -> { number, ... },
---           format = function(value) -> text }   -- hours: start times of the played hours shown
+-- Graphs: line graphs under the character on the overview, switchable; they show the last 2 hours of played time.
+--   def = { labelKey, order, color = { r, g, b }, series = function(since) -> { { time, value }, ... } (ascending),
+--           relative = true (show the change since the window start), step = true (changes at exact times),
+--           format = function(value) -> text }
 -------------------------------------------------------------------------------
 
 FC.graphDefs = {}
