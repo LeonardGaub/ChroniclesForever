@@ -13,14 +13,6 @@ local function playSound(kit)
   if SOUNDKIT and SOUNDKIT[kit] and PlaySound then PlaySound(SOUNDKIT[kit]) end
 end
 
-local function setPortrait(frame)
-  if frame.SetPortraitToUnit then
-    frame:SetPortraitToUnit("player")
-  elseif frame.portrait and SetPortraitTexture then
-    SetPortraitTexture(frame.portrait, "player")
-  end
-end
-
 function UI:Create()
   local f = CreateFrame("Frame", FRAME_NAME, UIParent, "ButtonFrameTemplate")
   f:SetSize(WIDTH, HEIGHT)
@@ -70,14 +62,8 @@ function UI:Create()
     end
   end)
   f:SetScript("OnShow", function()
-    setPortrait(f)
-    -- Pages with icon = "portrait" show the character's portrait on their tab.
-    for _, tab in ipairs(f.Tabs) do
-      if tab.page.icon == "portrait" and SetPortraitTexture then
-        SetPortraitTexture(tab.icon, "player")
-        tab.icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
-      end
-    end
+    -- The corner portrait and tabs with icon = "portrait" show the character the window shows (UI/ViewBar.lua).
+    UI:UpdatePortrait()
     playSound("IG_CHARACTER_INFO_OPEN")
     UI:RefreshCurrent()
   end)

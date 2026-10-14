@@ -1,21 +1,75 @@
 -- Forever Chronicle - character chooser around the window (docs/Sharing_Design.md, phase 2)
--- A button under the title shows whose character the window shows; it opens a scrollable list of all
--- characters: mine (this account; the played one first) and, grouped by friend, my friends' characters from
--- the desktop app. Choosing one makes every tab show that character (FC:SetView). When it is not the played
--- character, a banner says so ("nur lesen") with a button back to my own.
+-- A wide dropdown bar across the top of the window shows whose character the window shows; it opens a
+-- scrollable list of all characters: mine (this account; the played one first) and, grouped by friend, my
+-- friends' characters from the desktop app. Choosing one makes every tab show that character (FC:SetView) and
+-- the portrait in the corner shows it (live portrait for the played character, class emblem otherwise).
+-- For any other character the bar says so ("nur lesen") and offers a button back to my own.
 
 local ADDON, FC = ...
 local L = FC.L
 local UI = FC.UI
 local Util = FC.Util
 
-local ROW_HEIGHT = 34
-local LIST_W, LIST_H = 360, 430
+local ROW_HEIGHT = 36
+local BAR_HEIGHT = 32
+local LIST_H = 440
+local CLASS_ICONS = "Interface\\TargetingFrame\\UI-Classes-Circles"
 
 local function fullName(info)
   local name = info.name or "?"
   if info.nameSuffix and info.nameSuffix ~= "" then name = name .. " " .. info.nameSuffix end
   return name
+end
+
+-- Class emblem on a texture; false if the class is unknown.
+function UI:SetClassIcon(tex, classFile)
+  local coords = CLASS_ICON_TCOORDS and classFile and CLASS_ICON_TCOORDS[classFile]
+  if not coords then
+    tex:SetTexture(UI.ICON_FALLBACK)
+    tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    return false
+  end
+  tex:SetTexture(CLASS_ICONS)
+  tex:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+  return true
+end
+
+-- The portrait in the window corner and on the overview tab: the played character's face, otherwise the
+-- class emblem of the character shown (the game only draws faces for units that are present).
+function UI:UpdatePortrait()
+  local f = self.frame
+  if not f then return end
+  local played = FC:IsViewingPlayed()
+  local classFile = FC:ViewChar().info.classFile
+  if played then
+    if f.SetPortraitToUnit then
+      f:SetPortraitToUnit("player")
+      if f.SetPortraitTexCoord then f:SetPortraitTexCoord(0, 1, 0, 1) end
+    elseif f.portrait and SetPortraitTexture then
+      SetPortraitTexture(f.portrait, "player")
+      f.portrait:SetTexCoord(0, 1, 0, 1)
+    end
+  else
+    local coords = CLASS_ICON_TCOORDS and classFile and CLASS_ICON_TCOORDS[classFile]
+    if f.SetPortraitToClassIcon and coords then
+      f:SetPortraitToClassIcon(classFile)
+    elseif f.SetPortraitToAsset then
+      f:SetPortraitToAsset(coords and CLASS_ICONS or UI.ICON_FALLBACK)
+      if f.SetPortraitTexCoord and coords then f:SetPortraitTexCoord(coords[1], coords[2], coords[3], coords[4]) end
+    elseif f.portrait then
+      self:SetClassIcon(f.portrait, classFile)
+    end
+  end
+  for _, tab in ipairs(f.Tabs or {}) do
+    if tab.page.icon == "portrait" then
+      if played and SetPortraitTexture then
+        SetPortraitTexture(tab.icon, "player")
+        tab.icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
+      else
+        self:SetClassIcon(tab.icon, classFile)
+      end
+    end
+  end
 end
 
 -- List items: headers and characters, in FC:ViewEntries order.
@@ -37,18 +91,21 @@ end
 
 local function createRow(row)
   row.header = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  row.header:SetPoint("BOTTOMLEFT", 6, 4)
+  row.header:SetPoint("BOTTOMLEFT", 6, 5)
   row.note = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   row.note:SetPoint("LEFT", 8, 0)
   row.note:SetPoint("RIGHT", -8, 0)
   row.note:SetJustifyH("LEFT")
+  row.icon = row:CreateTexture(nil, "ARTWORK")
+  row.icon:SetSize(28, 28)
+  row.icon:SetPoint("LEFT", 12, 0)
   row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  row.name:SetPoint("TOPLEFT", 14, -3)
+  row.name:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 8, -1)
   row.name:SetPoint("RIGHT", -8, 0)
   row.name:SetJustifyH("LEFT")
   row.name:SetWordWrap(false)
   row.sub = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  row.sub:SetPoint("BOTTOMLEFT", 14, 4)
+  row.sub:SetPoint("BOTTOMLEFT", row.icon, "BOTTOMRIGHT", 8, 1)
   row.sub:SetPoint("RIGHT", -8, 0)
   row.sub:SetJustifyH("LEFT")
   row.sub:SetWordWrap(false)
@@ -72,14 +129,13 @@ local function updateRow(row, item)
   row.key = e and e.key
   row.header:SetShown(item.header ~= nil)
   row.note:SetShown(item.note ~= nil)
-  row.name:SetShown(e ~= nil)
-  row.sub:SetShown(e ~= nil)
-  row.hl:SetShown(e ~= nil)
+  for _, region in ipairs({ row.icon, row.name, row.sub, row.hl }) do region:SetShown(e ~= nil) end
   row.selected:SetShown(e ~= nil and e.key == FC:ViewKey())
   if item.header then row.header:SetText(item.header) end
   if item.note then row.note:SetText(item.note) end
   if e then
     local info = e.char.info
+    UI:SetClassIcon(row.icon, info.classFile)
     row.name:SetText(UI:ClassColored(fullName(info), info.classFile) .. (e.played and ("  |cff999999(" .. L.VIEW_PLAYED .. ")|r") or ""))
     local sub = string.format(L.VIEW_ROW, tostring(info.level or "?"), info.realm or "")
     if info.lastSeenAt and not e.played then sub = sub .. "  \194\183  " .. Util.FormatTime(info.lastSeenAt) end
@@ -88,34 +144,45 @@ local function updateRow(row, item)
 end
 
 function UI:CreateViewBar(f)
-  local button = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-  button:SetSize(280, 22)
-  button:SetPoint("TOPLEFT", f, "TOPLEFT", 66, -30)
-  local text = button:GetFontString()
-  if text then
-    text:ClearAllPoints()
-    text:SetPoint("LEFT", 10, 0)
-    text:SetPoint("RIGHT", -24, 0)
-    text:SetJustifyH("LEFT")
+  -- The bar: from the portrait to the right edge of the window, under the title.
+  local bar = CreateFrame("Button", nil, f, "BackdropTemplate")
+  bar:SetHeight(BAR_HEIGHT)
+  bar:SetPoint("TOPLEFT", f, "TOPLEFT", 58, -25)
+  bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -25)
+  if bar.SetBackdrop then
+    bar:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+    bar:SetBackdropColor(0.08, 0.06, 0.04, 0.95)
+    bar:SetBackdropBorderColor(1, 0.82, 0, 0.7)
   end
-  local arrow = button:CreateTexture(nil, "OVERLAY")
-  arrow:SetSize(16, 16)
-  arrow:SetPoint("RIGHT", -6, 0)
-  arrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow")
-  arrow:SetRotation(-math.pi / 2)
-  UI:Tooltip(button, "VIEW_CHOOSE", "VIEW_CHOOSE_TIP")
-  self.viewButton = button
+  bar:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+  bar.name = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  bar.name:SetPoint("LEFT", 12, 0)
+  bar.name:SetJustifyH("LEFT")
+  bar.name:SetWordWrap(false)
+  bar.sub = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  bar.sub:SetPoint("LEFT", bar.name, "RIGHT", 12, -1)
+  bar.sub:SetJustifyH("LEFT")
+  bar.sub:SetWordWrap(false)
+  bar.arrow = bar:CreateTexture(nil, "OVERLAY")
+  bar.arrow:SetSize(24, 24)
+  bar.arrow:SetPoint("RIGHT", -6, 0)
+  bar.arrow:SetTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up")
+  UI:Tooltip(bar, "VIEW_CHOOSE", "VIEW_CHOOSE_TIP")
+  self.viewBar = bar
 
-  self.viewBanner = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  self.viewBanner:SetPoint("LEFT", button, "RIGHT", 12, 0)
-  self.viewBack = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  -- Back to the played character (inside the bar, right).
+  self.viewBack = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
   self.viewBack:SetSize(130, 22)
-  self.viewBack:SetPoint("LEFT", self.viewBanner, "RIGHT", 10, 0)
+  self.viewBack:SetPoint("RIGHT", bar.arrow, "LEFT", -8, 0)
   self.viewBack:SetScript("OnClick", function() FC:SetView(nil) end)
+  bar.sub:SetPoint("RIGHT", self.viewBack, "LEFT", -8, 0)
 
+  -- The list: as wide as the bar, below it.
   local list = CreateFrame("Frame", nil, f, "BackdropTemplate")
-  list:SetSize(LIST_W, LIST_H)
-  list:SetPoint("TOPLEFT", button, "BOTTOMLEFT", -4, -2)
+  list:SetHeight(LIST_H)
+  list:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -2)
+  list:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", 0, -2)
   list:SetFrameStrata("DIALOG")
   if list.SetBackdrop then
     list:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
@@ -130,7 +197,7 @@ function UI:CreateViewBar(f)
   self.viewRows.scroll:SetPoint("TOPLEFT", 8, -8)
   self.viewRows.scroll:SetPoint("BOTTOMRIGHT", -28, 8)
 
-  button:SetScript("OnClick", function()
+  bar:SetScript("OnClick", function()
     if list:IsShown() then
       list:Hide()
     else
@@ -143,20 +210,23 @@ function UI:CreateViewBar(f)
 end
 
 function UI:UpdateViewBar()
-  if not self.viewButton then return end
+  local bar = self.viewBar
+  if not bar then return end
   local char = FC:ViewChar()
-  self.viewButton:SetText(UI:ClassColored(fullName(char.info), char.info.classFile))
+  local info = char.info
   local played = FC:IsViewingPlayed()
   local owner = FC:ViewOwner()
-  if played then
-    self.viewBanner:SetText("")
-  elseif owner then
-    self.viewBanner:SetText(string.format(L.VIEW_FRIEND_OF, owner) .. "  |cff999999(" .. L.VIEW_READONLY .. ")|r")
-  else
-    self.viewBanner:SetText(L.VIEW_OTHER_OWN .. "  |cff999999(" .. L.VIEW_READONLY .. ")|r")
+  bar.name:SetText(UI:ClassColored(fullName(info), info.classFile))
+  local sub = string.format(L.VIEW_ROW, tostring(info.level or "?"), info.realm or "")
+  if owner then
+    sub = sub .. "  \194\183  " .. string.format(L.VIEW_FRIEND_OF, owner) .. "  |cff999999(" .. L.VIEW_READONLY .. ")|r"
+  elseif not played then
+    sub = sub .. "  \194\183  " .. L.VIEW_OTHER_OWN .. "  |cff999999(" .. L.VIEW_READONLY .. ")|r"
   end
+  bar.sub:SetText(sub)
   self.viewBack:SetText(L.VIEW_BACK)
   self.viewBack:SetShown(not played)
+  self:UpdatePortrait()
   if self.viewList:IsShown() then self.viewRows:SetItems(items()) end
 end
 

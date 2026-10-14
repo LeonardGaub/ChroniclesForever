@@ -64,6 +64,7 @@ local regionMT = { __index = function() return function() end end }
 local function newRegion()
   local r = { shown = true }
   r.SetText = function(self, t) self.text = t end
+  r.SetTexture = function(self, t) self.texture = t end
   r.SetTextColor = function(self, red, g, b) self.color = { red, g, b } end
   r.GetText = function(self) return self.text end
   r.Show = function(self) self.shown = true end
@@ -107,7 +108,11 @@ function CreateFrame(kind, name, parent, template)
   f.Show = function(self) self.shown = true; if self.scripts.OnShow then self.scripts.OnShow(self) end end
   f.Hide = function(self) self.shown = false; if self.scripts.OnHide then self.scripts.OnHide(self) end end
   f.SetShown = function(self, v) if v then self:Show() else self:Hide() end end
-  if template == "ButtonFrameTemplate" then f.Inset = CreateFrame("Frame") end
+  if template == "ButtonFrameTemplate" then
+    f.Inset = CreateFrame("Frame")
+    f.SetPortraitToUnit = function(self, unit) self.portraitUnit, self.portraitClass = unit, nil end
+    f.SetPortraitToClassIcon = function(self, class) self.portraitUnit, self.portraitClass = nil, class end
+  end
   if name then _G[name] = f end
   return setmetatable(f, frameMT)
 end
@@ -297,6 +302,8 @@ C_EncounterJournal = {
 function EJ_GetInstanceInfo(id)
   if id == 226 then return "Ragefire Chasm", "", 0, 0, 0, 0, 213, "", false, 389 end
 end
+CLASS_ICON_TCOORDS = { HUNTER = { 0, 0.25, 0.25, 0.5 }, MAGE = { 0.25, 0.49609375, 0, 0.25 },
+  WARRIOR = { 0, 0.25, 0, 0.25 } }
 C_Item = { GetItemQualityByID = function(itemID) return itemID == 4231 and 1 or nil end }
 C_Spell = { GetSpellName = function(id) return id == 2149 and "Handstitched Leather Boots" or nil end }
 

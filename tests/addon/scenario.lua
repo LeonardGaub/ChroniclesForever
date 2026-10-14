@@ -770,19 +770,26 @@ if PHASE == 12 then
   -- Chooser: header, played, alt, friend header, friend.
   FC.UI:Toggle()
   local UI = FC.UI
-  check(UI.viewButton.text and UI.viewButton.text:find("Blind Bullseye", 1, true), "chooser shows the played character")
+  check(UI.viewBar.name.text:find("Blind Bullseye", 1, true) and UI.viewBar.sub.text:find("Stufe 22", 1, true),
+    "the bar shows the played character")
   check(not UI.viewBack:IsShown(), "no back button while viewing myself")
-  UI.viewButton:GetScript("OnClick")(UI.viewButton)
+  check(ForeverChronicleFrame.portraitUnit == "player", "portrait: the played character")
+  UI.viewBar:GetScript("OnClick")(UI.viewBar)
   local rows = {}
   for _, row in ipairs(UI.viewRows.rows) do if row:IsShown() then rows[#rows + 1] = row end end
   check(#rows == 5 and rows[1].header.text == "Meine Charaktere" and rows[4].header.text:find("Bob", 1, true),
     "list: my characters, then the friend's (" .. #rows .. " rows)")
   check(rows[2].name.text:find("du spielst", 1, true) and rows[3].key == "Player-4619-0ALT0001", "rows")
+  check(rows[3].icon.texture == "Interface\\TargetingFrame\\UI-Classes-Circles", "class emblem in the rows")
 
   -- Choose the friend's character.
   rows[5]:GetScript("OnMouseUp")(rows[5])
   check(not FC:IsViewingPlayed() and FC:ViewOwner():find("Bob", 1, true) and not UI.viewList:IsShown(), "friend chosen")
-  check(UI.viewBack:IsShown() and UI.viewBanner.text:find("Charakter von", 1, true), "banner and back button")
+  check(UI.viewBack:IsShown() and UI.viewBar.sub.text:find("Charakter von", 1, true)
+    and UI.viewBar.sub.text:find("nur lesen", 1, true), "bar says whose character it is, back button")
+  check(UI.viewBar.name.text:find('Thr"all', 1, true), "the bar shows the friend's character")
+  check(ForeverChronicleFrame.portraitClass == "HUNTER" and rawget(ForeverChronicleFrame, "portraitUnit") == nil,
+    "portrait: the friend's class emblem")
 
   local function page(id)
     for i, p in ipairs(UI.pages) do if p.id == id then UI:SelectPage(i); return p end end
@@ -821,13 +828,17 @@ if PHASE == 12 then
   -- The alt, then back to me.
   FC:SetView("Player-4619-0ALT0001")
   page("overview")
-  check(ov.name.text:find("Altie", 1, true) and UI.viewBanner.text:find("Anderer Charakter", 1, true), "alt shown")
+  check(ov.name.text:find("Altie", 1, true) and UI.viewBar.sub.text:find("Anderer Charakter", 1, true), "alt shown")
+  check(ForeverChronicleFrame.portraitClass == "MAGE", "portrait: the alt's class emblem")
+  local overviewTab = ForeverChronicleFrame.Tabs[1]
+  check(overviewTab.icon.texture == "Interface\\TargetingFrame\\UI-Classes-Circles", "overview tab icon follows")
   page("chronicle")
   shown = 0
   for _, row in ipairs(chron.list.rows) do if row:IsShown() then shown = shown + 1 end end
   check(shown == 1, "alt's chronicle")
   UI.viewBack:GetScript("OnClick")(UI.viewBack)
   check(FC:IsViewingPlayed() and not UI.viewBack:IsShown(), "back to me")
+  check(ForeverChronicleFrame.portraitUnit == "player", "portrait: back to the played character")
   page("overview")
   check(ov.gearPanel:IsShown() and not ov.otherNote:IsShown(), "live parts back")
   for i = 1, #UI.pages do UI:SelectPage(i) end
