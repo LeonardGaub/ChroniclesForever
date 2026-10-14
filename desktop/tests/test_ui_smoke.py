@@ -48,6 +48,16 @@ def test_main_window_with_data(app, db, tmp_path, monkeypatch, addon_fixture):
     assert overview.rows["kills"][1].text() == "2" and overview.rows["xp_earned"][1].text() == "4.200"
     assert overview.rows["played_total"][1].text() == "20 Std. 35 Min."
 
+    professions = next(p for p in window.pages if p.title_key == "tab.professions")
+    window.tabs.setCurrentWidget(professions)
+    assert professions.prof_table.rowCount() == 4 and professions.recipe_table.rowCount() == 4
+    assert professions.prof_table.item(1, 1).text() == "126 / 150" and professions.prof_table.item(1, 2).text() == "Geselle"
+    professions.search.setText("hide")
+    assert professions.recipe_table.rowCount() == 2 and professions.count.text() == "2 Rezepte"
+    professions.prof_table.setCurrentCell(0, 0)  # Herbalism: gathering, no recipes
+    assert professions.recipe_table.rowCount() == 0
+    professions.search.clear()
+
     i18n.set_language("en")
     assert window.tabs.tabText(0) == "Overview"
     window.tabs.setCurrentIndex(0)  # pages refresh when shown

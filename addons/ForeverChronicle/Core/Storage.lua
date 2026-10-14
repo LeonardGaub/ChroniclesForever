@@ -9,6 +9,7 @@
 --       info    = { guid, name, nameSuffix, realm, ... },
 --       stats   = { [statKey] = number },
 --       state   = { [moduleName] = {...} },        -- free per-module state
+--       snapshots = { [name] = {...} },            -- current state (professions, ...), exported as is
 --       streams = { [streamName] = { nextSeq, dropped, records = { ... } } },
 --   } },
 -- }
@@ -83,10 +84,10 @@ function Storage:OpenCharacter()
   local chars = FC.db.characters
   local char = chars[key]
   if not char then
-    char = { info = { firstSeenAt = time() }, stats = {}, state = {}, streams = {} }
+    char = { info = { firstSeenAt = time() }, stats = {}, state = {}, streams = {}, snapshots = {} }
     chars[key] = char
   end
-  Util.MergeDefaults(char, { info = {}, stats = {}, state = {}, streams = {} })
+  Util.MergeDefaults(char, { info = {}, stats = {}, state = {}, streams = {}, snapshots = {} })
   char.info.key = key
   char.info.identityQuality = quality
   FC.char = char
@@ -100,6 +101,14 @@ function Storage:GetState(moduleName)
   local state = FC.char.state
   state[moduleName] = state[moduleName] or {}
   return state[moduleName]
+end
+
+-- Snapshot of something the character has right now (professions, ...). Unlike streams it is replaced
+-- over time; the desktop app mirrors the latest version.
+function Storage:GetSnapshot(name)
+  local snapshots = FC.char.snapshots
+  snapshots[name] = snapshots[name] or {}
+  return snapshots[name]
 end
 
 -------------------------------------------------------------------------------

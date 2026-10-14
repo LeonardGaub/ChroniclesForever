@@ -21,6 +21,8 @@ desktop: wow/paths ──► wow/lua_parser (literals only) ──► importing/
 - Every stream record has a per-stream `seq`. The importer compares it with the last imported `seq` to detect
   records dropped by the addon's retention cap (`data_gaps`).
 - Events are immutable and de-duplicated by `(character, event id)`. Sessions are updated in place.
+- Snapshots (`char.snapshots[name]`, via `Storage:GetSnapshot`) hold what the character has *now*
+  (professions and recipes). They are replaced over time, and the desktop app mirrors the latest version.
 - The character key is the player GUID (globally unique in Forever). The desktop app assigns its own UUID.
 
 ## Addon
@@ -78,6 +80,17 @@ The scheduling rules (priority, merging within 2 s, the shared delay (default 5 
 minimum gap, maximum age, zone left, taxi and loading screens, capacity) live in the pure
 `Modules/ScreenshotQueue.lua` and are covered by `tests/addon/queue_tests.lua`. The desktop app links
 records to files by their `fileStamp` (`importing/screenshot_matcher.py`, ±2 s, never guesses on a tie).
+
+### Professions and recipes
+`Modules/Professions.lua` keeps `snapshots.professions`: skill, maximum and kind (primary or secondary) per
+skill line, read with the Mainline `GetProfessions`/`GetProfessionInfo` at login, on `SKILL_LINES_CHANGED` /
+`CHAT_MSG_SKILL` and via `/fc professions`. Recipes are only readable while a profession window is open. They are
+captured from the unfiltered `C_TradeSkillUI.GetAllRecipeIDs` list (at most once per 5 s). Linked, guild and NPC
+professions and skill lines the character does not have are skipped. Recipes use the compact format
+`recipeID,categoryID,icon,name`, and categories use `id,parentID,name`. Status `complete` means every recipe info
+was readable. A `partial` capture never removes recipes, and the desktop app follows the same rule (`replace_recipes`).
+Events: `profession_learned` and `profession_rank` come from the snapshot diff after a baseline, so professions
+known at install are not reported; `recipe_learned` comes from `NEW_RECIPE_LEARNED`.
 
 ### Positions and maps
 `Modules/Positions.lua` writes the compact `positions` stream: one string per point,

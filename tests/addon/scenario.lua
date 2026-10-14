@@ -111,10 +111,10 @@ if PHASE == 1 then
   SlashCmdList.FOREVERCHRONICLE("")
   check(ForeverChronicleFrame and ForeverChronicleFrame:IsShown(), "window opens with /fc")
   for i = 1, #FC.UI.pages do FC.UI:SelectPage(i) end
-  check(#FC.UI.pages == 6, "six pages registered")
+  check(#FC.UI.pages == 7, "seven pages registered")
   SlashCmdList.FOREVERCHRONICLE("lang en")
   check(FC.L.TAB_OVERVIEW == "Overview", "language switched to English")
-  check(#ForeverChronicleFrame.Tabs == 6 and ForeverChronicleFrame.Tabs[2].page.icon ~= nil, "icon tabs, one per page")
+  check(#ForeverChronicleFrame.Tabs == 7 and ForeverChronicleFrame.Tabs[2].page.icon ~= nil, "icon tabs, one per page")
 
   -- Minimap button: shown, clicks toggle the window / open settings, can be hidden, dragging saves the angle.
   local mm = ForeverChronicleMinimapButton
@@ -219,6 +219,10 @@ elseif PHASE == 3 then
   check(#sessions() == 2, "second session")
   check(sessions()[1].endReason == "logout", "first session stays closed")
   check(events()[6].type == "session_started" and events()[6].seq == 6, "session_started appended with next seq")
+  -- Recipes for the desktop fixture: open the leatherworking window once.
+  MOCK.openProfession(165)
+  MOCK.advance(1)
+  MOCK.closeProfession()
   MOCK.advance(300)
   MOCK.fire("PLAYER_LOGOUT")
   SAVED_OUT = save()
@@ -526,6 +530,145 @@ if PHASE == 10 then
   -- Trigger can be switched off.
   SlashCmdList.FOREVERCHRONICLESHOT("rare off")
   check(FC:GetModule("Screenshots"):GetSettings().triggers.rare == false, "/fcshot rare off")
+
+  local errors = 0
+  for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
+  check(errors == 0, "no errors logged")
+end
+
+if PHASE == 11 then
+  print("phase 11: professions and recipes")
+  local FC = startClient(true, false)
+  local char = ForeverChronicleDB.characters["Player-4619-0112A417"]
+  local P = FC:GetModule("Professions")
+  local function evts(t)
+    local out = {}
+    for _, r in ipairs(char.streams.events.records) do if r.type == t then out[#out + 1] = r end end
+    return out
+  end
+
+  local snap = char.snapshots.professions
+  check(snap and #snap.list == 4 and snap.baseline, "four professions captured at login")
+  local lw = P:Find(165)
+  check(lw.name == "Leatherworking" and lw.rank == 126 and lw.maxRank == 150 and lw.kind == "primary",
+    "leatherworking skill and rank")
+  check(P:Find(129).kind == "secondary" and P:Find(185).kind == "secondary", "first aid and cooking are secondary")
+  check(#evts("profession_learned") == 0, "professions known at install are not reported as learned")
+  check(lw.recipes == nil, "no recipes before a profession window was opened")
+  MOCK.advance(6)
+  check(#evts("profession_learned") == 0, "delayed login scan adds no events")
+
+  -- Opening the window captures the learned recipes from the unfiltered list.
+  MOCK.openProfession(165)
+  check(lw.recipes == nil, "capture waits for the list to settle")
+  MOCK.advance(1)
+  check(lw.recipes and lw.recipes.status == "complete" and #lw.recipes.list == 4 and lw.recipes.total == 6,
+    "learned recipes captured (" .. (lw.recipes and #lw.recipes.list or 0) .. " of 6)")
+  check(lw.recipes.list[1] == "2881,2550,134252,Light Leather", "compact recipe format: " .. lw.recipes.list[1])
+  local cats = P.ParseCategories(lw.recipes.categories)
+  check(cats[2550].name == "Materials" and cats[2550].parent == 2549 and cats[2549].name == "Leatherworking",
+    "categories stored with their parents")
+  check(ForeverChronicleDB.diagnostics.capabilities.recipes.status == "confirmed", "recipes capability confirmed")
+
+  -- At most one capture per 5 seconds.
+  local captured = P.lastCapture
+  MOCK.fire("TRADE_SKILL_LIST_UPDATE")
+  MOCK.advance(1)
+  check(P.lastCapture == captured, "no second capture within 5 s")
+  MOCK.advance(5)
+  check(P.lastCapture > captured, "captured again after 5 s")
+
+  -- Learning a recipe: chronicle event and a new capture.
+  MOCK.recipes[165][5].learned = true
+  MOCK.fire("NEW_RECIPE_LEARNED", 2149)
+  local learned = evts("recipe_learned")
+  check(#learned == 1 and learned[1].data.name == "Handstitched Leather Boots" and learned[1].data.recipeID == 2149,
+    "recipe_learned event")
+  check(FC:DescribeEvent(learned[1]) == "Rezept gelernt: Handstitched Leather Boots", "recipe event text")
+  MOCK.advance(6)
+  check(#lw.recipes.list == 5, "new recipe in the snapshot")
+
+  -- Unreadable recipe info: partial snapshot that keeps what was known.
+  MOCK.recipes[165][1].broken = true
+  MOCK.fire("TRADE_SKILL_LIST_UPDATE")
+  MOCK.advance(6)
+  check(lw.recipes.status == "partial" and lw.recipes.unreadable == 1 and #lw.recipes.list == 5,
+    "partial capture keeps earlier recipes")
+  MOCK.recipes[165][1].broken = nil
+  MOCK.closeProfession()
+
+  -- Window closed before the capture ran: nothing is captured.
+  MOCK.openProfession(185)
+  MOCK.closeProfession()
+  MOCK.advance(6)
+  check(P:Find(185).recipes == nil, "no capture after the window was closed")
+
+  -- Another player's linked profession and professions the character does not have are ignored.
+  MOCK.linked = true
+  MOCK.openProfession(185)
+  MOCK.advance(6)
+  check(P:Find(185).recipes == nil, "linked profession not captured")
+  MOCK.closeProfession()
+  MOCK.linked = nil
+  MOCK.openProfession(197)
+  MOCK.advance(6)
+  check(P:Find(197) == nil, "profession the character does not have is ignored")
+  MOCK.closeProfession()
+  MOCK.openProfession(185)
+  MOCK.advance(1)
+  check(P:Find(185).recipes and #P:Find(185).recipes.list == 1, "cooking recipes captured")
+  MOCK.closeProfession()
+
+  -- Next rank trained (maximum 150 -> 225).
+  MOCK.professions[6][4] = 225
+  MOCK.fire("SKILL_LINES_CHANGED")
+  MOCK.advance(2)
+  local ranks = evts("profession_rank")
+  check(#ranks == 1 and ranks[1].data.maxRank == 225 and lw.maxRank == 225, "rank event")
+  check(FC:DescribeEvent(ranks[1]) == "Leatherworking: Experte", "rank text: " .. FC:DescribeEvent(ranks[1]))
+
+  -- A new profession and an unlearned one.
+  MOCK.professions[9] = { "Fishing", 136245, 1, 75, 1, 0, 356, 0, -1, 0, "Fishing" }
+  MOCK.professionSlots[4] = 9
+  MOCK.professionSlots[2] = nil
+  MOCK.fire("CHAT_MSG_SKILL", "Your skill in Fishing has increased to 1.")
+  MOCK.advance(2)
+  local learnedProf = evts("profession_learned")
+  check(#learnedProf == 1 and learnedProf[1].data.name == "Fishing", "profession_learned event")
+  check(P:Find(182).active == false and P:Find(182).unlearnedAt, "herbalism marked as unlearned")
+  check(#P:GetActive() == 4 and P:GetActive()[1].skillLine == 165, "active professions, primary first")
+  local stat
+  for _, def in ipairs(FC.statDefs) do if def.key == "recipes_known" then stat = def end end
+  check(FC:GetStatValue(stat) == 6, "recipes stat (" .. tostring(FC:GetStatValue(stat)) .. ")")
+
+  -- In-game page: profession buttons, recipes grouped by category, search.
+  FC.UI:Toggle()
+  local index
+  for i, pg in ipairs(FC.UI.pages) do if pg.id == "professions" then index = i end end
+  FC.UI:SelectPage(index)
+  local page = FC.UI.pages[index]
+  local buttons = 0
+  for _, b in ipairs(page.buttons) do if b:IsShown() then buttons = buttons + 1 end end
+  check(buttons == 4 and page.selected == 165 and page.title.text == "Leatherworking", "profession buttons")
+  local function shownRows()
+    local n = 0
+    for _, row in ipairs(page.list.rows) do if row:IsShown() then n = n + 1 end end
+    return n
+  end
+  check(shownRows() == 8, "3 category headers and 5 recipes (" .. shownRows() .. ")")
+  check(page.list.rows[1].header.text == "Armor" and page.list.rows[2].text.text == "Handstitched Leather Boots",
+    "categories sorted, recipes below their category")
+  check(page.status.text:find("unvollst", 1, true) ~= nil, "status shows the partial capture: " .. page.status.text)
+  page.search:SetText("hide")
+  page.search:GetScript("OnTextChanged")(page.search)
+  check(shownRows() == 3 and page.status.text:find("2 angezeigt", 1, true), "search filters recipes")
+  page.buttons[4]:GetScript("OnClick")(page.buttons[4])
+  check(page.selected == 356 and page.recipeEmpty.text:find("Sammelberufe", 1, true), "profession without recipes")
+
+  SlashCmdList.FOREVERCHRONICLE("professions")
+  local found = false
+  for _, line in ipairs(MOCK.chat) do if line:find("Leatherworking 126/225", 1, true) then found = true end end
+  check(found, "/fc professions lists the professions")
 
   local errors = 0
   for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end

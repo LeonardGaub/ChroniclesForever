@@ -73,3 +73,22 @@ register(EventType("zone_discovered", "evt.zone_discovered", "⚑", "#69ccf0",
 register(EventType("achievement_earned", "evt.achievement_earned", "★", "#ff8000", _achievement))
 register(EventType("rare_killed", "evt.rare_killed", "◆", "#c0c0c0",
                    lambda e: tr("evt.rare_killed.text", name=e.payload.get("name") or "?")))
+
+
+def rank_name(max_rank: int | None) -> str:
+    """Classic rank by maximum skill (Apprentice 75 ... Artisan 300); other values show the number."""
+    key = {75: "rank.apprentice", 150: "rank.journeyman", 225: "rank.expert", 300: "rank.artisan"}.get(max_rank or 0)
+    return tr(key) if key else str(max_rank or "?")
+
+
+def _recipe(e: EventRow) -> str:
+    name = e.payload.get("name") or f"#{e.payload.get('recipeID', '?')}"
+    return tr("evt.recipe_learned.text", name=name)
+
+
+register(EventType("profession_learned", "evt.profession_learned", "⚒", "#40c040",
+                   lambda e: tr("evt.profession_learned.text", name=e.payload.get("name") or "?")))
+register(EventType("profession_rank", "evt.profession_rank", "⚒", "#40c040",
+                   lambda e: tr("evt.profession_rank.text", name=e.payload.get("name") or "?",
+                                rank=rank_name(e.payload.get("maxRank")))))
+register(EventType("recipe_learned", "evt.recipe_learned", "✎", "#40c040", _recipe))

@@ -112,3 +112,4 @@ register(Stat("quests_per_hour", "stats.quests_per_hour", 22, _per_hour("quest_c
 register(Stat("deaths", "stats.deaths", 23, lambda r, c: r.count_events(c, "player_died")))
 register(Stat("achievements", "stats.achievements", 24, lambda r, c: r.count_events(c, "achievement_earned")))
 register(Stat("zones", "stats.zones", 25, lambda r, c: r.count_events(c, "zone_discovered")))
+register(Stat("recipes", "stats.recipes", 26, lambda r, c: r.count_recipes(c)))

@@ -59,19 +59,30 @@
   - Classic round button (`UI/MinimapButton.lua`). Left-click opens the window, right-click the settings; drag
     to move it (the angle is saved). Option under Allgemein (on by default).
   - The settings page is now scrollable (content height computed from the last storage bar).
+- **Addon v0.10.0: professions and recipes (spec F-008).**
+  - New module `Modules/Professions.lua` and the new snapshot area `char.snapshots` (`Storage:GetSnapshot`).
+  - New in-game tab "Berufe": professions with skill bar and rank, plus recipes grouped by category with search
+    and capture status. The command `/fc professions` refreshes and lists them.
+  - Chronicle events: profession learned, rank trained (e.g. Experte), recipe learned (`NEW_RECIPE_LEARNED`).
+    Overview stat "Bekannte Rezepte".
+  - Desktop: migration 5 (`professions`, `recipes`, `recipe_categories`), import of the snapshot, and a new
+    "Berufe" tab with a profession table and a recipe table (profession filter and search). Stat "Bekannte Rezepte".
+  - Not yet seen in game: `NEW_RECIPE_LEARNED`, `SKILL_LINES_CHANGED`, `C_TradeSkillUI.GetCategoryInfo`, and
+    whether `GetBaseProfessionInfo` reports the window's profession. To check, open the Lederverarbeitung window
+    once and look at the Berufe tab.
 - **Desktop:** the icon overhaul was reverted at the user's request; text UI stays.
   - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
   - Open question for the user: real WoW icons for the desktop. Options: export from the local client with
     wow.export, or the Wowhead icon CDN.
 - **Desktop** (`desktop/`, start with `desktop/Forever Chronicle.bat`). Tabs: Übersicht, Chronik, Karte,
-  Screenshots, Import, Diagnose.
+  Berufe, Screenshots, Import, Diagnose.
   - The Karte tab shows your map art with the route, event markers, a time slider, play/pause and 1×/2×/4×/10× speeds
     (1× = 1 min of play per second), session filter, continent view, follow map, and an instance notice.
     Selecting an event in the Chronik moves the map there.
   - Map art: the user's 52 explored-zone maps were imported into `%APPDATA%\ForeverChronicle\maps\<uiMapID>.jpg`.
     The Import tab has "Kartenbilder importieren …". Coordinates were verified against real probe data
     (Orgrimmar/Cleft of Shadow, Kalimdor rectangle).
-- Tests: `tests/addon` (`npm test`: 14 queue tests and 6 phases) and `desktop` (`pytest`, 60 tests). All pass.
+- Tests: `tests/addon` (`npm test`: 14 queue tests and 11 phases) and `desktop` (`pytest`, 65 tests). All pass.
 - In-game confirmed by the user: window, import, Screenshots tab (v0.2.0). Not yet seen in game: v0.2.1 and v0.3.0 changes.
 
 ## Confirmed client facts
@@ -94,8 +105,10 @@
 - F-005: playback speed base (1× = 60 s of play per second). Position format and implicit seq.
   Map art location and naming.
 - F-009: settings sections; the Screenshots tab shows only the list.
+- F-008: recipe/profession events were added to the chronicle (the spec said snapshots only). The compact recipe
+  format and `snapshots` area.
 
 ## Next steps
 1. User: quick check: `/reload`, walk a bit, `/reload`, then open the desktop Karte tab.
-2. Spec §10 step 9: profession and recipe snapshots (F-008).
-3. Then JSONL export/import and backups (F-011), QA and packaging.
+2. User: open each profession window once in game and check the Berufe tab (in game and desktop).
+3. JSONL export/import and backups (F-011), QA and packaging.

@@ -93,6 +93,49 @@ class PositionPoint:
         return cls(t, until, map_id, x, y, instance_id, "T" in parts[5])
 
 
+def _int_or_none(text: Any) -> int | None:
+    if isinstance(text, bool):
+        return None
+    if isinstance(text, int):
+        return text
+    if isinstance(text, float) and text.is_integer():
+        return int(text)
+    if isinstance(text, str) and text.isdigit():
+        return int(text)
+    return None
+
+
+@dataclass(frozen=True)
+class Recipe:
+    recipe_id: int
+    category_id: int | None
+    icon: int | None
+    name: str
+
+    @classmethod
+    def parse(cls, text: str) -> "Recipe | None":
+        """Parses the addon's compact format: recipeID,categoryID,icon,name (the name may contain commas)."""
+        parts = text.split(",", 3)
+        if len(parts) != 4 or not parts[0].isdigit() or not parts[3]:
+            return None
+        return cls(int(parts[0]), _int_or_none(parts[1]), _int_or_none(parts[2]), parts[3])
+
+
+@dataclass(frozen=True)
+class RecipeCategory:
+    category_id: int
+    parent_id: int | None
+    name: str
+
+    @classmethod
+    def parse(cls, text: str) -> "RecipeCategory | None":
+        """Parses id,parentID,name."""
+        parts = text.split(",", 2)
+        if len(parts) != 3 or not parts[0].isdigit() or not parts[2]:
+            return None
+        return cls(int(parts[0]), _int_or_none(parts[1]), parts[2])
+
+
 class Repository:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
@@ -364,6 +407,78 @@ class Repository:
         row = self.conn.execute("SELECT value FROM character_stats WHERE character_id = ? AND stat_key = ?",
                                 (character_id, key)).fetchone()
         return row[0] if row else None
+
+    # -- professions and recipes (snapshots) -------------------------------------
+
+    def upsert_profession(self, character_id: str, prof: dict[str, Any]) -> None:
+        recipes = prof.get("recipes") if isinstance(prof.get("recipes"), dict) else {}
+        self.conn.execute(
+            """INSERT INTO professions (character_id, skill_line, name, icon, kind, rank, max_rank, modifier, active,
+               first_seen_at, updated_at, recipe_status, recipes_updated_at, recipes_total)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (character_id, skill_line) DO UPDATE SET
+               name = excluded.name, icon = excluded.icon, kind = excluded.kind, rank = excluded.rank,
+               max_rank = excluded.max_rank, modifier = excluded.modifier, active = excluded.active,
+               first_seen_at = COALESCE(professions.first_seen_at, excluded.first_seen_at),
+               updated_at = excluded.updated_at,
+               recipe_status = COALESCE(excluded.recipe_status, professions.recipe_status),
+               recipes_updated_at = COALESCE(excluded.recipes_updated_at, professions.recipes_updated_at),
+               recipes_total = COALESCE(excluded.recipes_total, professions.recipes_total)""",
+            (character_id, prof["skillLine"], prof.get("name") or "?", _int_or_none(prof.get("icon")), prof.get("kind"),
+             prof.get("rank"), prof.get("maxRank"), prof.get("modifier"), 0 if prof.get("active") is False else 1,
+             prof.get("firstSeenAt"), prof.get("updatedAt"), recipes.get("status"), recipes.get("updatedAt"),
+             recipes.get("total")))
+
+    def replace_recipes(self, character_id: str, skill_line: int, recipes: list["Recipe"], complete: bool,
+                        seen_at: int | None) -> None:
+        """Stores a recipe snapshot. Only a complete snapshot removes recipes that are no longer listed."""
+        if complete:
+            ids = [r.recipe_id for r in recipes]
+            marks = ",".join("?" for _ in ids) or "NULL"
+            self.conn.execute(f"""DELETE FROM recipes WHERE character_id = ? AND skill_line = ?
+                                  AND recipe_id NOT IN ({marks})""", (character_id, skill_line, *ids))
+        for r in recipes:
+            self.conn.execute(
+                """INSERT INTO recipes (character_id, skill_line, recipe_id, name, category_id, icon, first_seen_at)
+                   VALUES (?,?,?,?,?,?,?) ON CONFLICT (character_id, skill_line, recipe_id) DO UPDATE SET
+                   name = excluded.name, category_id = excluded.category_id, icon = excluded.icon""",
+                (character_id, skill_line, r.recipe_id, r.name, r.category_id, r.icon, seen_at))
+
+    def upsert_recipe_category(self, character_id: str, skill_line: int, category_id: int, parent_id: int | None,
+                               name: str) -> None:
+        self.conn.execute(
+            """INSERT INTO recipe_categories (character_id, skill_line, category_id, parent_id, name)
+               VALUES (?,?,?,?,?) ON CONFLICT (character_id, skill_line, category_id) DO UPDATE SET
+               parent_id = excluded.parent_id, name = excluded.name""",
+            (character_id, skill_line, category_id, parent_id, name))
+
+    def professions(self, character_id: str, include_inactive: bool = False) -> list[sqlite3.Row]:
+        sql = """SELECT p.*, (SELECT COUNT(*) FROM recipes r WHERE r.character_id = p.character_id
+                 AND r.skill_line = p.skill_line) AS recipe_count FROM professions p WHERE p.character_id = ?"""
+        if not include_inactive:
+            sql += " AND p.active = 1"
+        return self.conn.execute(sql + " ORDER BY p.kind = 'secondary', p.name", (character_id,)).fetchall()
+
+    def recipes(self, character_id: str, skill_line: int | None = None, search: str | None = None) -> list[sqlite3.Row]:
+        """Recipes of active professions with profession and category names."""
+        sql = """SELECT r.*, p.name AS profession, c.name AS category FROM recipes r
+                 JOIN professions p ON p.character_id = r.character_id AND p.skill_line = r.skill_line
+                 LEFT JOIN recipe_categories c ON c.character_id = r.character_id AND c.skill_line = r.skill_line
+                      AND c.category_id = r.category_id
+                 WHERE r.character_id = ? AND p.active = 1"""
+        args: list[Any] = [character_id]
+        if skill_line is not None:
+            sql += " AND r.skill_line = ?"
+            args.append(skill_line)
+        if search:
+            sql += " AND r.name LIKE ?"
+            args.append(f"%{search}%")
+        return self.conn.execute(sql + " ORDER BY p.name, category, r.name", args).fetchall()
+
+    def count_recipes(self, character_id: str) -> int:
+        return self.conn.execute(
+            """SELECT COUNT(*) FROM recipes r JOIN professions p ON p.character_id = r.character_id
+               AND p.skill_line = r.skill_line WHERE r.character_id = ? AND p.active = 1""",
+            (character_id,)).fetchone()[0]
 
     # -- capabilities -----------------------------------------------------------
 

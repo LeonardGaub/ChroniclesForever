@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from ..storage.database import Database
-from ..storage.repository import PositionPoint, Repository
+from ..storage.repository import PositionPoint, Recipe, RecipeCategory, Repository
 from ..wow.lua_parser import LuaParseError, as_dict, as_list, parse_saved_variables_bytes
 
 VARIABLE_NAME = "ForeverChronicleDB"
@@ -36,6 +36,7 @@ class ImportResult:
     sessions: int = 0
     screenshots: int = 0
     positions: int = 0
+    recipes: int = 0
     gaps: int = 0
     used_backup: bool = False
     messages: list[str] = field(default_factory=list)
@@ -257,6 +258,43 @@ class SavedVariablesImporter:
             good_points.append({"seq": first_seq + i, "time": point.time})
             result.positions += 1
         self._track_stream(character_id, "positions", good_points, import_id, result)
+        self._import_professions(character_id, as_dict(as_dict(char.get("snapshots")).get("professions")), result)
+
+    def _import_professions(self, character_id: str, snap: dict[str, Any], result: ImportResult) -> None:
+        """Mirrors the addon's profession snapshot (spec F-008). A recipe list replaces the stored one only
+        when it is complete; a partial list only adds recipes."""
+        for prof in as_list(snap.get("list")):
+            if not isinstance(prof, dict) or _int(prof.get("skillLine")) is None or not isinstance(prof.get("name"), str):
+                result.invalid += 1
+                continue
+            skill_line = _int(prof["skillLine"])
+            prof = dict(prof, skillLine=skill_line)
+            for key in ("rank", "maxRank", "modifier", "firstSeenAt", "updatedAt"):
+                prof[key] = _int(prof.get(key))
+            recipes = as_dict(prof.get("recipes"))
+            status = recipes.get("status")
+            if recipes and status not in ("complete", "partial"):
+                result.invalid += 1
+                recipes = {}
+            prof["recipes"] = recipes
+            self.repo.upsert_profession(character_id, prof)
+            if not recipes:
+                continue
+            for text in as_list(recipes.get("categories")):
+                cat = RecipeCategory.parse(text) if isinstance(text, str) else None
+                if cat:
+                    self.repo.upsert_recipe_category(character_id, skill_line, cat.category_id, cat.parent_id,
+                                                     cat.name)
+            parsed = []
+            for text in as_list(recipes.get("list")):
+                recipe = Recipe.parse(text) if isinstance(text, str) else None
+                if recipe is None:
+                    result.invalid += 1
+                else:
+                    parsed.append(recipe)
+            self.repo.replace_recipes(character_id, skill_line, parsed, status == "complete",
+                                      _int(recipes.get("updatedAt")))
+            result.recipes += len(parsed)
 
     def _track_stream(self, character_id: str, stream: str, records: list[dict[str, Any]], import_id: int,
                       result: ImportResult) -> None:

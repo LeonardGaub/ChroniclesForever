@@ -23,6 +23,79 @@ ForeverChronicleDB = {
 				["realm"] = "Classic Beta PvP",
 				["realmNormalized"] = "ClassicBetaPvP",
 			},
+			["snapshots"] = {
+				["professions"] = {
+					["baseline"] = true,
+					["list"] = {
+						{
+							["active"] = true,
+							["firstSeenAt"] = 1791961000,
+							["icon"] = 136247,
+							["kind"] = "primary",
+							["maxRank"] = 150,
+							["modifier"] = 0,
+							["name"] = "Leatherworking",
+							["rank"] = 126,
+							["recipes"] = {
+								["categories"] = {
+									"2550,2549,Materials", -- [1]
+									"2549,,Leatherworking", -- [2]
+									"2552,2549,Cloaks", -- [3]
+								},
+								["list"] = {
+									"2881,2550,134252,Light Leather", -- [1]
+									"3816,2550,134366,Cured Light Hide", -- [2]
+									"3817,2550,134354,Cured Medium Hide", -- [3]
+									"9058,2552,133150,Handstitched Leather Cloak", -- [4]
+								},
+								["status"] = "complete",
+								["total"] = 6,
+								["unreadable"] = 0,
+								["updatedAt"] = 1792051000,
+							},
+							["skillLine"] = 165,
+							["updatedAt"] = 1792051005,
+						}, -- [1]
+						{
+							["active"] = true,
+							["firstSeenAt"] = 1791961000,
+							["icon"] = 136246,
+							["kind"] = "primary",
+							["maxRank"] = 150,
+							["modifier"] = 0,
+							["name"] = "Herbalism",
+							["rank"] = 59,
+							["skillLine"] = 182,
+							["updatedAt"] = 1792051005,
+						}, -- [2]
+						{
+							["active"] = true,
+							["firstSeenAt"] = 1791961000,
+							["icon"] = 135966,
+							["kind"] = "secondary",
+							["maxRank"] = 75,
+							["modifier"] = 0,
+							["name"] = "First Aid",
+							["rank"] = 23,
+							["skillLine"] = 129,
+							["updatedAt"] = 1792051005,
+						}, -- [3]
+						{
+							["active"] = true,
+							["firstSeenAt"] = 1791961000,
+							["icon"] = 133971,
+							["kind"] = "secondary",
+							["maxRank"] = 75,
+							["modifier"] = 0,
+							["name"] = "Cooking",
+							["rank"] = 13,
+							["skillLine"] = 185,
+							["updatedAt"] = 1792051005,
+						}, -- [4]
+					},
+					["scannedAt"] = 1792051005,
+				},
+			},
 			["state"] = {
 				["Travel"] = {
 					["known"] = {
@@ -236,7 +309,7 @@ ForeverChronicleDB = {
 						{
 							["endLevel"] = 22,
 							["endReason"] = "logout",
-							["endedAt"] = 1792051300,
+							["endedAt"] = 1792051301,
 							["id"] = "6ad0873800018512d60ea397e0",
 							["playedAt"] = 1792051010,
 							["playedLevel"] = 7574,
@@ -289,9 +362,19 @@ ForeverChronicleDB = {
 				["confirmedAt"] = 1791961001,
 				["status"] = "confirmed",
 			},
+			["professions"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961000,
+				["status"] = "confirmed",
+			},
 			["quests"] = {
 				["build"] = "70374",
 				["confirmedAt"] = 1791961073,
+				["status"] = "confirmed",
+			},
+			["recipes"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1792051000,
 				["status"] = "confirmed",
 			},
 			["screenshots"] = {
@@ -307,15 +390,17 @@ ForeverChronicleDB = {
 		},
 		["log"] = {
 			"2026-10-14 08:56:40 [info] capability confirmed: identity", -- [1]
-			"2026-10-14 08:56:41 [info] capability confirmed: positions", -- [2]
-			"2026-10-14 08:56:50 [info] capability confirmed: played_time", -- [3]
-			"2026-10-14 08:57:53 [info] capability confirmed: quests", -- [4]
-			"2026-10-14 08:58:23 [info] capability confirmed: deaths", -- [5]
-			"2026-10-14 08:58:53 [info] capability confirmed: level_up", -- [6]
-			"2026-10-14 08:58:53 [info] capability confirmed: achievements", -- [7]
-			"2026-10-14 08:58:53 [info] capability confirmed: kills", -- [8]
-			"2026-10-14 08:58:53 [info] capability confirmed: xp", -- [9]
-			"2026-10-14 08:58:58 [info] capability confirmed: screenshots", -- [10]
+			"2026-10-14 08:56:40 [info] capability confirmed: professions", -- [2]
+			"2026-10-14 08:56:41 [info] capability confirmed: positions", -- [3]
+			"2026-10-14 08:56:50 [info] capability confirmed: played_time", -- [4]
+			"2026-10-14 08:57:53 [info] capability confirmed: quests", -- [5]
+			"2026-10-14 08:58:23 [info] capability confirmed: deaths", -- [6]
+			"2026-10-14 08:58:53 [info] capability confirmed: level_up", -- [7]
+			"2026-10-14 08:58:53 [info] capability confirmed: achievements", -- [8]
+			"2026-10-14 08:58:53 [info] capability confirmed: kills", -- [9]
+			"2026-10-14 08:58:53 [info] capability confirmed: xp", -- [10]
+			"2026-10-14 08:58:58 [info] capability confirmed: screenshots", -- [11]
+			"2026-10-15 09:56:40 [info] capability confirmed: recipes", -- [12]
 		},
 	},
 	["maps"] = {
@@ -354,6 +439,8 @@ ForeverChronicleDB = {
 				["enabled"] = true,
 				["interval"] = 2,
 				["rev"] = 2,
+			},
+			["Professions"] = {
 			},
 			["Progress"] = {
 			},

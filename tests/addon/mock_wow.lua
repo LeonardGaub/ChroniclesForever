@@ -54,7 +54,9 @@ local VALID_EVENTS = {}
 for e in ([[ADDON_LOADED PLAYER_LOGIN PLAYER_ENTERING_WORLD PLAYER_LOGOUT TIME_PLAYED_MSG PLAYER_LEVEL_UP
   QUEST_TURNED_IN PLAYER_DEAD ACHIEVEMENT_EARNED ZONE_CHANGED_NEW_AREA PLAYER_CONTROL_GAINED
   LOADING_SCREEN_ENABLED LOADING_SCREEN_DISABLED SCREENSHOT_SUCCEEDED SCREENSHOT_FAILED
-  PARTY_KILL PLAYER_XP_UPDATE PLAYER_TARGET_CHANGED UPDATE_MOUSEOVER_UNIT NAME_PLATE_UNIT_ADDED]]):gmatch("%S+") do
+  PARTY_KILL PLAYER_XP_UPDATE PLAYER_TARGET_CHANGED UPDATE_MOUSEOVER_UNIT NAME_PLATE_UNIT_ADDED
+  SKILL_LINES_CHANGED CHAT_MSG_SKILL TRADE_SKILL_SHOW TRADE_SKILL_LIST_UPDATE TRADE_SKILL_DATA_SOURCE_CHANGED
+  TRADE_SKILL_CLOSE NEW_RECIPE_LEARNED]]):gmatch("%S+") do
   VALID_EVENTS[e] = true
 end
 
@@ -212,3 +214,77 @@ function MOCK.travel(mapID, zone)
 end
 
 function RequestTimePlayed() C_Timer.After(0.2, function() MOCK.fire("TIME_PLAYED_MSG", 74113, 7574) end) end
+
+-------------------------------------------------------------------------------
+-- Professions (Mainline API, values as reported by the Phase 0 probe)
+-------------------------------------------------------------------------------
+
+MOCK.professions = {
+  [6] = { "Leatherworking", 136247, 126, 150, 1, 48, 165, 0, -1, 0, "Leatherworking" },
+  [7] = { "Herbalism", 136246, 59, 150, 2, 50, 182, 0, -1, 0, "Herbalism" },
+  [5] = { "First Aid", 135966, 23, 75, 1, 46, 129, 0, -1, 0, "First Aid" },
+  [8] = { "Cooking", 133971, 13, 75, 1, 53, 185, 0, -1, 0, "Cooking" },
+}
+MOCK.professionSlots = { 6, 7, 5, nil, 8, nil, nil }
+function GetProfessions()
+  local s = MOCK.professionSlots
+  return s[1], s[2], s[3], s[4], s[5], s[6], s[7]
+end
+function GetProfessionInfo(i) local p = MOCK.professions[i]; if p then return unpack(p) end end
+
+MOCK.recipes = {
+  [165] = {
+    { recipeID = 2881, name = "Light Leather", categoryID = 2550, icon = 134252, learned = true },
+    { recipeID = 3816, name = "Cured Light Hide", categoryID = 2550, icon = 134366, learned = true },
+    { recipeID = 3817, name = "Cured Medium Hide", categoryID = 2550, icon = 134354, learned = true },
+    { recipeID = 9058, name = "Handstitched Leather Cloak", categoryID = 2552, icon = 133150, learned = true },
+    { recipeID = 2149, name = "Handstitched Leather Boots", categoryID = 2553, icon = 132539, learned = false },
+    { recipeID = 3753, name = "Handstitched Leather Belt", categoryID = 2553, icon = 132493, learned = false },
+  },
+  [185] = {
+    { recipeID = 2538, name = "Charred Wolf Meat", categoryID = 2600, icon = 133974, learned = true },
+  },
+}
+MOCK.categories = {
+  [2549] = { categoryID = 2549, name = "Leatherworking", parentCategoryID = nil },
+  [2550] = { categoryID = 2550, name = "Materials", parentCategoryID = 2549 },
+  [2552] = { categoryID = 2552, name = "Cloaks", parentCategoryID = 2549 },
+  [2553] = { categoryID = 2553, name = "Armor", parentCategoryID = 2549 },
+  [2600] = { categoryID = 2600, name = "Cooking", parentCategoryID = nil },
+}
+MOCK.tradeSkill = nil -- skill line shown in the open profession window
+C_TradeSkillUI = {
+  GetAllRecipeIDs = function()
+    local out = {}
+    for _, r in ipairs(MOCK.recipes[MOCK.tradeSkill] or {}) do out[#out + 1] = r.recipeID end
+    return out
+  end,
+  GetRecipeInfo = function(id)
+    for _, list in pairs(MOCK.recipes) do
+      for _, r in ipairs(list) do
+        if r.recipeID == id then
+          if r.broken then error("recipe data not loaded") end
+          return r
+        end
+      end
+    end
+  end,
+  GetBaseProfessionInfo = function() return { professionID = MOCK.tradeSkill or 0 } end,
+  GetCategoryInfo = function(id) return MOCK.categories[id] end,
+  IsTradeSkillReady = function() return true end,
+  IsTradeSkillLinked = function() return MOCK.linked == true, nil end,
+  IsTradeSkillGuild = function() return false end,
+  IsNPCCrafting = function() return false end,
+}
+C_Spell = { GetSpellName = function(id) return id == 2149 and "Handstitched Leather Boots" or nil end }
+
+-- Opens / closes the profession window of a skill line.
+function MOCK.openProfession(skillLine)
+  MOCK.tradeSkill = skillLine
+  MOCK.fire("TRADE_SKILL_SHOW")
+  MOCK.fire("TRADE_SKILL_LIST_UPDATE")
+end
+function MOCK.closeProfession()
+  MOCK.tradeSkill = nil
+  MOCK.fire("TRADE_SKILL_CLOSE")
+end

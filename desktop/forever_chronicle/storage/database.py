@@ -182,6 +182,44 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (character_id, stat_key)
     );
     """,
+    # 5: profession and recipe snapshots (spec F-008) - mirror of the addon's latest snapshot
+    """
+    CREATE TABLE professions (
+        character_id   TEXT NOT NULL REFERENCES characters(character_id),
+        skill_line     INTEGER NOT NULL,
+        name           TEXT NOT NULL,
+        icon           INTEGER,
+        kind           TEXT,                          -- primary | secondary
+        rank           INTEGER,
+        max_rank       INTEGER,
+        modifier       INTEGER,
+        active         INTEGER NOT NULL DEFAULT 1,    -- 0 = unlearned
+        first_seen_at  INTEGER,
+        updated_at     INTEGER,
+        recipe_status  TEXT,                          -- complete | partial | NULL (not captured yet)
+        recipes_updated_at INTEGER,
+        recipes_total  INTEGER,                       -- size of the unfiltered recipe list
+        PRIMARY KEY (character_id, skill_line)
+    );
+    CREATE TABLE recipes (
+        character_id   TEXT NOT NULL REFERENCES characters(character_id),
+        skill_line     INTEGER NOT NULL,
+        recipe_id      INTEGER NOT NULL,
+        name           TEXT NOT NULL,
+        category_id    INTEGER,
+        icon           INTEGER,
+        first_seen_at  INTEGER,                       -- first snapshot that contained it
+        PRIMARY KEY (character_id, skill_line, recipe_id)
+    );
+    CREATE TABLE recipe_categories (
+        character_id   TEXT NOT NULL REFERENCES characters(character_id),
+        skill_line     INTEGER NOT NULL,
+        category_id    INTEGER NOT NULL,
+        parent_id      INTEGER,
+        name           TEXT NOT NULL,
+        PRIMARY KEY (character_id, skill_line, category_id)
+    );
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)
