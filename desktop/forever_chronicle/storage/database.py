@@ -235,6 +235,17 @@ MIGRATIONS: list[str] = [
         name           TEXT
     );
     """,
+    # 8: friends' characters (see docs/Sharing_Design.md) - imported from their share files, read-only
+    """
+    CREATE TABLE owners (
+        owner_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        share_id       TEXT NOT NULL UNIQUE,          -- random, stable per friend's app
+        display_name   TEXT NOT NULL,                 -- the name the friend chose
+        shared_at      INTEGER,                       -- created_at of the newest imported share file
+        imported_at    INTEGER
+    );
+    ALTER TABLE characters ADD COLUMN owner_id INTEGER REFERENCES owners(owner_id);  -- NULL = my own character
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

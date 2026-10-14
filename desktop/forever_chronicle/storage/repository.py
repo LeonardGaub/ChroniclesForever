@@ -22,11 +22,20 @@ class Character:
     race_name: str | None
     faction: str | None
     last_seen_at: int | None
+    owner_id: int | None = None         # None = my own character, else a friend (owners table)
+    owner_name: str | None = None
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "Character":
+        keys = row.keys()
         return cls(row["character_id"], row["name"], row["name_suffix"], row["realm"], row["level"],
-                   row["class_name"], row["class_file"], row["race_name"], row["faction"], row["last_seen_at"])
+                   row["class_name"], row["class_file"], row["race_name"], row["faction"], row["last_seen_at"],
+                   row["owner_id"] if "owner_id" in keys else None,
+                   row["owner_name"] if "owner_name" in keys else None)
+
+    @property
+    def is_friend(self) -> bool:
+        return self.owner_id is not None
 
     @property
     def full_name(self) -> str:
@@ -190,8 +199,18 @@ class Repository:
         return character_id
 
     def list_characters(self) -> list[Character]:
-        rows = self.conn.execute("SELECT * FROM characters ORDER BY last_seen_at DESC, name").fetchall()
+        """My characters first, then friends' characters grouped by friend."""
+        rows = self.conn.execute(
+            """SELECT c.*, o.display_name AS owner_name FROM characters c LEFT JOIN owners o ON o.owner_id = c.owner_id
+               ORDER BY c.owner_id IS NOT NULL, o.display_name COLLATE NOCASE, c.owner_id,
+               c.last_seen_at DESC, c.name""").fetchall()
         return [Character.from_row(r) for r in rows]
+
+    def owners(self) -> list[sqlite3.Row]:
+        """Friends with the number of their characters."""
+        return self.conn.execute(
+            """SELECT o.*, (SELECT COUNT(*) FROM characters c WHERE c.owner_id = o.owner_id) AS characters
+               FROM owners o ORDER BY o.display_name COLLATE NOCASE""").fetchall()
 
     # -- events -----------------------------------------------------------------
 
@@ -329,9 +348,12 @@ class Repository:
                                  (character_id,)).fetchall()
 
     def unmatched_screenshots(self) -> list[sqlite3.Row]:
+        # Only my own characters: friends' pictures come with their share file, never from my folder.
         return self.conn.execute("""SELECT * FROM screenshots WHERE status IN ('api_called', 'confirmed')
                                     AND file_path IS NULL AND file_stamp IS NOT NULL
-                                    AND COALESCE(file_match, '') <> 'ambiguous'""").fetchall()
+                                    AND COALESCE(file_match, '') <> 'ambiguous'
+                                    AND character_id IN (SELECT character_id FROM characters
+                                                         WHERE owner_id IS NULL)""").fetchall()
 
     def claimed_files(self) -> set[str]:
         rows = self.conn.execute("SELECT file_path FROM screenshots WHERE file_path IS NOT NULL").fetchall()

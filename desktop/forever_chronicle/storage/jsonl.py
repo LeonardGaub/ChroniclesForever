@@ -9,6 +9,9 @@ File format (one JSON object per line, UTF-8):
 Import is a merge: idempotent, row by row, and invalid rows are counted and reported instead of failing the
 file. Which version of a record wins is defined per record type in ``RECORD_TYPES``. Local-only columns
 (database IDs, import bookkeeping, screenshot file paths of this computer) are not exported.
+
+Only my own characters are exported; friends' characters (docs/Sharing_Design.md) come back by importing
+their share files. Share files (storage/share.py) reuse this format with a filter.
 """
 
 from __future__ import annotations
@@ -47,7 +50,7 @@ RECORD_TYPES: list[RecordType] = [
     RecordType("instance", "instances", ("instance_id",), per_character=False, merge="replace"),
     RecordType("instance_entrance", "instance_entrances", ("instance_id",), per_character=False, merge="replace"),
     RecordType("character", "characters", ("natural_key",), per_character=False, merge="newer",
-               compare="last_seen_at", local=("character_id",)),
+               compare="last_seen_at", local=("character_id", "owner_id")),
     RecordType("character_stat", "character_stats", ("stat_key",), merge="newer", compare="value"),
     RecordType("session", "sessions", ("session_id",), merge="newer", compare="ended_at"),
     RecordType("event", "events", ("event_id",), local=("import_id",)),
@@ -99,26 +102,57 @@ def _columns(conn: sqlite3.Connection, table: str) -> dict[str, tuple[str, bool]
 # -- export --------------------------------------------------------------------------------
 
 
-def iter_export(db: Database) -> Iterator[dict[str, Any]]:
-    yield {"record_type": "header", "format": FORMAT, "format_version": FORMAT_VERSION, "app_version": __version__,
-           "db_schema": SCHEMA_VERSION, "exported_at": int(time.time())}
+@dataclass
+class ExportFilter:
+    """What to export. None everywhere = all of my own characters, all record types (the backup export).
+    characters: character_id -> record type names to include for that character.
+    types: global record types (map_info, ...) to include.
+    screenshots: (character_id, screenshot_id) pairs; only these screenshot records are exported."""
+    characters: dict[str, set[str]] | None = None
+    types: set[str] | None = None
+    screenshots: set[tuple[str, str]] | None = None
+
+
+def iter_records(db: Database, flt: ExportFilter | None = None) -> Iterator[dict[str, Any]]:
+    """The records (without header) of my own characters, filtered."""
+    flt = flt or ExportFilter()
     conn = db.conn
     for rt in RECORD_TYPES:
+        if flt.types is not None and rt.name not in flt.types:
+            continue
         cols = [c for c in _columns(conn, rt.table) if c not in rt.local and c != "character_id"]
         select = ", ".join(f"t.{c}" for c in cols)
+        order = ", ".join(f"t.{k}" for k in rt.key)
         if rt.per_character:
-            sql = (f"SELECT {select}, c.natural_key AS __character FROM {rt.table} t "
-                   f"JOIN characters c ON c.character_id = t.character_id ORDER BY c.natural_key, "
-                   + ", ".join(f"t.{k}" for k in rt.key))
+            sql = (f"SELECT {select}, t.character_id AS __cid, c.natural_key AS __character FROM {rt.table} t "
+                   f"JOIN characters c ON c.character_id = t.character_id WHERE c.owner_id IS NULL "
+                   f"ORDER BY c.natural_key, {order}")
+        elif rt.name == "character":
+            sql = f"SELECT {select}, t.character_id AS __cid FROM {rt.table} t WHERE t.owner_id IS NULL ORDER BY {order}"
         else:
-            sql = f"SELECT {select} FROM {rt.table} t ORDER BY " + ", ".join(f"t.{k}" for k in rt.key)
+            sql = f"SELECT {select} FROM {rt.table} t ORDER BY {order}"
         for row in conn.execute(sql):
+            if rt.per_character or rt.name == "character":
+                cid = row["__cid"]
+                if flt.characters is not None:
+                    wanted = flt.characters.get(cid)
+                    if wanted is None or (rt.per_character and rt.name not in wanted):
+                        continue
+                if flt.screenshots is not None and rt.name in ("screenshot", "screenshot_event") \
+                        and (cid, row["screenshot_id"]) not in flt.screenshots:
+                    continue
             rec: dict[str, Any] = {"record_type": rt.name}
             if rt.per_character:
                 rec["character"] = row["__character"]
             for c in cols:
                 rec[c] = row[c]
             yield rec
+
+
+def iter_export(db: Database) -> Iterator[dict[str, Any]]:
+    yield {"record_type": "header", "format": FORMAT, "format_version": FORMAT_VERSION, "app_version": __version__,
+           "db_schema": SCHEMA_VERSION, "exported_at": int(time.time())}
+    yield from iter_records(db)
 
 
 def export_jsonl(db: Database, path: Path) -> ExportResult:
@@ -154,12 +188,18 @@ def _valid_value(value: Any, declared: str) -> bool:
 
 
 class _Importer:
-    def __init__(self, db: Database, result: JsonlImportResult):
+    """Merges records. `characters` maps natural keys to the characters records may be written to
+    (default: my own characters; a friend's character is never changed by a backup import)."""
+
+    def __init__(self, db: Database, result: JsonlImportResult, characters: dict[str, str] | None = None):
         self.conn = db.conn
         self.result = result
         self.columns = {rt.name: _columns(self.conn, rt.table) for rt in RECORD_TYPES}
-        self.characters: dict[str, str] = {
-            r[0]: r[1] for r in self.conn.execute("SELECT natural_key, character_id FROM characters")}
+        self.characters: dict[str, str] = characters if characters is not None else {
+            r[0]: r[1] for r in self.conn.execute(
+                "SELECT natural_key, character_id FROM characters WHERE owner_id IS NULL")}
+        self.foreign = {r[0] for r in self.conn.execute(
+            "SELECT natural_key FROM characters WHERE owner_id IS NOT NULL")}
 
     def row(self, line: int, rec: dict[str, Any]) -> None:
         rt = BY_NAME[rec["record_type"]]
@@ -186,6 +226,9 @@ class _Importer:
                 return
             values["character_id"] = where["character_id"] = character_id
         elif rt.name == "character":
+            if values["natural_key"] in self.foreign and values["natural_key"] not in self.characters:
+                self.result.problem(line, "character: belongs to a friend")
+                return
             values.setdefault("created_at", int(time.time()))
 
         cond = " AND ".join(f"{k} = ?" for k in where)
@@ -222,16 +265,10 @@ class _Importer:
             self.result.problem(line, f"{rt.name}: {exc}")
 
 
-def import_jsonl(db: Database, path: Path) -> JsonlImportResult:
-    """Merges a JSONL export into the database. A backup of the database is made first."""
-    result = JsonlImportResult(source=str(path))
-    try:
-        lines = path.read_text(encoding="utf-8-sig").splitlines()
-    except (OSError, UnicodeDecodeError) as exc:
-        result.status = "failed"
-        result.messages.append(str(exc))
-        return result
-
+def read_records(lines: list[str], result: JsonlImportResult) -> tuple[dict[str, Any] | None,
+                                                                       list[tuple[int, dict[str, Any]]]]:
+    """Checks the header and parses the record lines (sorted: characters before their records).
+    Returns (header, [(line number, record)]); header is None and result.status "rejected" for unusable files."""
     numbered = [(i + 1, text) for i, text in enumerate(lines) if text.strip()]
     header = None
     if numbered:
@@ -242,12 +279,12 @@ def import_jsonl(db: Database, path: Path) -> JsonlImportResult:
     if not isinstance(header, dict) or header.get("record_type") != "header" or header.get("format") != FORMAT:
         result.status = "rejected"
         result.messages.append("not a Forever Chronicle export (header line missing)")
-        return result
+        return None, []
     version = header.get("format_version")
     if not isinstance(version, int) or version > FORMAT_VERSION:
         result.status = "rejected"
         result.messages.append(f"export format {version} is newer than this app supports ({FORMAT_VERSION})")
-        return result
+        return None, []
 
     records: list[tuple[int, int, dict[str, Any]]] = []
     order = {rt.name: i for i, rt in enumerate(RECORD_TYPES)}
@@ -265,6 +302,25 @@ def import_jsonl(db: Database, path: Path) -> JsonlImportResult:
             continue
         records.append((order[rec["record_type"]], number, rec))
     records.sort(key=lambda r: (r[0], r[1]))  # characters before their records, file order otherwise
+    return header, [(number, rec) for _, number, rec in records]
+
+
+def import_jsonl(db: Database, path: Path) -> JsonlImportResult:
+    """Merges a JSONL export into the database. A backup of the database is made first."""
+    result = JsonlImportResult(source=str(path))
+    try:
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        result.status = "failed"
+        result.messages.append(str(exc))
+        return result
+    header, records = read_records(lines, result)
+    if header is None:
+        return result
+    if header.get("kind", "backup") != "backup":
+        result.status = "rejected"
+        result.messages.append("this is a share file from a friend; import it on the Freunde tab")
+        return result
 
     result.backup = db.backup("before-jsonl-import")
     st = path.stat()
@@ -274,7 +330,7 @@ def import_jsonl(db: Database, path: Path) -> JsonlImportResult:
                               (str(path), int(st.st_mtime), st.st_size, int(time.time())))
         result.import_id = int(cur.lastrowid)
         importer = _Importer(db, result)
-        for _, number, rec in records:
+        for number, rec in records:
             importer.row(number, rec)
         if result.invalid:
             result.status = "partial"

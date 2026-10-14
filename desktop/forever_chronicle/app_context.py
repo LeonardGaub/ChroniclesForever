@@ -11,6 +11,7 @@ from .importing.screenshot_matcher import match_screenshots
 from .importing.sv_importer import ImportResult, SavedVariablesImporter
 from .storage.database import Database
 from .storage.jsonl import ExportResult, JsonlImportResult, export_jsonl, import_jsonl
+from .storage.share import ShareExportResult, ShareImportResult, export_share, import_share, remove_friend
 from .storage.repository import Repository
 from .wow.paths import ClientInstall, SavedVariablesFile, client_from_path, find_forever_installs, find_saved_variables
 
@@ -71,6 +72,22 @@ class AppContext(QObject):
             self.match_screenshots()
             self.data_changed.emit()
         return result
+
+    # -- friends (docs/Sharing_Design.md) ------------------------------------------------
+
+    def export_share(self, path: Path, selection: dict[str, set[str]],
+                     screenshots: set[tuple[str, str]]) -> ShareExportResult:
+        return export_share(self.db, path, self.config.share_id, self.config.share_name, selection, screenshots)
+
+    def import_share(self, path: Path) -> ShareImportResult:
+        result = import_share(self.db, path, self.config.share_id, self.config.friends_dir)
+        if result.status in ("ok", "partial"):
+            self.data_changed.emit()
+        return result
+
+    def remove_friend(self, owner_id: int) -> None:
+        remove_friend(self.db, owner_id, self.config.friends_dir)
+        self.data_changed.emit()
 
     def restore_backup(self, path: Path) -> Path | None:
         """Replaces all data with a backup (the current state is backed up first)."""

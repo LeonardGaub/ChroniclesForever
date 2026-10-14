@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QAction, QActionGroup, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QTabWidget,
                                QVBoxLayout, QWidget)
 
@@ -129,12 +129,23 @@ class MainWindow(QMainWindow):
     # -- data -------------------------------------------------------------------------
 
     def reload(self) -> None:
-        """Reload the character list (after an import) and keep the selection."""
-        selected = self.current_character_id() or self.ctx.config.last_character
+        """Reload the character list (after an import) and keep the selection. My characters come first;
+        friends' characters follow under a heading per friend. At start my own character is shown."""
+        chars = self.ctx.repo.list_characters()
+        selected = self.current_character_id()
+        if selected is None:  # app start: the last character, if it is mine, else my most recent one
+            own = [c.character_id for c in chars if not c.is_friend]
+            last = self.ctx.config.last_character
+            selected = last if last in own else (own[0] if own else None)
         self.characters.blockSignals(True)
         self.characters.clear()
-        chars = self.ctx.repo.list_characters()
+        has_friends = any(c.is_friend for c in chars)
+        group = object()
         for char in chars:
+            if has_friends and char.owner_id != group:
+                group = char.owner_id
+                self._add_group_heading(tr("sidebar.mine") if char.owner_id is None
+                                        else tr("sidebar.friend", name=char.owner_name or "?"))
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, char)
             item.setSizeHint(QSize(200, 52))
@@ -142,8 +153,10 @@ class MainWindow(QMainWindow):
             self.characters.setItemWidget(item, CharacterItem(char))
         self.characters.blockSignals(False)
         self.side_empty.setVisible(not chars)
-        target = next((i for i in range(self.characters.count())
-                       if self.characters.item(i).data(Qt.ItemDataRole.UserRole).character_id == selected), 0)
+        rows = [i for i in range(self.characters.count()) if self.characters.item(i).data(Qt.ItemDataRole.UserRole)]
+        target = next((i for i in rows
+                       if self.characters.item(i).data(Qt.ItemDataRole.UserRole).character_id == selected),
+                      rows[0] if rows else 0)
         if chars:
             self.characters.setCurrentRow(target)
             self._character_selected(self.characters.currentItem())
@@ -151,9 +164,17 @@ class MainWindow(QMainWindow):
             self._show_character(None)
         self._update_status()
 
+    def _add_group_heading(self, text: str) -> None:
+        item = QListWidgetItem(text)
+        item.setFlags(Qt.ItemFlag.NoItemFlags)  # not selectable
+        item.setForeground(QColor(theme.GOLD))
+        item.setFont(theme.heading_font(10))
+        self.characters.addItem(item)
+
     def current_character_id(self) -> str | None:
         item = self.characters.currentItem()
-        return item.data(Qt.ItemDataRole.UserRole).character_id if item else None
+        char = item.data(Qt.ItemDataRole.UserRole) if item else None
+        return char.character_id if char else None
 
     def _character_selected(self, item: QListWidgetItem | None, _previous=None) -> None:
         char = item.data(Qt.ItemDataRole.UserRole) if item else None
@@ -166,7 +187,10 @@ class MainWindow(QMainWindow):
             self.char_name.setText(char.full_name)
             self.char_name.setStyleSheet(f"color: {theme.class_color(char.class_file)};")
             details = tr("char.details", level=char.level or "?", race=char.race_name or "", cls=char.class_name or "")
-            self.char_details.setText(f"{details}  ·  {char.realm or ''}  ·  {char.faction or ''}")
+            text = f"{details}  ·  {char.realm or ''}  ·  {char.faction or ''}"
+            if char.is_friend:
+                text += "  ·  " + tr("char.friend", name=char.owner_name or "?")
+            self.char_details.setText(text)
         else:
             self.char_name.setText(tr("char.none"))
             self.char_name.setStyleSheet(f"color: {theme.MUTED};")

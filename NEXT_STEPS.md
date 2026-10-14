@@ -113,6 +113,23 @@
   is protected from the 5-copy rotation. Older backups are migrated afterwards. Backups from newer versions and
   files that are not Forever Chronicle databases are refused. Backup file names are unique (counter when two
   are made in the same second).
+- **Desktop v0.3.0: friends' characters, phase 1 (see docs/Sharing_Design.md).**
+  - New tab "Freunde": your name (free text), "Teilen …" (dialog: own characters, categories per character, and
+    screenshots picked one by one with thumbnails, none pre-selected), import a friend's `.fcshare`, and the
+    friend list with remove.
+  - `storage/share.py`: a ZIP with `share.jsonl` (JSONL with `kind: share`, `share_id`, `sender`, `created_at`,
+    categories) plus picked pictures scaled to 1600 px. Import: the newest file of a friend replaces everything
+    they shared before (characters and categories no longer shared disappear). It never touches my own
+    characters or another friend's, and ignores older files. ZIP member names are never used as paths; record
+    types are restricted. Pictures are stored in `%APPDATA%\ForeverChronicle\friends\<share_id>\`, staged and
+    swapped after the commit.
+  - Migration 8: `owners`, `characters.owner_id`. Friends' characters are never exported again (JSONL backup
+    or share), and backup imports cannot write to them. The screenshot matcher only handles my own
+    characters.
+  - Sidebar: "Meine Charaktere", then one group per friend; the app starts on my own character.
+  - Next (phase 2): the in-game character layer around the whole addon window (user decision): default is the
+    played character, with a choice of all characters of the account and all friends' characters, fed by
+    `Friends\FriendsData.lua`, which the desktop app writes.
 - **Desktop:** the icon overhaul was reverted at the user's request; text UI stays.
   - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
   - Open question for the user: real WoW icons for the desktop. Options: export from the local client with
@@ -125,7 +142,7 @@
   - Map art: the user's 52 explored-zone maps were imported into `%APPDATA%\ForeverChronicle\maps\<uiMapID>.jpg`.
     The Import tab has "Kartenbilder importieren …". Coordinates were verified against real probe data
     (Orgrimmar/Cleft of Shadow, Kalimdor rectangle).
-- Tests: `tests/addon` (`npm test`: 14 queue tests and 11 phases) and `desktop` (`pytest`, 81 tests). All pass.
+- Tests: `tests/addon` (`npm test`: 14 queue tests and 11 phases) and `desktop` (`pytest`, 88 tests). All pass.
 - In-game confirmed by the user: window, import, Screenshots tab (v0.2.0). Not yet seen in game: v0.2.1 and v0.3.0 changes.
 
 ## Confirmed client facts
