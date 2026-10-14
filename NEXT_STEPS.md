@@ -22,6 +22,13 @@
 - Friends with an older companion see packed data as empty until they get the new companion: release the main
   addon and the companion together.
 - Friends' routes on the map: written down in `docs/Friends_Map_Design.md`, not built.
+- Dungeons (2026-10-15): `Modules/Dungeons.lua` records `boss_killed` and `dungeon_completed` (first kill of the
+  last boss: journal's last encounter, else the dungeon finder's boss list) with a screenshot trigger
+  "dungeon". It also probes each dungeon passively into `FC.db.dungeonProbe` (`/fj dungeon`).
+  **Open:** after the user's next dungeon, read the probe from the saved file and decide the dungeon map per
+  `docs/Dungeon_Maps.md` (option 1 real path if a position exists, option 2 boss-run view otherwise).
+  Check there that the journal's encounter IDs match ENCOUNTER_END (probe field `encounters`).
+- The desktop cinematic mode has a timeline bar (mouse-activated), speeds, and slows down before screenshots.
 
 ## Current state (2026-10-14)
 - Spec: `ForeverChronicle_Feature_Spec_v1.3.docx`. Architecture and extension guide: `ARCHITECTURE.md`.

@@ -32,6 +32,32 @@ class Segment:
     taxi: bool = False
 
 
+class Timeline:
+    """Maps time to a position on a timeline of active time (value = seconds since the start, breaks left out)."""
+
+    def __init__(self, intervals: list[tuple[float, float]]):
+        self.starts = [a for a, _ in intervals]
+        self.ends = [b for _, b in intervals]
+        self.offsets: list[float] = []
+        total = 0.0
+        for a, b in intervals:
+            self.offsets.append(total)
+            total += b - a
+        self.total = max(1.0, total)
+
+    def to_value(self, t: float) -> float:
+        i = max(0, bisect.bisect_right(self.starts, t) - 1)
+        return self.offsets[i] + max(0.0, min(self.ends[i], t) - self.starts[i])
+
+    def to_time(self, v: float) -> float:
+        i = max(0, bisect.bisect_right(self.offsets, v) - 1)
+        return min(self.ends[i], self.starts[i] + max(0.0, v - self.offsets[i]))
+
+    def breaks(self) -> list[float]:
+        """Values where a collapsed break lies."""
+        return self.offsets[1:]
+
+
 class Route:
     def __init__(self, points: list[PositionPoint], map_infos: dict | None = None,
                  instance_names: dict[int, str] | None = None,
@@ -209,6 +235,25 @@ class Route:
                 return a.map_id, a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f
         p = self.point_at(int(t))
         return self.locate(p.map_id, p.x, p.y, p.instance_id) if p else None
+
+    def timeline(self, start: float, end: float, gap: float = 300) -> "Timeline":
+        """Active time within [start, end]: breaks without points longer than gap are collapsed (as on the
+        addon's slider), so a timeline over many sessions is not mostly empty."""
+        intervals: list[list[float]] = []
+        i = max(0, bisect.bisect_right(self.times, start) - 1)
+        for p in self.points[i:]:
+            if p.time > end:
+                break
+            if p.end < start:
+                continue
+            a, b = max(p.time, start), min(p.end, end)
+            if intervals and a - intervals[-1][1] <= gap:
+                intervals[-1][1] = max(intervals[-1][1], b)
+            else:
+                intervals.append([a, b])
+        if not intervals:
+            intervals = [[start, end]]
+        return Timeline([(a, b) for a, b in intervals])
 
     def next_time_after(self, t: int) -> int | None:
         """Start time of the first point after t (used to skip gaps during playback)."""

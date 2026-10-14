@@ -56,7 +56,7 @@ for e in ([[ADDON_LOADED PLAYER_LOGIN PLAYER_ENTERING_WORLD PLAYER_LOGOUT TIME_P
   LOADING_SCREEN_ENABLED LOADING_SCREEN_DISABLED SCREENSHOT_SUCCEEDED SCREENSHOT_FAILED
   PARTY_KILL PLAYER_XP_UPDATE PLAYER_TARGET_CHANGED UPDATE_MOUSEOVER_UNIT NAME_PLATE_UNIT_ADDED
   SKILL_LINES_CHANGED CHAT_MSG_SKILL TRADE_SKILL_SHOW TRADE_SKILL_LIST_UPDATE TRADE_SKILL_DATA_SOURCE_CHANGED
-  TRADE_SKILL_CLOSE NEW_RECIPE_LEARNED PLAYER_EQUIPMENT_CHANGED]]):gmatch("%S+") do
+  TRADE_SKILL_CLOSE NEW_RECIPE_LEARNED PLAYER_EQUIPMENT_CHANGED ENCOUNTER_START ENCOUNTER_END BOSS_KILL]]):gmatch("%S+") do
   VALID_EVENTS[e] = true
 end
 
@@ -185,6 +185,7 @@ C_Map = {
   GetMapArtLayers = function() return { { layerWidth = 1002, layerHeight = 668, tileWidth = 256, tileHeight = 256 } } end,
   GetMapArtLayerTextures = function() local t = {} for i = 1, 12 do t[i] = 100000 + i end return t end,
   GetPlayerMapPosition = function()
+    if MOCK.instance then return nil end -- no position inside instances (Phase 0)
     return { x = MOCK.x or 0.440279, y = MOCK.y or 0.591297, GetXY = function(s) return s.x, s.y end }
   end,
 }
@@ -308,6 +309,31 @@ C_EncounterJournal = {
 }
 function EJ_GetInstanceInfo(id)
   if id == 226 then return "Ragefire Chasm", "", 0, 0, 0, 0, 213, "", false, 389 end
+  if id == 227 then return "Blackfathom Deeps", "", 0, 0, 0, 0, 221, "", false, 48 end
+end
+-- Journal instance lists (one tier) and boss lists: Ragefire Chasm's last boss is encounter 1446.
+function EJ_GetNumTiers() return 1 end
+function EJ_GetCurrentTier() return 1 end
+function EJ_SelectTier() end
+function EJ_GetInstanceByIndex(i, isRaid)
+  if isRaid then return nil end
+  local list = { 227, 226 }
+  if list[i] then return list[i], "instance " .. list[i] end
+end
+local BOSSES = { [226] = { { "Oggleflint", 1443 }, { "Taragaman the Hungerer", 1444 }, { "Jergosh the Invoker", 1445 },
+  { "Bazzalan", 1446 } } }
+function EJ_GetEncounterInfoByIndex(i, journalID)
+  local b = BOSSES[journalID] and BOSSES[journalID][i]
+  if b then return b[1], "", i, 0, "", journalID, b[2], 389 end
+end
+-- Inside Ragefire Chasm (MOCK.instance): name, type, difficulty, ..., instanceID, groupSize, lfgDungeonID.
+function GetInstanceInfo()
+  if MOCK.instance then return "Ragefire Chasm", "party", 1, "Normal", 5, 0, false, 389, 1, 4 end
+  return "Kalimdor", "none", 0, "", 0, 0, false, 1, 0, 0
+end
+C_EncounterJournal.GetEncountersOnMap = function(mapID)
+  if mapID == 213 then return { { encounterID = 1443, mapX = 0.4, mapY = 0.6 }, { encounterID = 1446, mapX = 0.7, mapY = 0.2 } } end
+  return {}
 end
 CLASS_ICON_TCOORDS = { HUNTER = { 0, 0.25, 0.25, 0.5 }, MAGE = { 0.25, 0.49609375, 0, 0.25 },
   WARRIOR = { 0, 0.25, 0, 0.25 } }

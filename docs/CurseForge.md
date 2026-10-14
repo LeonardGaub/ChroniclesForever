@@ -59,7 +59,7 @@ Everything is stored locally in your SavedVariables. The addon never sends anyth
 ### Commands
 - `/fj` or `/chronicle`: open or close the window
 - `/fj help`: all commands
-- `/fj status`, `/fj professions`, `/fj played`, `/fj diag on|off`
+- `/fj status`, `/fj professions`, `/fj played`, `/fj diag on|off`, `/fj dungeon`
 - `/fjshot test`: take a test screenshot
 
 ### Good to know
@@ -122,7 +122,7 @@ Alles wird lokal in deinen SavedVariables gespeichert. Das Addon sendet nichts a
 ### Befehle
 - `/fj` oder `/chronicle`: Fenster öffnen oder schließen
 - `/fj help`: alle Befehle
-- `/fj status`, `/fj professions`, `/fj played`, `/fj diag on|off`
+- `/fj status`, `/fj professions`, `/fj played`, `/fj diag on|off`, `/fj dungeon`
 - `/fjshot test`: Test-Screenshot
 
 ### Gut zu wissen

@@ -332,6 +332,8 @@ ForeverChronicleDB = {
 		["modules"] = {
 			["Character"] = {
 			},
+			["Dungeons"] = {
+			},
 			["Gear"] = {
 			},
 			["Metrics"] = {
@@ -362,6 +364,7 @@ ForeverChronicleDB = {
 				["triggers"] = {
 					["achievement"] = true,
 					["death"] = false,
+					["dungeon"] = true,
 					["level"] = true,
 					["quest"] = false,
 					["rare"] = true,

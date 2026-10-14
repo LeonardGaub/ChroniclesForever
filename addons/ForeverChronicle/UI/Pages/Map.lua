@@ -6,7 +6,7 @@
 -- The route is painted up to the shown moment: all of it, or only the last 15 minutes with older parts
 -- fading out. Lines are coloured by character level, by session or in one colour (blue = flight path).
 -- The slider is a timeline: a coloured band per zone in its track, ticks above it for level-ups, deaths,
--- rares, achievements and new zones. Breaks between sessions are collapsed.
+-- rares, achievements, new zones, boss kills and completed dungeons. Breaks between sessions are collapsed.
 
 local ADDON, FC = ...
 local L = FC.L
@@ -34,6 +34,7 @@ local INSTANCE_COLOR = { 0.22, 0.18, 0.28 }
 local TICK_COLORS = {
   level_up = { 1, 0.82, 0 }, player_died = { 1, 0.2, 0.2 }, rare_killed = { 0.8, 0.45, 1 },
   achievement_earned = { 1, 0.55, 0.1 }, zone_discovered = { 0.45, 0.85, 1 },
+  boss_killed = { 0.8, 0.55, 0.3 }, dungeon_completed = { 1, 1, 1 },
 }
 local TRACK_INSET = 8 -- the slider thumb's centre never reaches the track's ends
 local MAX_BANDS, MAX_TICKS = 600, 300

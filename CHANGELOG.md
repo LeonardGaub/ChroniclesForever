@@ -7,6 +7,12 @@ then turn "Unreleased" into the uploaded version and date.
 ## Unreleased (0.15.0)
 
 ### New
+- Dungeons: boss kills appear in the chronicle ("Boss defeated: Bazzalan (Ragefire Chasm)"), and the first time
+  you defeat a dungeon's last boss, the dungeon counts as completed. New stats: bosses defeated, dungeons
+  completed.
+- Screenshots: new trigger "On dungeon completion" (on by default) for the first kill of a dungeon's last boss.
+- New command `/fj dungeon`: shows what the game offers inside the current dungeon (map, bosses). It prepares a
+  dungeon map for a later version.
 - Map: replay now "paints" the route. Only the way up to the shown moment is drawn, and event icons appear as
   the replay reaches them.
 - Map: new "Last 15 minutes" button. It shows only the last 15 minutes of the route, with older parts fading

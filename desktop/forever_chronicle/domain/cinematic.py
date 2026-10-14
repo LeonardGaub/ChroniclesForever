@@ -17,7 +17,8 @@ from ..storage.repository import EventRow
 from . import event_types
 
 # Event types the replay announces. Quests are left out: there are too many for a replay at speed.
-CUE_EVENT_TYPES = ("level_up", "player_died", "zone_discovered", "achievement_earned", "rare_killed")
+CUE_EVENT_TYPES = ("level_up", "player_died", "zone_discovered", "achievement_earned", "rare_killed",
+                   "boss_killed", "dungeon_completed")
 
 
 @dataclass(frozen=True)

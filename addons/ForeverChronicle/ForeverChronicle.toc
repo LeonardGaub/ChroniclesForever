@@ -29,6 +29,7 @@ Modules\Travel.lua
 Modules\Positions.lua
 Modules\Progress.lua
 Modules\Rares.lua
+Modules\Dungeons.lua
 Modules\Professions.lua
 Modules\Gear.lua
 Modules\Metrics.lua

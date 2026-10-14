@@ -75,6 +75,17 @@ register(EventType("rare_killed", "evt.rare_killed", "◆", "#c0c0c0",
                    lambda e: tr("evt.rare_killed.text", name=e.payload.get("name") or "?")))
 
 
+def _boss(e: EventRow) -> str:
+    name, where = e.payload.get("name") or "?", e.payload.get("instance")
+    return tr("evt.boss_killed.text_in", name=name, instance=where) if where else tr("evt.boss_killed.text", name=name)
+
+
+register(EventType("boss_killed", "evt.boss_killed", "⚔", "#cc8c4d", _boss))
+register(EventType("dungeon_completed", "evt.dungeon_completed", "♛", "#ffffff",
+                   lambda e: tr("evt.dungeon_completed.text", instance=e.payload.get("instance") or "?",
+                                boss=e.payload.get("boss") or "?")))
+
+
 def rank_name(max_rank: int | None) -> str:
     """Classic rank by maximum skill (Apprentice 75 ... Artisan 300); other values show the number."""
     key = {75: "rank.apprentice", 150: "rank.journeyman", 225: "rank.expert", 300: "rank.artisan"}.get(max_rank or 0)

@@ -98,4 +98,37 @@ def test_cinematic_window_plays_with_screenshots(app, db, tmp_path, monkeypatch,
     painter.end()
     window.seek(start)
     assert not window.ended and window.t == start
+
+    # Controls: hidden until the mouse moves, gone again after a moment without movement.
+    assert not window.controls.isVisible()
+    window.wake_controls()
+    assert window.controls.isVisible()
+    for _ in range(int((3 + 1) / 0.1)):
+        window.advance(0.1)
+    assert not window.controls.isVisible(), "controls fade out without mouse movement"
+    window.toggle_pause()
+    assert window.paused and window.play_button.text() == "▶"
+    before = window.t
+    window.advance(1.0)
+    assert window.t == before, "paused"
+    window.toggle_pause()
+    window.set_speed(10)
+    assert [b.isChecked() for _, b in window.speed_buttons] == [False, False, False, True]
+    target = (start + end) / 2
+    window._seek_from_bar(target)
+    assert window.t == target and window.bar.value == pytest.approx(window.bar.timeline.to_value(target))
+
+    # Slower shortly before a screenshot, full speed far from it.
+    shot_cue = next(c for c in window.cues if c.kind == "screenshot")
+    window.seek(shot_cue.time - 5)
+    near = window.pace()
+    window.seek(shot_cue.time - 10 * 60 * 10)
+    assert near < 0.5 and (window.pace() == 1.0 or window.t < start + 1), (near, window.pace())
     window.close()
+
+
+def test_timeline_collapses_breaks():
+    route = Route([P(0), P(100), P(1000), P(1100)])
+    tl = route.timeline(0, 1100, gap=300)
+    assert tl.total == 200 and tl.breaks() == [100]
+    assert tl.to_value(1050) == 150 and tl.to_time(150) == 1050 and tl.to_value(500) == 100

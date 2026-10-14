@@ -751,6 +751,48 @@ if PHASE == 10 then
   SlashCmdList.FOREVERCHRONICLESHOT("rare off")
   check(FC:GetModule("Screenshots"):GetSettings().triggers.rare == false, "/fjshot rare off")
 
+  -- Dungeons: the probe on entering, boss kills, and the first kill of the last boss.
+  local function ofType(t)
+    local out = {}
+    for _, r in ipairs(S(char.streams.events).records) do if r.type == t then out[#out + 1] = r end end
+    return out
+  end
+  MOCK.instance, MOCK.zone = true, "Ragefire Chasm"
+  MOCK.fire("PLAYER_ENTERING_WORLD", false, false)
+  MOCK.advance(4)
+  local probe = ForeverChronicleDB.dungeonProbe and ForeverChronicleDB.dungeonProbe["389"]
+  check(probe and probe.map == 213 and probe.mapSource == "journal" and probe.position == nil and probe.artTiles == 12
+    and probe.journalID == 226 and probe.journalBosses == 4 and probe.lastEncounterID == 1446 and #probe.bossPins == 2,
+    "dungeon probe: map from the journal, no position, art, bosses (" .. FC:GetModule("Dungeons"):Describe(probe or {}) .. ")")
+  MOCK.fire("ENCOUNTER_START", 1443, "Oggleflint", 1, 5)
+  MOCK.fire("ENCOUNTER_END", 1443, "Oggleflint", 1, 5, 1)
+  MOCK.fire("BOSS_KILL", 1443, "Oggleflint")                   -- the same kill reported twice
+  MOCK.fire("ENCOUNTER_END", 1444, "Taragaman the Hungerer", 1, 5, 0) -- a wipe
+  local bosses = ofType("boss_killed")
+  check(#bosses == 1 and bosses[1].data.first == true and bosses[1].data.final == false
+    and bosses[1].data.instance == "Ragefire Chasm" and bosses[1].location.instanceID == 389,
+    "boss kill recorded once, a wipe is not a kill")
+  check(FC:DescribeEvent(bosses[1]) == "Boss besiegt: Oggleflint (Ragefire Chasm)", "chronicle text: " .. FC:DescribeEvent(bosses[1]))
+  local shotsBefore = #S(char.streams.screenshots).records
+  MOCK.advance(20)
+  MOCK.fire("ENCOUNTER_END", 1446, "Bazzalan", 1, 5, 1)
+  local done = ofType("dungeon_completed")
+  check(#done == 1 and done[1].data.instance == "Ragefire Chasm" and done[1].data.boss == "Bazzalan"
+    and ofType("boss_killed")[2].data.final == true, "last boss: dungeon completed")
+  check(FC:DescribeEvent(done[1]) == "Dungeon abgeschlossen: Ragefire Chasm (Bazzalan)", "completed text")
+  MOCK.advance(8)
+  local allShots = S(char.streams.screenshots).records
+  local dungeonShots = 0
+  for _, r in ipairs(allShots) do if r.trigger == "dungeon" and r.status == "confirmed" then dungeonShots = dungeonShots + 1 end end
+  check(#allShots > shotsBefore and dungeonShots == 1, "screenshot for the completed dungeon")
+  check(char.stats.bosses_killed == 2 and char.stats.dungeons_completed == 1, "boss and dungeon stats")
+  MOCK.advance(60)
+  MOCK.fire("ENCOUNTER_END", 1446, "Bazzalan", 1, 5, 1)          -- a second run
+  check(#ofType("dungeon_completed") == 1 and ofType("boss_killed")[3].data.first == false,
+    "only the first kill of the last boss completes the dungeon")
+  check(#probe.encounters >= 3 and probe.encounters[1]:find("^start,1443"), "encounters noted in the probe")
+  MOCK.instance, MOCK.zone = nil, nil
+
   local errors = 0
   for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
   check(errors == 0, "no errors logged")
