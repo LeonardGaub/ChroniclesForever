@@ -38,6 +38,8 @@ local function serialize(v, indent)
   return table.concat(out)
 end
 
+serializeValue = function(v) return serialize(v) end
+
 local function save()
   return "\nForeverChronicleDB = " .. serialize(ForeverChronicleDB) .. "\n"
 end
@@ -882,6 +884,8 @@ if PHASE == 13 then
   check(mine.snapshots.gear and #mine.snapshots.gear.slots == 2, "gear")
   check(data.maps["1413"] and data.maps["1414"], "maps of the route and their continent")
   check(mine.streams.screenshots == nil, "no screenshots")
+  -- What the game writes as SavedVariables\ForeverChronicle_Share.lua (test data for the sync script).
+  SAVED_OUT = "\nForeverChronicleShareDB = " .. serializeValue(ForeverChronicleShareDB) .. "\n"
 
   -- Limits: only the newest events, only the newest sessions' route.
   Share.EVENTS = 1

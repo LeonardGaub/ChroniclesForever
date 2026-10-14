@@ -148,6 +148,19 @@
     missing, and compare hashes without that file (the desktop app owns it in the game folder).
   - Tests: desktop `test_battlenet`, `test_friends_data` (writes `tests/fixtures/FriendsData.lua`); addon
     phase 12 loads that fixture.
+- **Cloud sync, in-game first (user decision; docs/Sharing_Design.md version 2).**
+  - Addon v0.13.0: the data-only addon `ForeverChronicle_Share` plus `Modules/Share.lua` (written on logout and
+    /reload) and the settings section "Mit Freunden teilen" (name, characters, categories; default everything on).
+  - `sync/ForeverSync.ps1` (PowerShell only), `ForeverSync.vbs` (hidden start from the Startup folder; no admin
+    rights needed) and `Einrichten.bat` (lives in `<cloud>/tools`; setup from there). Each run: self-update,
+    addon update from `<cloud>/addon` (WoW closed), upload of `ForeverChronicle_Share.lua` to `<cloud>/players`,
+    download with a strict plain-data check (one linear regex), then `Friends/FriendsData.lua` with each friend
+    loaded on its own in an empty environment, a daily backup (10 days), and `sync.log`. Settings live in
+    `%LOCALAPPDATA%/ForeverChronicle/sync`.
+  - `tools/publish_to_cloud.py` copies the addons and the sync files into the cloud folder; every PC installs them.
+  - The desktop app no longer writes `FriendsData.lua`. Next: remove the desktop share feature (user: not
+    needed anymore).
+  - Tests: `desktop/tests/test_sync.py` runs the real script against temporary folders.
 - **Addon v0.12.0: gear for other characters (user request).** The `Modules/Gear.lua` snapshot `snapshots.gear` (slot,
   slotName, link, item, icon, quality) is taken at login and on `PLAYER_EQUIPMENT_CHANGED`. The overview shows alts'
   and friends' gear slots from it (icon, quality border, tooltip via `SetHyperlink`); only the 3D model stays for

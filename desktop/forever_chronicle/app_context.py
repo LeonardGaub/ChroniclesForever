@@ -84,13 +84,11 @@ class AppContext(QObject):
     def import_share(self, path: Path) -> ShareImportResult:
         result = import_share(self.db, path, self.config.share_id, self.config.friends_dir)
         if result.status in ("ok", "partial"):
-            self.update_friends_data()
             self.data_changed.emit()
         return result
 
     def remove_friend(self, owner_id: int) -> None:
         remove_friend(self.db, owner_id, self.config.friends_dir)
-        self.update_friends_data()
         self.data_changed.emit()
 
     def update_friends_data(self) -> FriendsDataResult:
