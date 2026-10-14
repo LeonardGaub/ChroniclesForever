@@ -90,6 +90,7 @@ function FC:ViewStream(name)
   local char = self:ViewChar()
   if char == self.char then return self.Storage:GetStream(name) end
   local s = type(char.streams) == "table" and char.streams[name]
+  if type(s) == "table" then FC.Storage.Unpack(s) end
   if type(s) == "table" and type(s.records) == "table" then return s end
   return { nextSeq = 1, dropped = 0, records = {} }
 end

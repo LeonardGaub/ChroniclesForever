@@ -3,7 +3,7 @@
 A personal adventure history for **World of Warcraft: Forever** (Blizzard's Classic+), private use.
 
 - **Addon** (`addons/ForeverChronicle`, Interface 16001): records sessions, level-ups, quests, deaths,
-  achievements, discovered zones, routes, professions and recipes, and automatic screenshots. It has its own window (`/fc`) with
+  achievements, discovered zones, routes, professions and recipes, and automatic screenshots. It has its own window (`/fj`) with
   Übersicht, Chronik, Karte (route replay on the game's map), Berufe, Screenshots, Einstellungen and Diagnose tabs.
 - **Desktop app** (`desktop/`, Python 3.12 + PySide6): imports the addon's SavedVariables into SQLite and keeps
   the full history. It shows statistics, the chronicle, the route map on your own map art, professions and recipes, and the screenshot gallery.

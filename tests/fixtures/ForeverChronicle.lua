@@ -144,204 +144,72 @@ ForeverChronicleDB = {
 				["events"] = {
 					["dropped"] = 0,
 					["nextSeq"] = 7,
+					["packed"] = {
+						["chunks"] = {
+							"{data={level=22,},id=\"6acf27a80002b2df060c0c9ee0\",location={mapID=1413,quality=\"exact\",subzone=\"Crossroads\",x=0.4403,y=0.5913,zone=\"The Barrens\",},seq=1,serverTime=1791961000,session=\"6acf27a800018512d60ea397e0\",time=1791961000,type=\"session_started\",},{data={money=0,questID=3513,title=\"The Runaway Shipment\",xp=2550,},id=\"6acf27f10003b07eb608567de0\",location={mapID=1413,quality=\"exact\",subzone=\"Crossroads\",x=0.4403,y=0.5913,zone=\"The Barrens\",},seq=2,serverTime=1791961073,session=\"6acf27a800018512d60ea397e0\",time=1791961073,type=\"quest_completed\",},{data={},id=\"6acf280f000426dde600c8f4e8\",location={instanceID=389,quality=\"zone_only\",zone=\"Ragefire Chasm\",},seq=3,serverTime=1791961103,session=\"6acf27a800018512d60ea397e0\",time=1791961103,type=\"player_died\",},{data={level=23,},id=\"6acf282d000539efcd04990a98\",location={mapID=1413,quality=\"exact\",subzone=\"Crossroads\",x=0.4403,y=0.5913,zone=\"The Barrens\",},seq=4,serverTime=1791961133,session=\"6acf27a800018512d60ea397e0\",time=1791961133,type=\"level_up\",},{data={achievementID=6,icon=236565,name=\"Level 10\",points=10,},id=\"6acf282d0006ff3d8c0b5dcfc0\",location={mapID=1413,quality=\"exact\",subzone=\"Crossroads\",x=0.4403,y=0.5913,zone=\"The Barrens\",},seq=5,serverTime=1791961133,session=\"6acf27a800018512d60ea397e0\",time=1791961133,type=\"achievement_earned\",},{id=\"6ad087380002b2df060c0c9ee0\",type=\"session_started\",time=1792051000,serverTime=1792051000,session=\"6ad0873800018512d60ea397e0\",data={level=22,},location={zone=\"The Barrens\",subzone=\"Crossroads\",mapID=1413,y=0.5913,x=0.4403,quality=\"exact\",},seq=6,},", -- [1]
+						},
+						["format"] = 1,
+						["kind"] = "tables",
+					},
 					["records"] = {
-						{
-							["data"] = {
-								["level"] = 22,
-							},
-							["id"] = "6acf27a80002b2df060c0c9ee0",
-							["location"] = {
-								["mapID"] = 1413,
-								["quality"] = "exact",
-								["subzone"] = "Crossroads",
-								["x"] = 0.4403,
-								["y"] = 0.5913,
-								["zone"] = "The Barrens",
-							},
-							["seq"] = 1,
-							["serverTime"] = 1791961000,
-							["session"] = "6acf27a800018512d60ea397e0",
-							["time"] = 1791961000,
-							["type"] = "session_started",
-						}, -- [1]
-						{
-							["data"] = {
-								["money"] = 0,
-								["questID"] = 3513,
-								["title"] = "The Runaway Shipment",
-								["xp"] = 2550,
-							},
-							["id"] = "6acf27f10003b07eb608567de0",
-							["location"] = {
-								["mapID"] = 1413,
-								["quality"] = "exact",
-								["subzone"] = "Crossroads",
-								["x"] = 0.4403,
-								["y"] = 0.5913,
-								["zone"] = "The Barrens",
-							},
-							["seq"] = 2,
-							["serverTime"] = 1791961073,
-							["session"] = "6acf27a800018512d60ea397e0",
-							["time"] = 1791961073,
-							["type"] = "quest_completed",
-						}, -- [2]
-						{
-							["data"] = {
-							},
-							["id"] = "6acf280f000426dde600c8f4e8",
-							["location"] = {
-								["instanceID"] = 389,
-								["quality"] = "zone_only",
-								["zone"] = "Ragefire Chasm",
-							},
-							["seq"] = 3,
-							["serverTime"] = 1791961103,
-							["session"] = "6acf27a800018512d60ea397e0",
-							["time"] = 1791961103,
-							["type"] = "player_died",
-						}, -- [3]
-						{
-							["data"] = {
-								["level"] = 23,
-							},
-							["id"] = "6acf282d000539efcd04990a98",
-							["location"] = {
-								["mapID"] = 1413,
-								["quality"] = "exact",
-								["subzone"] = "Crossroads",
-								["x"] = 0.4403,
-								["y"] = 0.5913,
-								["zone"] = "The Barrens",
-							},
-							["seq"] = 4,
-							["serverTime"] = 1791961133,
-							["session"] = "6acf27a800018512d60ea397e0",
-							["time"] = 1791961133,
-							["type"] = "level_up",
-						}, -- [4]
-						{
-							["data"] = {
-								["achievementID"] = 6,
-								["icon"] = 236565,
-								["name"] = "Level 10",
-								["points"] = 10,
-							},
-							["id"] = "6acf282d0006ff3d8c0b5dcfc0",
-							["location"] = {
-								["mapID"] = 1413,
-								["quality"] = "exact",
-								["subzone"] = "Crossroads",
-								["x"] = 0.4403,
-								["y"] = 0.5913,
-								["zone"] = "The Barrens",
-							},
-							["seq"] = 5,
-							["serverTime"] = 1791961133,
-							["session"] = "6acf27a800018512d60ea397e0",
-							["time"] = 1791961133,
-							["type"] = "achievement_earned",
-						}, -- [5]
-						{
-							["data"] = {
-								["level"] = 22,
-							},
-							["id"] = "6ad087380002b2df060c0c9ee0",
-							["location"] = {
-								["mapID"] = 1413,
-								["quality"] = "exact",
-								["subzone"] = "Crossroads",
-								["x"] = 0.4403,
-								["y"] = 0.5913,
-								["zone"] = "The Barrens",
-							},
-							["seq"] = 6,
-							["serverTime"] = 1792051000,
-							["session"] = "6ad0873800018512d60ea397e0",
-							["time"] = 1792051000,
-							["type"] = "session_started",
-						}, -- [6]
 					},
 				},
 				["metrics"] = {
 					["dropped"] = 0,
 					["nextSeq"] = 4,
+					["packed"] = {
+						["chunks"] = {
+							"1791961000,0,0,123456,22\n1791961180,4200,2,123456,23\n1791962000,4200,2,123456,22", -- [1]
+						},
+						["format"] = 1,
+						["kind"] = "lines",
+					},
 					["records"] = {
-						"1791961000,0,0,123456,22", -- [1]
-						"1791961180,4200,2,123456,23", -- [2]
-						"1791962000,4200,2,123456,22", -- [3]
 					},
 				},
 				["positions"] = {
 					["dropped"] = 0,
 					["nextSeq"] = 16,
+					["packed"] = {
+						["chunks"] = {
+							"1791961001,1413,0.4403,0.5913,1791961132,,\n1791961134,1413,0.4443,0.5883,1791961142,,\n1791961144,1413,0.4483,0.5853,1791961152,,\n1791961154,1413,0.4523,0.5823,1791961162,,\n1791961164,1413,0.4563,0.5793,1791961172,,\n1791961174,1413,0.4603,0.5763,1791961182,,\n1791961184,1413,0.4643,0.5733,1791961192,,\n1791961194,1413,0.4683,0.5703,1791961202,,\n1791961204,1413,0.4723,0.5673,1791961212,,\n1791961214,1413,0.4763,0.5643,1791961222,,\n1791961224,1413,0.4803,0.5613,1791961232,,\n1791961234,1413,0.4843,0.5583,1791961242,,\n1791961244,1413,0.4883,0.5553,1791961852,,\n1791962001,1413,0.4403,0.5913,1791962120,,\n1792051001,1413,0.4403,0.5913,1792051300,,", -- [1]
+						},
+						["format"] = 1,
+						["kind"] = "lines",
+					},
 					["records"] = {
-						"1791961001,1413,0.4403,0.5913,1791961132,,", -- [1]
-						"1791961134,1413,0.4443,0.5883,1791961142,,", -- [2]
-						"1791961144,1413,0.4483,0.5853,1791961152,,", -- [3]
-						"1791961154,1413,0.4523,0.5823,1791961162,,", -- [4]
-						"1791961164,1413,0.4563,0.5793,1791961172,,", -- [5]
-						"1791961174,1413,0.4603,0.5763,1791961182,,", -- [6]
-						"1791961184,1413,0.4643,0.5733,1791961192,,", -- [7]
-						"1791961194,1413,0.4683,0.5703,1791961202,,", -- [8]
-						"1791961204,1413,0.4723,0.5673,1791961212,,", -- [9]
-						"1791961214,1413,0.4763,0.5643,1791961222,,", -- [10]
-						"1791961224,1413,0.4803,0.5613,1791961232,,", -- [11]
-						"1791961234,1413,0.4843,0.5583,1791961242,,", -- [12]
-						"1791961244,1413,0.4883,0.5553,1791961852,,", -- [13]
-						"1791962001,1413,0.4403,0.5913,1791962120,,", -- [14]
-						"1792051001,1413,0.4403,0.5913,1792051300,,", -- [15]
+					},
+				},
+				["routeArchive"] = {
+					["dropped"] = 0,
+					["nextSeq"] = 1,
+					["records"] = {
 					},
 				},
 				["screenshots"] = {
 					["dropped"] = 0,
 					["nextSeq"] = 2,
+					["packed"] = {
+						["chunks"] = {
+							"{capturedAt=1791961138,events={\"6acf282d000539efcd04990a98\",\"6acf282d0006ff3d8c0b5dcfc0\",},fileStamp=\"101426_085858\",id=\"6acf28320007abdfac05ca49c0\",requestedAt=1791961133,seq=1,status=\"confirmed\",trigger=\"level\",},", -- [1]
+						},
+						["format"] = 1,
+						["kind"] = "tables",
+					},
 					["records"] = {
-						{
-							["capturedAt"] = 1791961138,
-							["events"] = {
-								"6acf282d000539efcd04990a98", -- [1]
-								"6acf282d0006ff3d8c0b5dcfc0", -- [2]
-							},
-							["fileStamp"] = "101426_085858",
-							["id"] = "6acf28320007abdfac05ca49c0",
-							["requestedAt"] = 1791961133,
-							["seq"] = 1,
-							["status"] = "confirmed",
-							["trigger"] = "level",
-						}, -- [1]
 					},
 				},
 				["sessions"] = {
 					["dropped"] = 0,
 					["nextSeq"] = 3,
+					["packed"] = {
+						["chunks"] = {
+							"{endLevel=22,endReason=\"logout\",id=\"6acf27a800018512d60ea397e0\",playedAt=1791961133,playedLevel=0,playedTotal=74236,reloads=1,seq=1,startLevel=22,startedAt=1791961000,endedAt=1791962120,},{id=\"6ad0873800018512d60ea397e0\",startedAt=1792051000,endReason=\"logout\",reloads=0,startLevel=22,endLevel=22,seq=2,playedAt=1792051010,playedLevel=7574,playedTotal=74113,endedAt=1792051301,},", -- [1]
+						},
+						["format"] = 1,
+						["kind"] = "tables",
+					},
 					["records"] = {
-						{
-							["endLevel"] = 22,
-							["endReason"] = "logout",
-							["endedAt"] = 1791962120,
-							["id"] = "6acf27a800018512d60ea397e0",
-							["playedAt"] = 1791961133,
-							["playedLevel"] = 0,
-							["playedTotal"] = 74236,
-							["reloads"] = 1,
-							["seq"] = 1,
-							["startLevel"] = 22,
-							["startedAt"] = 1791961000,
-						}, -- [1]
-						{
-							["endLevel"] = 22,
-							["endReason"] = "logout",
-							["endedAt"] = 1792051301,
-							["id"] = "6ad0873800018512d60ea397e0",
-							["playedAt"] = 1792051010,
-							["playedLevel"] = 7574,
-							["playedTotal"] = 74113,
-							["reloads"] = 0,
-							["seq"] = 2,
-							["startLevel"] = 22,
-							["startedAt"] = 1792051000,
-						}, -- [2]
 					},
 				},
 			},
@@ -453,10 +321,14 @@ ForeverChronicleDB = {
 			["parent"] = 947,
 		},
 	},
-	["schemaVersion"] = 1,
+	["schemaVersion"] = 2,
 	["settings"] = {
 		["debug"] = false,
 		["language"] = "deDE",
+		["map"] = {
+			["colors"] = "level",
+			["trail"] = false,
+		},
 		["modules"] = {
 			["Character"] = {
 			},

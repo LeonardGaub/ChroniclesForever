@@ -5,6 +5,7 @@
 - The marker shows the nearest recorded point; inside dungeons there is no position, so a notice is shown.
 - Selecting an event in the Chronicle moves the map to that moment (AppContext.focus_time).
 - Without artwork for a map a schematic grid is drawn instead.
+- Cinematic mode plays the selected range full screen with events and screenshots (ui/cinematic.py).
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from ...domain.route import Route
 from ...i18n import format_datetime, format_duration, tr
 from ...wow.map_art import find_art
 from .. import theme
+from ..cinematic import CinematicWindow
 from ..widgets import Page, muted
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
@@ -131,10 +133,13 @@ class MapPage(Page):
         self.slider.valueChanged.connect(self._slider_moved)
         self.time_label = muted()
         self.time_label.setMinimumWidth(150)
+        self.cinematic = QPushButton()
+        self.cinematic.clicked.connect(self._open_cinematic)
         bottom.addWidget(self.play)
         bottom.addWidget(self.speed)
         bottom.addWidget(self.slider, 1)
         bottom.addWidget(self.time_label)
+        bottom.addWidget(self.cinematic)
         root.addLayout(bottom)
 
         self.timer = QTimer(self)
@@ -172,6 +177,8 @@ class MapPage(Page):
         self.show_events.setText(tr("map.events"))
         self.follow.setText(tr("map.follow"))
         self.speed.setToolTip(tr("map.speed_tip"))
+        self.cinematic.setText(tr("map.cinematic"))
+        self.cinematic.setToolTip(tr("map.cinematic_tip"))
 
     def _fill_sessions(self) -> None:
         self.session_select.blockSignals(True)
@@ -199,6 +206,7 @@ class MapPage(Page):
         self.view_map = None
         self.slider.setEnabled(False)
         self.play.setEnabled(False)
+        self.cinematic.setEnabled(False)
         self.time_label.setText("")
         self._show_notice(notice)
 
@@ -212,6 +220,7 @@ class MapPage(Page):
         self.slider.setRange(0, self.range[1] - self.range[0])
         self.slider.setEnabled(True)
         self.play.setEnabled(True)
+        self.cinematic.setEnabled(True)
         self._updating = False
         self._last_zone = None
         self._set_view(self.route.view_for(self.route.point_at(start)) or self._first_view(), redraw=True)
@@ -382,6 +391,15 @@ class MapPage(Page):
             scene.addItem(dot)
 
     # -- playback --------------------------------------------------------------------------
+
+    def _open_cinematic(self) -> None:
+        if not self.route or not self.range or not self.character_id:
+            return
+        self.timer.stop()
+        self._set_play_text()
+        self._cinematic_window = CinematicWindow(self.ctx, self.character_id, self.range[0], self.range[1],
+                                                 self.speed.currentData())
+        self._cinematic_window.showFullScreen()
 
     def _set_play_text(self) -> None:
         self.play.setText(tr("map.pause") if self.timer.isActive() else tr("map.play"))

@@ -6,7 +6,8 @@
 --   time,mapID,x,y,until,flags,instanceID
 --   time/until: epoch seconds; until is set when a stationary sample was extended (empty otherwise)
 --   x,y:        normalized 0..1 on mapID, 4 decimals; empty when no position is available
---   flags:      "T" = on a taxi
+--   flags:      "T" = on a taxi, "J" = first sample after a loading screen (a teleport: not connected to the
+--               previous sample by a route line)
 --   instanceID: set inside instances, where the client gives no map position (zone-only sample)
 -- Coordinates are never interpolated. Standing still extends the previous sample instead of adding new ones.
 --
@@ -19,8 +20,11 @@ local Util = FC.Util
 
 local Positions = FC:NewModule("Positions", { order = 26, defaults = { enabled = true, interval = 2 } })
 
--- ~55 hours of movement at 2 s; standing still adds no points.
-FC.Storage:DefineStream("positions", 100000, "Interface\\Icons\\INV_Boots_05")
+-- ~55 hours of movement at 2 s; standing still adds no points. Older points are not lost: they are thinned
+-- out (FC.Route.Thin) and kept in the route archive, many points per record.
+FC.Storage:DefineStream("positions", 100000, "Interface\\Icons\\INV_Boots_05", {
+  quiet = true, onTrim = function(records) Positions:Archive(records) end })
+FC.Storage:DefineStream("routeArchive", 500, "Interface\\Icons\\INV_Misc_Map02")
 
 local MOVE_THRESHOLD = 0.002 -- 0.2 % of the map size
 local CONTINENT_TYPE = 2     -- Enum.UIMapType.Continent
@@ -127,13 +131,28 @@ function Positions:LearnEntrance(instanceID, prev, now)
 end
 
 -------------------------------------------------------------------------------
+-- Archive
+-------------------------------------------------------------------------------
+
+-- Called with the oldest position records right before the cap removes them.
+function Positions:Archive(records)
+  local Route = FC.Route
+  local kept = Route.Thin(records)
+  for i = 1, #kept, Route.ARCHIVE_CHUNK do
+    FC.Storage:AppendRaw("routeArchive", table.concat(kept, ";", i, math.min(#kept, i + Route.ARCHIVE_CHUNK - 1)))
+  end
+  FC.Diagnostics:Log("info", string.format("route archive: %d of %d old points kept", #kept, #records))
+end
+
+-------------------------------------------------------------------------------
 -- Sampling
 -------------------------------------------------------------------------------
 
 local function encode(s)
   return string.format("%d,%s,%s,%s,%s,%s,%s", s.time, s.mapID or "",
     s.x and string.format("%.4f", s.x) or "", s.y and string.format("%.4f", s.y) or "",
-    (s.untilTime and s.untilTime ~= s.time) and s.untilTime or "", s.taxi and "T" or "", s.instanceID or "")
+    (s.untilTime and s.untilTime ~= s.time) and s.untilTime or "", (s.taxi and "T" or "") .. (s.jump and "J" or ""),
+    s.instanceID or "")
 end
 
 local function samePlace(a, b)
@@ -172,12 +191,17 @@ function Positions:Sample()
   local travel = FC:GetModule("Travel")
   s.taxi = travel and travel:IsOnTaxi() or nil
 
+  -- The first sample after a loading screen starts a new route line, unless the player did not move.
+  local afterLoading = self.afterLoading
+  self.afterLoading = nil
+
   local last = self.last
   if last and samePlace(last, s) then
     last.untilTime = now
     FC.Storage:ReplaceLast("positions", encode(last))
     return
   end
+  s.jump = afterLoading and last ~= nil or nil
   FC.Storage:AppendRaw("positions", encode(s))
   if s.instanceID then self:LearnEntrance(s.instanceID, last, now) end
   self.last = s
@@ -211,7 +235,11 @@ end
 -- An extra sample shortly after zone changes and loading screens makes route segments start cleanly.
 local function sampleSoon(self) FC:After(1, function() self:Sample() end) end
 Positions:RegisterEvent("ZONE_CHANGED_NEW_AREA", sampleSoon)
-Positions:RegisterEvent("PLAYER_ENTERING_WORLD", sampleSoon)
+Positions:RegisterEvent("PLAYER_ENTERING_WORLD", function(self)
+  self.afterLoading = true
+  sampleSoon(self)
+end)
+Positions:RegisterEvent("LOADING_SCREEN_ENABLED", function(self) self.afterLoading = true end)
 
 -------------------------------------------------------------------------------
 -- Options

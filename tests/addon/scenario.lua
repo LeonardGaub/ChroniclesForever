@@ -1,5 +1,8 @@
 -- Scenario phases. PHASE is set by run.js; SAVED holds the SavedVariables text of the previous phase.
 
+-- Streams are packed in the saved table after a logout; tests read them like the addon does.
+local function S(stream) return ForeverChronicle.Storage.Unpack(stream) end
+
 local function check(cond, msg)
   if not cond then error("CHECK FAILED: " .. msg, 2) end
   print("  ok  " .. msg)
@@ -58,8 +61,8 @@ local function startClient(isInitialLogin, isReloadingUi)
   return FC
 end
 
-local function sessions() return ForeverChronicleDB.characters["Player-4619-0112A417"].streams.sessions.records end
-local function events() return ForeverChronicleDB.characters["Player-4619-0112A417"].streams.events.records end
+local function sessions() return S(ForeverChronicleDB.characters["Player-4619-0112A417"].streams.sessions).records end
+local function events() return S(ForeverChronicleDB.characters["Player-4619-0112A417"].streams.events).records end
 
 if PHASE == 1 then
   print("phase 1: first login, gameplay, UI")
@@ -117,7 +120,7 @@ if PHASE == 1 then
 
   -- UI: open, visit every page, switch language, run commands.
   SlashCmdList.FOREVERCHRONICLE("")
-  check(ForeverChronicleFrame and ForeverChronicleFrame:IsShown(), "window opens with /fc")
+  check(ForeverChronicleFrame and ForeverChronicleFrame:IsShown(), "window opens with /fj")
   for i = 1, #FC.UI.pages do FC.UI:SelectPage(i) end
   check(#FC.UI.pages == 7, "seven pages registered")
   SlashCmdList.FOREVERCHRONICLE("lang en")
@@ -159,7 +162,7 @@ if PHASE == 1 then
   local settingsIndex
   for i, pg in ipairs(FC.UI.pages) do if pg.id == "settings" then settingsIndex = i end end
   FC.UI:SelectPage(settingsIndex)
-  check(#FC.UI.pages[settingsIndex].bars == 5, "storage bars on the settings page (" .. #FC.UI.pages[settingsIndex].bars .. ")")
+  check(#FC.UI.pages[settingsIndex].bars == 6, "storage bars on the settings page (" .. #FC.UI.pages[settingsIndex].bars .. ")")
   SlashCmdList.FOREVERCHRONICLE("lang de")
   SlashCmdList.FOREVERCHRONICLE("status")
   SlashCmdList.FOREVERCHRONICLE("help")
@@ -176,7 +179,7 @@ if PHASE == 1 then
   MOCK.advance(600)
   MOCK.fire("PLAYER_LOGOUT")
   check(sessions()[1].endReason == "logout" and sessions()[1].endedAt, "session closed on logout")
-  local positions = ForeverChronicleDB.characters["Player-4619-0112A417"].streams.positions.records
+  local positions = S(ForeverChronicleDB.characters["Player-4619-0112A417"].streams.positions).records
   check(#positions >= 12 and #positions <= 20, "route sampled (" .. #positions .. " points)")
   local lastFields = {}
   for f in (positions[#positions] .. ","):gmatch("([^,]*),") do lastFields[#lastFields + 1] = f end
@@ -207,7 +210,7 @@ if PHASE == 1 then
   check(FC.db.settings.overviewGraph == "gold" and ov.graph.points[1].value == 123456, "gold graph shows the money held")
   ov:StepGraph(1)
   check(FC.db.settings.overviewGraph == "xp", "switching wraps around")
-  local shots = ForeverChronicleDB.characters["Player-4619-0112A417"].streams.screenshots.records
+  local shots = S(ForeverChronicleDB.characters["Player-4619-0112A417"].streams.screenshots).records
   for _, r in ipairs(shots) do print("    shot", r.trigger, r.status, #r.events) end
   check(#shots == 1 and #MOCK.screenshots == 1, "level-up and achievement produced one screenshot")
   check(shots[1].status == "confirmed" and #shots[1].events == 2 and shots[1].trigger == "level",
@@ -257,15 +260,56 @@ elseif PHASE == 4 then
   local stream = ForeverChronicleDB.characters["Player-4619-0112A417"].streams.events
   check(#stream.records <= 5 * 1.1 + 1, "stream trimmed (" .. #stream.records .. " records)")
   MOCK.fire("PLAYER_LOGOUT")
-  check(#stream.records == 5, "trimmed to cap on logout")
+  check(#S(stream).records == 5, "trimmed to cap on logout")
   check(stream.dropped == stream.nextSeq - 1 - 5, "dropped records counted (" .. stream.dropped .. ")")
   check(stream.records[1].seq == stream.nextSeq - 5, "remaining records are the newest")
+
+  -- Packing for the saved file: the client cannot load a file with more than ~262,000 distinct constants.
+  local Storage = FC.Storage
+  local odd = { id = "a\"b\\c\nd\r\t\1ü", n = -12.5, big = 123456789012, tiny = 1e-7, yes = true, no = false,
+    ["end"] = 1, ["two words"] = 2, [7] = "seven", list = { 1, 2, { x = 3 } }, nested = { deeper = { "ok" } } }
+  local s1 = { nextSeq = 3, dropped = 0, records = { odd, { id = "second" } } }
+  Storage.Pack(s1)
+  check(#s1.records == 0 and s1.packed.kind == "tables" and #s1.packed.chunks == 1, "table records packed")
+  Storage.Unpack(s1)
+  local r = s1.records[1]
+  check(#s1.records == 2 and r.id == odd.id and r.n == -12.5 and r.big == 123456789012 and r.tiny == 1e-7
+    and r.yes == true and r.no == false and r["end"] == 1 and r["two words"] == 2 and r[7] == "seven"
+    and r.list[3].x == 3 and r.nested.deeper[1] == "ok" and s1.records[2].id == "second", "round trip keeps every value")
+  local lines = { nextSeq = 1001, dropped = 0, records = {} }
+  for i = 1, 1000 do lines.records[i] = string.format("%d,1413,0.%04d,0.5000,,,", 1000 + i, i) end
+  Storage.Pack(lines)
+  check(lines.packed.kind == "lines" and #lines.packed.chunks == 3, "compact records: 400 per string")
+  Storage.Unpack(lines)
+  check(#lines.records == 1000 and lines.records[1000] == "2000,1413,0.1000,0.5000,,,", "compact records back in order")
+
+  -- Friends' data arrives packed: only plain data is ever compiled.
+  check(Storage.IsPlainData('{a=1,["b c"]=-2.5e+3,[3]=true,d={nil,false}},{e="x\\"y"}'), "plain data accepted")
+  for _, bad in ipairs({ '}while true do end{', '{a=("x"):rep(9)}', '{a=b}', '{a=1}}return{', '{a=#"x"}' }) do
+    check(not Storage.IsPlainData(bad), "code rejected: " .. bad)
+  end
+  local evil = { nextSeq = 1, records = {}, packed = { format = 1, kind = "tables", chunks = { '}while true do end{' } } }
+  Storage.Unpack(evil)
+  check(#evil.records == 0 and evil.unreadable and evil.unreadable[1] == '}while true do end{', "code is kept, not run")
+
+  -- A character far over the limit: 300,000 route points and 12,000 events end up in a few hundred strings.
+  local big = { streams = { positions = { nextSeq = 300001, dropped = 0, records = {} },
+    events = { nextSeq = 12001, dropped = 0, records = {} } } }
+  for i = 1, 300000 do big.streams.positions.records[i] = string.format("%d,1413,0.5,0.5,,,", i) end
+  for i = 1, 12000 do big.streams.events.records[i] = { id = "e" .. i, seq = i, time = i, type = "quest_completed",
+    data = { questID = i } } end
+  Storage.PackCharacter(big)
+  local strings = #big.streams.positions.packed.chunks + #big.streams.events.packed.chunks
+  check(strings == 750 + 120, "packed into " .. strings .. " strings")
+  Storage.UnpackCharacter(big)
+  check(#big.streams.positions.records == 300000 and big.streams.events.records[12000].data.questID == 12000,
+    "and unpacked completely")
 end
 if PHASE == 5 then
   print("phase 5: zones, flights and screenshot rules")
   local FC = startClient(true, false)
   local char = ForeverChronicleDB.characters["Player-4619-0112A417"]
-  local function shots() return char.streams.screenshots.records end
+  local function shots() return S(char.streams.screenshots).records end
   local function statuses()
     local s = {}
     for _, r in ipairs(shots()) do s[#s + 1] = r.trigger .. ":" .. r.status end
@@ -325,7 +369,7 @@ if PHASE == 5 then
 
   -- Delay setting and test command.
   SlashCmdList.FOREVERCHRONICLESHOT("delay 2")
-  check(FC:GetModule("Screenshots"):GetSettings().delay == 2, "/fcshot delay sets the delay")
+  check(FC:GetModule("Screenshots"):GetSettings().delay == 2, "/fjshot delay sets the delay")
   MOCK.advance(3)
   SlashCmdList.FOREVERCHRONICLESHOT("test")
   MOCK.advance(1)
@@ -365,7 +409,7 @@ end
 if PHASE == 6 then
   print("phase 6: position sampling")
   local FC = startClient(true, false)
-  local function points() return ForeverChronicleDB.characters["Player-4619-0112A417"].streams.positions.records end
+  local function points() return S(ForeverChronicleDB.characters["Player-4619-0112A417"].streams.positions).records end
   MOCK.advance(2)
   local start = #points()
   check(start == 1, "first point after entering the world")
@@ -437,7 +481,8 @@ if PHASE == 9 then
   local again = Route.Points()
   check(again == points, "unchanged stream returns the cached list")
   local segs = Route.Segments(points, 1413)
-  check(#segs == 1 and #segs[1].points >= 20, "one Barrens segment (" .. #segs .. ")")
+  -- The mock moves the player from the login spot to the walk start in one step: a teleport.
+  check(#segs == 2 and #segs[1].points == 1 and #segs[2].points >= 20, "Barrens walk, split at the jump (" .. #segs .. ")")
   local views = table.concat(Route.Views(points), ",")
   check(views == "1413,1411,1414", "views: zones then continent (" .. views .. ")")
   local cx, cy = Route.Project({ mapID = 1413, x = 0.5, y = 0.5 }, 1414)
@@ -498,11 +543,15 @@ if PHASE == 9 then
     "dungeon moment opens the entrance zone (" .. tostring(page.viewMap) .. ")")
   check(page.notice.text:find("Ragefire", 1, true) and page.notice.text:find("Eingang", 1, true),
     "notice: " .. tostring(page.notice.text))
-  local deathPin = false
-  for _, pin in ipairs(page.canvas.pins) do
-    if pin:IsShown() and pin.title and pin.title:find("Ragefire", 1, true) then deathPin = true end
+  local function deathPin()
+    for _, pin in ipairs(page.canvas.pins) do
+      if pin:IsShown() and pin.title and pin.title:find("Ragefire", 1, true) then return true end
+    end
+    return false
   end
-  check(deathPin, "death inside the dungeon is pinned at the entrance")
+  check(not deathPin(), "the death two seconds later is not painted yet")
+  FC.UI:FocusMap(dungeonTime + 2)
+  check(deathPin(), "death inside the dungeon is pinned at the entrance")
   ForeverChronicleDB.entrances = nil
   check(Route.Entrance(389) and Route.Entrance(389).mapID == 1413, "entrance derived from the route for older data")
 
@@ -548,6 +597,103 @@ if PHASE == 9 then
   FC:GetModule("Positions"):LearnEntrance(389, { time = time(), mapID = 1413, x = 0.1, y = 0.1 }, time())
   check(ForeverChronicleDB.entrances["389"].source == "journal", "walking in does not replace a journal entrance")
 
+  -- Hearthstone within the same map: the point after the loading screen is flagged and not connected.
+  MOCK.x, MOCK.y = 0.2, 0.2
+  MOCK.advance(2)
+  MOCK.fire("LOADING_SCREEN_ENABLED")
+  MOCK.x, MOCK.y = 0.8, 0.8
+  MOCK.advance(3)
+  MOCK.fire("LOADING_SCREEN_DISABLED")
+  MOCK.advance(3)
+  local records = FC:ViewStream("positions").records
+  check(records[#records]:find(",J,", 1, true) and not records[#records - 1]:find("J", 1, true),
+    "first sample after a loading screen flagged (" .. records[#records] .. ")")
+  local hearth = Route.Segments(Route.Points(), 1454)
+  check(#hearth[#hearth].points == 1, "hearthstone starts a new route line")
+  -- Older routes without the flag: a step faster than any mount is a teleport, a normal step is not.
+  local function seg(x2, dt)
+    return #Route.Segments({ { time = 0, endTime = 0, mapID = 1413, x = 0.1, y = 0.1 },
+      { time = dt, endTime = dt, mapID = 1413, x = x2, y = 0.1 } }, 1413)
+  end
+  check(seg(0.6, 3) == 2 and seg(0.11, 2) == 1 and seg(0.6, 100) == 1, "teleport recognised by speed")
+
+  -- Thinning: a straight walk at an even pace keeps its ends; a turn and a change of pace are kept.
+  local function walkRecs(steps, t0)
+    local out = {}
+    for _, s in ipairs(steps) do out[#out + 1] = string.format("%d,1413,%.4f,%.4f,,,", t0 + s[1], s[2], s[3]) end
+    return out
+  end
+  local straight, turn, pace = {}, {}, {}
+  for i = 0, 20 do straight[#straight + 1] = { i * 2, 0.3 + i * 0.002, 0.5 } end
+  for i = 0, 10 do turn[#turn + 1] = { i * 2, 0.3 + i * 0.002, 0.5 } end
+  for i = 1, 10 do turn[#turn + 1] = { 20 + i * 2, 0.32, 0.5 + i * 0.002 } end
+  for i = 0, 10 do pace[#pace + 1] = { i * 2, 0.3 + i * 0.002, 0.5 } end
+  for i = 1, 10 do pace[#pace + 1] = { 20 + i * 2, 0.32 + i * 0.006, 0.5 } end -- mounted up halfway
+  check(#Route.Thin(walkRecs(straight, 1000)) == 2, "straight walk at an even pace thinned to its ends")
+  local turned = Route.Thin(walkRecs(turn, 1000))
+  check(#turned == 3 and turned[2]:find("^1020,"), "the corner of a turn is kept")
+  check(#Route.Thin(walkRecs(pace, 1000)) == 3, "a change of pace is kept (replay timing)")
+  local long = {}
+  for i = 0, 100 do long[#long + 1] = { i * 2, 0.1 + i * 0.001, 0.5 } end
+  local longKept = Route.Thin(walkRecs(long, 1000))
+  local maxGap = 0
+  for i = 2, #longKept do maxGap = math.max(maxGap, tonumber(longKept[i]:match("^(%d+)")) - tonumber(longKept[i - 1]:match("^(%d+)"))) end
+  check(maxGap <= Route.THIN_MAX_SECONDS, "kept points stay close enough in time to keep the line (" .. maxGap .. ")")
+
+  -- Archive: old points are read before the positions stream.
+  local beforeCount = #Route.Points()
+  FC:GetModule("Positions"):Archive(walkRecs(turn, 1000))
+  local archived = Route.Points()
+  check(#archived == beforeCount + 3 and archived[1].time == 1000 and archived[4].time > 1020,
+    "archived points come first (" .. #archived .. " vs " .. beforeCount .. ")")
+  check(#FC:ViewStream("routeArchive").records == 1 and FC:ViewStream("routeArchive").records[1]:find(";", 1, true),
+    "archive stores many points per record")
+
+  -- Gliding marker: between two connected points it moves along the line; across a teleport it does not.
+  local g = Route.Glide(archived, 1010)
+  check(g and math.abs(g.x - 0.31) < 1e-6 and g.y == 0.5, "marker glides along the line")
+  local jumpPts = { { time = 0, endTime = 0, mapID = 1413, x = 0.1, y = 0.1 },
+    { time = 4, endTime = 4, mapID = 1413, x = 0.9, y = 0.1, jump = true } }
+  check(Route.Glide(jumpPts, 1).x == 0.1, "no gliding across a teleport")
+
+  -- Timeline: breaks are collapsed.
+  local tlPts = { { time = 0, endTime = 100 }, { time = 1000, endTime = 1100 } }
+  local tl = Route.Timeline(tlPts, 0, 1100)
+  check(#tl.intervals == 2 and tl.total == 200, "timeline collapses the break (" .. tl.total .. ")")
+  check(Route.TimeToValue(tl, 1050) == 150 and Route.ValueToTime(tl, 150) == 1050 and Route.TimeToValue(tl, 500) == 100,
+    "timeline maps time and slider value")
+
+  -- Painting: the route is drawn up to the shown moment; the trail shows only its last minutes.
+  page.sessionIndex, page.live, page.dirty = 0, true, true
+  page:Refresh()
+  page.viewMap = 1413                                -- the Barrens walk
+  page:Redraw()
+  page:UpdateMarker()
+  local function shownLines()
+    local n = 0
+    for _, line in ipairs(page.canvas.lines) do if line:IsShown() then n = n + 1 end end
+    return n
+  end
+  local times = page.canvas.lineTimes
+  local all = shownLines()
+  local mid = times[math.floor(#times / 2)]
+  page.canvas:SetPaint(mid - 6, mid, true)
+  local trail = shownLines()
+  page.canvas:SetPaint(nil, times[1] - 1)
+  check(all == #times and all > 3 and trail >= 1 and trail < all and shownLines() == 0,
+    "painting: all " .. all .. ", trail " .. trail .. ", before the start " .. shownLines())
+  page:UpdateMarker()
+  check(shownLines() == all, "painting follows the shown moment again")
+
+  -- Zoom: the route is drawn again at the new detail shortly after zooming.
+  check(page.canvas.rendered.zoom == 1, "route drawn for zoom 1")
+  page.canvas:ZoomAtCursor(2)
+  check(page.canvas.renderAt ~= nil, "zoom schedules a new drawing")
+  page.canvas:RenderRoute()
+  check(page.canvas.rendered.zoom == 2 and page.canvas.renderAt == nil, "route drawn again at zoom 2")
+  page.canvas:ResetZoom()
+  check(page.tickCount >= 1 and #page.runs >= 1, "timeline ticks and zone bands (" .. page.tickCount .. ", " .. #page.runs .. ")")
+
   local errors = 0
   for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
   check(errors == 0, "no errors logged")
@@ -559,7 +705,7 @@ if PHASE == 10 then
   local char = ForeverChronicleDB.characters["Player-4619-0112A417"]
   local function rareEvents()
     local out = {}
-    for _, r in ipairs(char.streams.events.records) do if r.type == "rare_killed" then out[#out + 1] = r end end
+    for _, r in ipairs(S(char.streams.events).records) do if r.type == "rare_killed" then out[#out + 1] = r end end
     return out
   end
   local me = "Player-4619-0112A417"
@@ -576,7 +722,7 @@ if PHASE == 10 then
   check(char.stats.rares_killed == 1, "rare stat counted")
   check(FC:DescribeEvent(events[1]) == "Seltenen Gegner besiegt: Gesharahan", "chronicle text")
   MOCK.advance(6)
-  local shots = char.streams.screenshots.records
+  local shots = S(char.streams.screenshots).records
   check(shots[#shots].trigger == "rare" and shots[#shots].status == "confirmed", "screenshot for the rare kill")
 
   MOCK.fire("PARTY_KILL", me, rare)
@@ -603,7 +749,7 @@ if PHASE == 10 then
 
   -- Trigger can be switched off.
   SlashCmdList.FOREVERCHRONICLESHOT("rare off")
-  check(FC:GetModule("Screenshots"):GetSettings().triggers.rare == false, "/fcshot rare off")
+  check(FC:GetModule("Screenshots"):GetSettings().triggers.rare == false, "/fjshot rare off")
 
   local errors = 0
   for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
@@ -617,7 +763,7 @@ if PHASE == 11 then
   local P = FC:GetModule("Professions")
   local function evts(t)
     local out = {}
-    for _, r in ipairs(char.streams.events.records) do if r.type == t then out[#out + 1] = r end end
+    for _, r in ipairs(S(char.streams.events).records) do if r.type == t then out[#out + 1] = r end end
     return out
   end
 
@@ -749,7 +895,7 @@ if PHASE == 11 then
   SlashCmdList.FOREVERCHRONICLE("professions")
   local found = false
   for _, line in ipairs(MOCK.chat) do if line:find("Leatherworking 126/225", 1, true) then found = true end end
-  check(found, "/fc professions lists the professions")
+  check(found, "/fj professions lists the professions")
 
   local errors = 0
   for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
@@ -835,9 +981,9 @@ if PHASE == 12 then
   check(shots.empty:IsShown(), "no screenshots for the friend in game")
 
   -- Recording continues for the played character only.
-  local mine = #ForeverChronicleDB.characters[me].streams.events.records
+  local mine = #S(ForeverChronicleDB.characters[me].streams.events).records
   MOCK.fire("PLAYER_DEAD")
-  check(#ForeverChronicleDB.characters[me].streams.events.records == mine + 1, "events still recorded for me")
+  check(#S(ForeverChronicleDB.characters[me].streams.events).records == mine + 1, "events still recorded for me")
   check(#FC:ViewStream("events").records == friendEvents, "the friend's data is not changed")
 
   -- The alt, then back to me.
@@ -881,23 +1027,28 @@ if PHASE == 13 then
     streams = {}, snapshots = {}, state = {} }
 
   MOCK.fire("PLAYER_LOGOUT")
+  -- What the game writes as SavedVariables\ForeverChronicle_Share.lua (test data for the sync script), taken
+  -- before the checks below unpack streams.
+  local shareText = "\nForeverChronicleShareDB = " .. serializeValue(ForeverChronicleShareDB) .. "\n"
   local data = ForeverChronicleShareDB
-  check(type(data) == "table" and data.format == 1 and data.name == "Blind" and #data.characters == 2,
+  for _, name in ipairs({ "events", "positions", "sessions" }) do
+    check(data.characters[1].streams[name].packed ~= nil, "share stream packed: " .. name)
+  end
+  check(type(data) == "table" and data.format == 2 and data.name == "Blind" and #data.characters == 2,
     "written on logout: both characters, name defaults to the character's")
   local mine = data.characters[1]
   check(mine.info.name == "Blind" and mine.info.key == me and mine.stats.kills == ForeverChronicleDB.characters[me].stats.kills,
     "info and stats")
-  check(#mine.streams.events.records >= 2 and #mine.streams.positions.records >= 8, "chronicle and route")
+  check(#S(mine.streams.events).records >= 2 and #S(mine.streams.positions).records >= 8, "chronicle and route")
   check(mine.snapshots.gear and #mine.snapshots.gear.slots == 2, "gear")
   check(data.maps["1413"] and data.maps["1414"], "maps of the route and their continent")
   check(mine.streams.screenshots == nil, "no screenshots")
-  -- What the game writes as SavedVariables\ForeverChronicle_Share.lua (test data for the sync script).
-  SAVED_OUT = "\nForeverChronicleShareDB = " .. serializeValue(ForeverChronicleShareDB) .. "\n"
+  SAVED_OUT = shareText
 
   -- Limits: only the newest events, only the newest sessions' route.
   Share.EVENTS = 1
   data = Share:Build()
-  check(#data.characters[1].streams.events.records == 1, "event limit")
+  check(#S(data.characters[1].streams.events).records == 1, "event limit")
   Share.EVENTS = 200
 
   -- Categories and characters can be switched off.
@@ -958,7 +1109,7 @@ if PHASE == 13 then
   SlashCmdList.FOREVERCHRONICLE("share")
   local said = false
   for _, line in ipairs(MOCK.chat) do if line:find("nicht aktiv", 1, true) then said = true end end
-  check(said, "/fc share explains that the data addon is missing")
+  check(said, "/fj share explains that the data addon is missing")
 
   local errors = 0
   for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end

@@ -6,6 +6,10 @@
 -- Zoom: mouse wheel (at the cursor), drag to pan, right-click to reset. The visible area (frame) clips a
 -- content frame that is scaled and moved; lines, icons and the marker are counter-scaled so they keep
 -- their on-screen size.
+--
+-- Route lines are drawn for the visible area (plus a margin) at the detail of the current zoom, and drawn
+-- again shortly after the view changes. Every line has a time, so a replay can "paint" the route up to the
+-- current moment, optionally only its last minutes with older parts fading out (Canvas:SetPaint).
 
 local ADDON, FC = ...
 local Util = FC.Util
@@ -17,7 +21,10 @@ UI.MapCanvas = Canvas
 
 local TILE = 256
 local MIN_LINE_PIXELS = 3   -- route points closer than this (on screen) are merged into one line
-local MAX_LINES = 4000
+local MAX_LINES = 5000      -- above this, points are merged more coarsely
+local RENDER_MARGIN = 0.5   -- lines are drawn for the visible area plus this share of it on every side
+local RENDER_DELAY = 0.12   -- seconds after a zoom or pan before the route is drawn again
+local FADE_MIN = 0.12       -- alpha share of the oldest part of a fading trail
 local LINE_THICKNESS = 2.5
 local DOT_SIZE, MARKER_SIZE = 5, 18
 local MAX_ZOOM, ZOOM_STEP = 6, 1.25
@@ -76,9 +83,11 @@ function Canvas.New(parent, width, height)
   f:SetScript("OnMouseUp", function() self.drag = nil end)
   f:SetScript("OnHide", function() self.drag = nil end)
   f:SetScript("OnUpdate", function()
-    if not self.drag then return end
-    local cx, cy = self:CursorPosition()
-    self:SetView(self.zoom, self.drag.offX + (cx - self.drag.cx), self.drag.offY + (cy - self.drag.cy))
+    if self.drag then
+      local cx, cy = self:CursorPosition()
+      self:SetView(self.zoom, self.drag.offX + (cx - self.drag.cx), self.drag.offY + (cy - self.drag.cy))
+    end
+    if self.renderAt and GetTime() >= self.renderAt then self:RenderRoute() end
   end)
   return self
 end
@@ -108,6 +117,28 @@ function Canvas:SetView(zoom, offX, offY)
   for _, dot in ipairs(self.dots) do dot:SetSize(DOT_SIZE / zoom, DOT_SIZE / zoom) end
   self.marker:SetSize(MARKER_SIZE / zoom, MARKER_SIZE / zoom)
   for _, pin in ipairs(self.pins) do self:PlacePin(pin) end
+  -- Draw the route again (soon) when the detail no longer fits or the view left the drawn area.
+  local r = self.rendered
+  if r and not self.renderAt then
+    local x0, y0, x1, y1 = self:VisibleRect()
+    local ratio = zoom / r.zoom
+    if ratio > 1.2 or ratio < 1 / 1.2 or x0 < r.x0 or y0 < r.y0 or x1 > r.x1 or y1 > r.y1 then
+      self.renderAt = GetTime() + RENDER_DELAY
+    end
+  end
+end
+
+-- The visible part of the content, in content pixels: left, top, right, bottom.
+function Canvas:VisibleRect()
+  local z = self.zoom
+  return -self.offX / z, -self.offY / z, (self.width - self.offX) / z, (self.height - self.offY) / z
+end
+
+-- Centers the view on a map position (0..1) at the given zoom (kept inside the map).
+function Canvas:CenterOn(x, y, zoom)
+  zoom = math.max(1, math.min(MAX_ZOOM, zoom or self.zoom))
+  local px, py = self:ToPixels(x, y)
+  self:SetView(zoom, self.width / 2 - px * zoom, self.height / 2 - py * zoom)
 end
 
 function Canvas:ZoomAtCursor(factor)
@@ -238,42 +269,200 @@ local function dotRegion(self, i)
   return dot
 end
 
--- segments: from FC.Route.Segments. Ends of every segment get a small grey dot (recorded data starts or stops).
--- Points closer than MIN_LINE_PIXELS at zoom 1 are merged, so long routes stay cheap to draw.
-function Canvas:DrawRoute(segments)
-  local lineCount, dotCount = 0, 0
-  local canLine = self.lineLayer.CreateLine ~= nil
+-- Calls emit(n, seg, x1, y1, x2, y2, time) for every line that touches rect (content pixels) and returns the
+-- count. Points closer than minDist to the previous line end are merged; the last point of a segment is
+-- always drawn. time is the time of the line's end point.
+local function walk(self, segments, rect, minDist, emit)
+  local n = 0
   for _, seg in ipairs(segments) do
-    local color = seg.taxi and TAXI_COLOR or ROUTE_COLOR
     local lastX, lastY
+    local count = #seg.points
     for i, pt in ipairs(seg.points) do
-      local px, py = self:ToPixels(pt[1], pt[2])
-      local isLast = i == #seg.points
+      local px, py = pt[1] * self.width, pt[2] * self.height
       if not lastX then
         lastX, lastY = px, py
-      elseif isLast or (math.abs(px - lastX) + math.abs(py - lastY)) >= MIN_LINE_PIXELS then
-        if canLine and lineCount < MAX_LINES then
-          lineCount = lineCount + 1
-          local line = lineRegion(self, lineCount)
-          line:SetColorTexture(color[1], color[2], color[3], color[4])
-          line:SetStartPoint("TOPLEFT", self.content, lastX, -lastY)
-          line:SetEndPoint("TOPLEFT", self.content, px, -py)
-          line:Show()
+      elseif i == count or (math.abs(px - lastX) + math.abs(py - lastY)) >= minDist then
+        if math.max(px, lastX) >= rect.x0 and math.min(px, lastX) <= rect.x1
+            and math.max(py, lastY) >= rect.y0 and math.min(py, lastY) <= rect.y1 then
+          n = n + 1
+          if emit then emit(n, seg, lastX, lastY, px, py, pt[3]) end
         end
         lastX, lastY = px, py
       end
     end
-    for _, pt in ipairs({ seg.points[1], seg.points[#seg.points] }) do
-      dotCount = dotCount + 1
-      local dot = dotRegion(self, dotCount)
-      local px, py = self:ToPixels(pt[1], pt[2])
-      dot:ClearAllPoints()
-      dot:SetPoint("CENTER", self.content, "TOPLEFT", px, -py)
-      dot:Show()
-    end
+  end
+  return n
+end
+
+-- segments: from FC.Route.Segments. color(seg, time) -> r, g, b, a gives each line its colour (default: gold
+-- on foot, blue on a flight path). Ends of every segment get a small grey dot (recorded data starts or stops).
+function Canvas:DrawRoute(segments, color)
+  self.segments, self.colorFn = segments, color
+  self:RenderRoute()
+end
+
+function Canvas:RenderRoute()
+  self.renderAt = nil
+  local segments = self.segments or {}
+  local x0, y0, x1, y1 = self:VisibleRect()
+  local mx, my = (x1 - x0) * RENDER_MARGIN, (y1 - y0) * RENDER_MARGIN
+  local rect = { x0 = x0 - mx, y0 = y0 - my, x1 = x1 + mx, y1 = y1 + my, zoom = self.zoom }
+  self.rendered = rect
+
+  -- Detail of the current zoom; coarser if that would need too many lines.
+  local minDist = MIN_LINE_PIXELS / self.zoom
+  for _ = 1, 4 do
+    local n = walk(self, segments, rect, minDist)
+    if n <= MAX_LINES then break end
+    minDist = minDist * math.max(1.5, n / MAX_LINES)
+  end
+
+  local canLine = self.lineLayer.CreateLine ~= nil
+  local times, colors = {}, {}
+  local colorFn = self.colorFn
+  local lineCount = 0
+  if canLine then
+    lineCount = walk(self, segments, rect, minDist, function(n, seg, ax, ay, bx, by, t)
+      if n > MAX_LINES then return end
+      local line = lineRegion(self, n)
+      local c
+      if colorFn then c = { colorFn(seg, t) } end
+      if not c or not c[1] then c = seg.taxi and TAXI_COLOR or ROUTE_COLOR end
+      line:SetStartPoint("TOPLEFT", self.content, ax, -ay)
+      line:SetEndPoint("TOPLEFT", self.content, bx, -by)
+      line:Hide()
+      times[n], colors[n] = t, c
+    end)
+    lineCount = math.min(lineCount, MAX_LINES)
   end
   for i = lineCount + 1, #self.lines do self.lines[i]:Hide() end
+
+  local dotTimes, dotCount = {}, 0
+  for _, seg in ipairs(segments) do
+    for _, pt in ipairs({ seg.points[1], seg.points[#seg.points] }) do
+      local px, py = self:ToPixels(pt[1], pt[2])
+      if px >= rect.x0 and px <= rect.x1 and py >= rect.y0 and py <= rect.y1 then
+        dotCount = dotCount + 1
+        local dot = dotRegion(self, dotCount)
+        dot:ClearAllPoints()
+        dot:SetPoint("CENTER", self.content, "TOPLEFT", px, -py)
+        dot:Hide()
+        dotTimes[dotCount] = pt[3]
+      end
+    end
+  end
   for i = dotCount + 1, #self.dots do self.dots[i]:Hide() end
+
+  self.lineTimes, self.lineColors, self.dotTimes = times, colors, dotTimes
+  self.lineWindow, self.dotWindow = { 1, 0 }, { 1, 0 }
+  self:ApplyPaint(true)
+end
+
+-------------------------------------------------------------------------------
+-- Painting: which lines are shown for the current moment
+-------------------------------------------------------------------------------
+
+-- First index whose time is > t (times ascending); #times + 1 if none.
+local function firstAfter(times, t)
+  local lo, hi = 1, #times
+  while lo <= hi do
+    local mid = math.floor((lo + hi) / 2)
+    if times[mid] > t then hi = mid - 1 else lo = mid + 1 end
+  end
+  return lo
+end
+
+-- Shows the lines with a time in (from, to]; nil = no limit. fade: the lines get fainter towards from.
+function Canvas:SetPaint(from, to, fade)
+  self.paintFrom, self.paintTo, self.paintFade = from, to, fade and from and to and to > from or nil
+  self:ApplyPaint()
+  self:PaintPins()
+end
+
+function Canvas:LineAlpha(i)
+  local c = self.lineColors[i]
+  if not self.paintFade then return c[4] or 1 end
+  local share = (self.lineTimes[i] - self.paintFrom) / (self.paintTo - self.paintFrom)
+  return (c[4] or 1) * (FADE_MIN + (1 - FADE_MIN) * math.max(0, math.min(1, share)))
+end
+
+local function colorLine(self, i)
+  local c = self.lineColors[i]
+  self.lines[i]:SetColorTexture(c[1], c[2], c[3], self:LineAlpha(i))
+end
+
+-- Moves a shown window [lo, hi] of regions, showing and hiding only what changed. Returns the new window.
+local function moveWindow(regions, old, lo, hi, onShow)
+  local plo, phi = old[1], old[2]
+  for i = plo, math.min(phi, lo - 1) do regions[i]:Hide() end
+  for i = math.max(plo, hi + 1), phi do regions[i]:Hide() end
+  for i = lo, math.min(hi, plo - 1) do regions[i]:Show(); if onShow then onShow(i) end end
+  for i = math.max(lo, phi + 1), hi do regions[i]:Show(); if onShow then onShow(i) end end
+  return { lo, hi }
+end
+
+function Canvas:ApplyPaint(recolor)
+  local times = self.lineTimes
+  if not times then return end
+  local from, to = self.paintFrom, self.paintTo
+  local lo = from and firstAfter(times, from) or 1
+  local hi = to and firstAfter(times, to) - 1 or #times
+  self.lineWindow = moveWindow(self.lines, self.lineWindow, lo, hi, function(i) colorLine(self, i) end)
+  -- A fading trail changes its colours as time goes on: refresh them now and then, not every frame.
+  local refresh = recolor or self.fadedState ~= (self.paintFade or false)
+  if self.paintFade and not refresh then
+    refresh = math.abs(to - (self.fadedAt or 0)) >= (to - from) / 40
+  end
+  if refresh then
+    for i = lo, hi do colorLine(self, i) end
+    self.fadedState, self.fadedAt = self.paintFade or false, to
+  end
+  local dots = self.dotTimes
+  local dlo = from and firstAfter(dots, from) or 1
+  local dhi = to and firstAfter(dots, to) - 1 or #dots
+  self.dotWindow = moveWindow(self.dots, self.dotWindow, dlo, dhi)
+end
+
+-------------------------------------------------------------------------------
+-- Legend (e.g. route colours by level)
+-------------------------------------------------------------------------------
+
+-- items: list of { r, g, b, text }; nil or empty hides the legend.
+function Canvas:SetLegend(items)
+  local legend = self.legend
+  if not legend then
+    legend = CreateFrame("Frame", nil, self.frame)
+    legend:SetPoint("BOTTOMLEFT", 8, 8)
+    legend:SetFrameLevel(self.frame:GetFrameLevel() + 6)
+    local bg = legend:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0, 0, 0, 0.65)
+    legend.rows = {}
+    self.legend = legend
+  end
+  items = items or {}
+  local width = 0
+  for i, item in ipairs(items) do
+    local row = legend.rows[i]
+    if not row then
+      row = { swatch = legend:CreateTexture(nil, "ARTWORK"), text = legend:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall") }
+      row.swatch:SetSize(14, 4)
+      row.swatch:SetPoint("TOPLEFT", 8, -10 - (i - 1) * 14)
+      row.text:SetPoint("LEFT", row.swatch, "RIGHT", 6, 0)
+      legend.rows[i] = row
+    end
+    row.swatch:SetColorTexture(item[1], item[2], item[3], 1)
+    row.text:SetText(item[4])
+    row.swatch:Show()
+    row.text:Show()
+    width = math.max(width, row.text:GetStringWidth())
+  end
+  for i = #items + 1, #legend.rows do
+    legend.rows[i].swatch:Hide()
+    legend.rows[i].text:Hide()
+  end
+  legend:SetSize(width + 36, #items * 14 + 12)
+  legend:SetShown(#items > 0)
 end
 
 -------------------------------------------------------------------------------
@@ -306,10 +495,28 @@ function Canvas:SetPins(pins)
     pin.px, pin.py = self:ToPixels(data.x, data.y)
     self:PlacePin(pin)
     UI:SetIcon(pin.icon, data.icon)
-    pin.title, pin.text = data.title, data.text
-    pin:Show()
+    pin.title, pin.text, pin.time = data.title, data.text, data.time
+    pin.painted = nil
   end
-  for i = #pins + 1, #self.pins do self.pins[i]:Hide() end
+  for i = #pins + 1, #self.pins do
+    self.pins[i]:Hide()
+    self.pins[i].time, self.pins[i].painted = nil, false
+  end
+  self.pinCount = #pins
+  self:PaintPins()
+end
+
+-- Pins with a time are shown once the painted route has reached it.
+function Canvas:PaintPins()
+  local to = self.paintTo
+  for i = 1, self.pinCount or 0 do
+    local pin = self.pins[i]
+    local show = not (to and pin.time and pin.time > to)
+    if pin.painted ~= show then
+      pin.painted = show
+      pin:SetShown(show)
+    end
+  end
 end
 
 function Canvas:SetMarker(x, y)

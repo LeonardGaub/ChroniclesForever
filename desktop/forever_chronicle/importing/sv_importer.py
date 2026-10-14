@@ -17,10 +17,10 @@ from typing import Any
 
 from ..storage.database import Database
 from ..storage.repository import PositionPoint, Recipe, RecipeCategory, Repository
-from ..wow.lua_parser import LuaParseError, as_dict, as_list, parse_saved_variables_bytes
+from ..wow.lua_parser import LuaParseError, as_dict, as_list, parse_saved_variables_bytes, parse_value
 
 VARIABLE_NAME = "ForeverChronicleDB"
-SUPPORTED_SCHEMA = 1
+SUPPORTED_SCHEMA = 2  # 2: streams packed in the saved file (addon 0.15.0)
 STABLE_WAIT_SECONDS = 0.5
 
 
@@ -85,6 +85,31 @@ def valid_screenshot(rec: Any) -> bool:
 def valid_session(rec: Any) -> bool:
     return (isinstance(rec, dict) and isinstance(rec.get("id"), str) and _int(rec.get("seq")) is not None
             and _int(rec.get("startedAt")) is not None)
+
+
+def unpack_stream(stream: Any) -> Any:
+    """The addon packs streams in the saved file (schema 2, Core/Storage.lua): records = {} and
+    packed = {format, kind, chunks}; "lines" chunks hold compact records joined by newlines, "tables" chunks hold
+    table records as Lua text "{...},{...}". Returns the stream with its records unpacked, in order."""
+    stream = as_dict(stream)
+    packed = as_dict(stream.get("packed"))
+    if not packed:
+        return stream
+    records: list[Any] = []
+    for chunk in as_list(packed.get("chunks")):
+        if not isinstance(chunk, str):
+            continue
+        if packed.get("kind") == "lines":
+            records.extend(line for line in chunk.split("\n") if line)
+        else:
+            try:
+                records.extend(as_list(parse_value("{" + chunk + "}")))
+            except LuaParseError:
+                continue  # an unreadable chunk is skipped; the addon keeps it
+    records.extend(as_list(stream.get("records")))
+    unpacked = {k: v for k, v in stream.items() if k != "packed"}
+    unpacked["records"] = records
+    return unpacked
 
 
 class SavedVariablesImporter:
@@ -199,7 +224,7 @@ class SavedVariablesImporter:
         for stat_key, value in as_dict(char.get("stats")).items():
             if isinstance(stat_key, str) and isinstance(value, (int, float)) and not isinstance(value, bool):
                 self.repo.set_character_stat(character_id, stat_key, value)
-        streams = as_dict(char.get("streams"))
+        streams = {name: unpack_stream(stream) for name, stream in as_dict(char.get("streams")).items()}
 
         events = as_list(as_dict(streams.get("events")).get("records"))
         good_events = []
@@ -258,6 +283,15 @@ class SavedVariablesImporter:
             good_points.append({"seq": first_seq + i, "time": point.time})
             result.positions += 1
         self._track_stream(character_id, "positions", good_points, import_id, result)
+        # Route archive: old points the addon thinned out when the positions stream was full ("point;point;..."
+        # per record). They are the same points, so they only fill in what was not imported in time.
+        for chunk in as_list(as_dict(streams.get("routeArchive")).get("records")):
+            for text in chunk.split(";") if isinstance(chunk, str) else []:
+                point = PositionPoint.parse(text)
+                if point is None:
+                    result.invalid += 1
+                    continue
+                self.repo.upsert_position(character_id, point)
         self._import_professions(character_id, as_dict(as_dict(char.get("snapshots")).get("professions")), result)
         self._import_gear(character_id, as_dict(as_dict(char.get("snapshots")).get("gear")), result)
 

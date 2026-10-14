@@ -1,7 +1,7 @@
 -- Journey Forever - Professions module (spec F-008)
 -- Snapshot of the character's professions (skill, maximum) and of the recipes it knows.
 --
--- Professions are read with the Mainline API at login, on skill changes and via /fc professions.
+-- Professions are read with the Mainline API at login, on skill changes and via /fj professions.
 -- Recipes can only be read while the profession window is open: they are captured on TRADE_SKILL_SHOW /
 -- TRADE_SKILL_LIST_UPDATE (at most once per 5 s) from the unfiltered recipe list, so search text, filters
 -- and collapsed categories in the window do not matter. Linked, guild and NPC professions are never captured.
@@ -381,7 +381,7 @@ Professions:RegisterEvent("NEW_RECIPE_LEARNED", function(self, _, recipeID)
 end)
 
 -------------------------------------------------------------------------------
--- /fc professions
+-- /fj professions
 -------------------------------------------------------------------------------
 
 FC:RegisterCommand("professions", "CMD_PROFESSIONS", function()

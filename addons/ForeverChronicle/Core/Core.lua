@@ -13,7 +13,7 @@ _G.ForeverChronicle = FC
 
 FC.NAME = ADDON
 FC.VERSION = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version")) or "dev"
-FC.SCHEMA_VERSION = 1
+FC.SCHEMA_VERSION = 2 -- 2: streams packed in the saved file (Core/Storage.lua)
 
 -------------------------------------------------------------------------------
 -- Error-safe calls
@@ -142,9 +142,12 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
   end
   local list = eventHandlers[event]
   if list then dispatch(list, event, ...) end
+  -- After every logout handler (the last samples, the friends share): pack the data for the saved file.
+  if event == "PLAYER_LOGOUT" and FC.db then FC:SafeCall(function() FC.Storage:PrepareSave() end) end
 end)
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
+eventFrame:RegisterEvent("PLAYER_LOGOUT")
 
 -------------------------------------------------------------------------------
 -- Internal messages

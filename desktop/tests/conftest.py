@@ -20,3 +20,11 @@ def db(tmp_path):
     database = Database(tmp_path / "test.db", tmp_path / "backups")
     yield database
     database.close()
+
+
+def unpack_all(data: dict) -> dict:
+    """The fixture is a real saved file with packed streams; tests that edit records work on unpacked ones."""
+    from forever_chronicle.importing.sv_importer import unpack_stream
+    for char in data["ForeverChronicleDB"]["characters"].values():
+        char["streams"] = {name: unpack_stream(s) for name, s in char.get("streams", {}).items()}
+    return data

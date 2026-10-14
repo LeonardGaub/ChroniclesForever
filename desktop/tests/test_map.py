@@ -56,6 +56,17 @@ def test_import_positions_and_geometry(db, addon_fixture):
     assert len(repo.positions(cid)) == len(points) and again.gaps == 0
 
 
+def test_import_route_archive(db, addon_fixture):
+    """Thinned old points from the addon's route archive fill in what was not imported in time."""
+    data = parse_saved_variables(addon_fixture.read_text(encoding="utf-8"))
+    char = next(iter(data["ForeverChronicleDB"]["characters"].values()))
+    char["streams"]["routeArchive"] = {"nextSeq": 2, "records": ["1000,1413,0.3000,0.5000,,,;1020,1413,0.3200,0.5000,1030,,"]}
+    result = SavedVariablesImporter(db).import_data(data, "fixture")
+    repo = Repository(db.conn)
+    points = repo.positions(repo.list_characters()[0].character_id)
+    assert result.invalid == 0 and points[0].time == 1000 and points[1].time == 1020 and points[1].until == 1030
+
+
 def test_segments_break_on_gaps_taxi_map_and_instance():
     route = Route([P(0, x=0.1), P(10, x=0.2), P(20 + GAP_SECONDS + 1, x=0.3), P(200, x=0.4, taxi=True),
                    P(210, x=0.5, taxi=True), P(220, instance=389, map_id=None, x=None, y=None),

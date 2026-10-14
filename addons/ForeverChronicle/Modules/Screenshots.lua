@@ -237,7 +237,7 @@ Shots:RegisterEvent("PLAYER_LOGOUT", function(self)
 end)
 
 -------------------------------------------------------------------------------
--- Status and settings helpers (used by the UI and /fcshot)
+-- Status and settings helpers (used by the UI and /fjshot)
 -------------------------------------------------------------------------------
 
 function Shots:GetRecent(limit, stream)
@@ -286,7 +286,7 @@ FC:RegisterOption({ section = "screenshots", column = 2, type = "choice", labelK
   set = function(v) FC.db.settings.modules.Travel.dwellSeconds = v end })
 
 -------------------------------------------------------------------------------
--- /fcshot (spec F-003)
+-- /fjshot (spec F-003)
 -------------------------------------------------------------------------------
 
 local function onOff(v) return v and L.SHOT_ON or L.SHOT_OFF end
@@ -340,6 +340,6 @@ local function handle(msg)
   end
 end
 
-SLASH_FOREVERCHRONICLESHOT1 = "/fcshot"
+SLASH_FOREVERCHRONICLESHOT1 = "/fjshot"
 SlashCmdList.FOREVERCHRONICLESHOT = function(msg) FC:SafeCall(handle, msg) end
 FC:RegisterCommand("shot", "CMD_SHOT", handle, 60)

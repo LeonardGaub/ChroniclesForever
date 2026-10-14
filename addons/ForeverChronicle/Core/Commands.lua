@@ -1,5 +1,5 @@
 -- Journey Forever - Commands
--- /fc router plus the core commands. Modules add their own with FC:RegisterCommand.
+-- /fj router plus the core commands. Modules add their own with FC:RegisterCommand.
 
 local ADDON, FC = ...
 local L = FC.L
@@ -12,8 +12,8 @@ FC:RegisterCommand("help", "CMD_HELP", function()
     return a.name < b.name
   end)
   FC:Print(L.CMD_HELP_HEADER)
-  FC:Print("  /fc - " .. L.CMD_TOGGLE)
-  for _, cmd in ipairs(list) do FC:Print("  /fc " .. cmd.name .. " - " .. L[cmd.helpKey]) end
+  FC:Print("  /fj - " .. L.CMD_TOGGLE)
+  for _, cmd in ipairs(list) do FC:Print("  /fj " .. cmd.name .. " - " .. L[cmd.helpKey]) end
 end, 1)
 
 FC:RegisterCommand("status", "CMD_STATUS", function()
@@ -45,7 +45,7 @@ FC:RegisterCommand("save", "CMD_SAVE", function()
   FC:Print(L.SAVE_HINT)
 end, 40)
 
-SLASH_FOREVERCHRONICLE1 = "/fc"
+SLASH_FOREVERCHRONICLE1 = "/fj"
 SLASH_FOREVERCHRONICLE2 = "/chronicle"
 SlashCmdList.FOREVERCHRONICLE = function(msg)
   msg = strtrim(msg or "")

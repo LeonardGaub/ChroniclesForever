@@ -22,7 +22,7 @@ Everything is stored locally in your SavedVariables. The addon never sends anyth
 - A short configurable delay lets the moment play out (default 5 seconds), and an optional countdown appears on screen. The countdown is hidden before the picture is taken.
 - An optional setting hides the whole interface for the screenshot and brings it back right after. This doesn't work in combat.
 - A cooldown keeps several events from producing a burst of pictures. Events close together share one screenshot.
-- Test it with `/fcshot test`.
+- Test it with `/fjshot test`.
 
 ### Map and route replay
 - Your route is drawn on the game's own zone and continent maps (position every 2 seconds by default; standing still adds no points).
@@ -51,16 +51,16 @@ Everything is stored locally in your SavedVariables. The addon never sends anyth
 - The window always opens on the character you are playing, and recording only ever happens for that character.
 
 ### Comfort
-- German and English (switch in the settings or with `/fc lang de` / `/fc lang en`).
+- German and English (switch in the settings or with `/fj lang de` / `/fj lang en`).
 - A minimap button (can be hidden), plus the addon compartment menu.
 - A settings page and a storage overview: the addon keeps a generous history and drops the oldest entries when a store is full.
 - A diagnostics page shows which game features were found and confirmed on your client.
 
 ### Commands
-- `/fc` or `/chronicle`: open or close the window
-- `/fc help`: all commands
-- `/fc status`, `/fc professions`, `/fc played`, `/fc diag on|off`
-- `/fcshot test`: take a test screenshot
+- `/fj` or `/chronicle`: open or close the window
+- `/fj help`: all commands
+- `/fj status`, `/fj professions`, `/fj played`, `/fj diag on|off`
+- `/fjshot test`: take a test screenshot
 
 ### Good to know
 - Made for **WoW Forever**. Some game features may change while Forever develops; the diagnostics page shows what works on your client.
@@ -85,7 +85,7 @@ Alles wird lokal in deinen SavedVariables gespeichert. Das Addon sendet nichts a
 - Eine kurze einstellbare Verzögerung (Standard 5 Sekunden) lässt den Moment wirken; ein Countdown auf dem Bildschirm ist zuschaltbar. Er wird vor der Aufnahme ausgeblendet.
 - Auf Wunsch wird die ganze Oberfläche für den Screenshot ausgeblendet und gleich danach wieder angezeigt. Im Kampf geht das nicht.
 - Eine Abklingzeit verhindert eine Bilderflut. Ereignisse kurz hintereinander teilen sich einen Screenshot.
-- Zum Ausprobieren: `/fcshot test`.
+- Zum Ausprobieren: `/fjshot test`.
 
 ### Karte und Routen-Wiedergabe
 - Deine Route erscheint auf den Gebiets- und Kontinentkarten des Spiels (Position standardmäßig alle 2 Sekunden; Stillstehen erzeugt keine Punkte).
@@ -114,16 +114,16 @@ Alles wird lokal in deinen SavedVariables gespeichert. Das Addon sendet nichts a
 - Das Fenster öffnet immer mit dem Charakter, den du gerade spielst, und aufgezeichnet wird nur für ihn.
 
 ### Komfort
-- Deutsch und Englisch (umschaltbar in den Einstellungen oder mit `/fc lang de` / `/fc lang en`).
+- Deutsch und Englisch (umschaltbar in den Einstellungen oder mit `/fj lang de` / `/fj lang en`).
 - Minimap-Knopf (ausblendbar) und Eintrag im Addon-Menü.
 - Einstellungsseite und Speicherübersicht: Das Addon behält einen großzügigen Verlauf und entfernt die ältesten Einträge, wenn ein Speicher voll ist.
 - Eine Diagnoseseite zeigt, welche Spielfunktionen auf deinem Client gefunden und bestätigt wurden.
 
 ### Befehle
-- `/fc` oder `/chronicle`: Fenster öffnen oder schließen
-- `/fc help`: alle Befehle
-- `/fc status`, `/fc professions`, `/fc played`, `/fc diag on|off`
-- `/fcshot test`: Test-Screenshot
+- `/fj` oder `/chronicle`: Fenster öffnen oder schließen
+- `/fj help`: alle Befehle
+- `/fj status`, `/fj professions`, `/fj played`, `/fj diag on|off`
+- `/fjshot test`: Test-Screenshot
 
 ### Gut zu wissen
 - Gemacht für **WoW Forever**. Manche Spielfunktionen können sich ändern, solange Forever weiterentwickelt wird; die Diagnoseseite zeigt, was auf deinem Client funktioniert.

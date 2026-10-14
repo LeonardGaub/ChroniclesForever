@@ -1,14 +1,16 @@
 """Route model for the map: projection onto zone/continent maps, segments and time lookup (spec F-005).
 
 Rules from the spec:
-- Coordinates are never interpolated. Lines only connect consecutive recorded points; a time gap,
-  a map change or an instance point ends a segment.
+- Lines only connect consecutive recorded points; a time gap, a map change, a teleport or an instance point
+  ends a segment. No route is ever invented between points that are not connected.
 - Scrubbing selects the nearest recorded point (a stationary point covers its whole time..until span).
+- A replay marker moves along the line between two connected points (glide), as in the addon.
 """
 
 from __future__ import annotations
 
 import bisect
+import math
 from dataclasses import dataclass, field
 
 from ..storage.repository import PositionPoint
@@ -16,6 +18,12 @@ from . import maps
 
 GAP_SECONDS = 120  # longer gaps between two points split the route
 ENTRY_SECONDS = 60  # an outdoor point at most this long before entering an instance marks its entrance
+# Teleports (hearthstone, portals) are recognised by a step faster than any mount or flight path, measured in
+# continent widths so cities and zones compare alike (same values as the addon's Core/Route.lua).
+TELEPORT_SPEED = 0.004      # continent widths per second
+TELEPORT_DISTANCE = 0.01    # shorter steps never count as a teleport
+UNKNOWN_ZONE_SCALE = 0.1    # assumed size of a zone without continent geometry
+CONTINENT_TYPE = 2          # Enum.UIMapType.Continent
 
 
 @dataclass
@@ -131,6 +139,31 @@ class Route:
                 continents.append(c)
         return zones + continents
 
+    # -- connections -------------------------------------------------------------------
+
+    def _continent_scale(self, map_id: int | None) -> float:
+        """Size of one map unit in continent widths."""
+        info = self.map_infos.get(map_id)
+        if info is None:
+            return UNKNOWN_ZONE_SCALE
+        if "map_type" in info.keys() and info["map_type"] == CONTINENT_TYPE:
+            return 1.0
+        if info["min_x"] is not None and info["max_x"] > info["min_x"]:
+            return info["max_x"] - info["min_x"]
+        return UNKNOWN_ZONE_SCALE
+
+    def is_jump(self, prev: PositionPoint, p: PositionPoint) -> bool:
+        """True when the step from prev to p (same map) is a teleport."""
+        if prev.taxi or p.taxi or prev.x is None or p.x is None:
+            return False
+        d = math.hypot(p.x - prev.x, p.y - prev.y) * self._continent_scale(p.map_id)
+        return d >= TELEPORT_DISTANCE and d / max(1, p.time - prev.end) > TELEPORT_SPEED
+
+    def connected(self, prev: PositionPoint, p: PositionPoint) -> bool:
+        """True when a route line joins prev and p."""
+        return (p.time - prev.end <= GAP_SECONDS and prev.map_id == p.map_id and prev.taxi == p.taxi
+                and not self.is_jump(prev, p))
+
     # -- segments ----------------------------------------------------------------------
 
     def segments(self, view: int, start: int | None = None, end: int | None = None) -> list[Segment]:
@@ -146,9 +179,7 @@ class Route:
             if xy is None:
                 current, prev = None, p
                 continue
-            breaks = (current is None or prev is None or p.time - prev.end > GAP_SECONDS
-                      or prev.map_id != p.map_id or prev.taxi != p.taxi)
-            if breaks:
+            if current is None or prev is None or not self.connected(prev, p):
                 current = Segment(taxi=p.taxi)
                 result.append(current)
             current.points.append((p.time, xy[0], xy[1]))
@@ -166,6 +197,18 @@ class Route:
             return self.points[i]
         candidates = [self.points[j] for j in (i, i + 1) if 0 <= j < len(self.points)]
         return min(candidates, key=lambda p: min(abs(t - p.time), abs(t - p.end)))
+
+    def glide(self, t: float) -> tuple[int, float, float] | None:
+        """Where a replay shows the player at time t: between two connected points on the line joining them,
+        else the nearest point (inside a dungeon its entrance). None if unknown."""
+        i = bisect.bisect_right(self.times, t) - 1
+        if 0 <= i < len(self.points) - 1:
+            a, b = self.points[i], self.points[i + 1]
+            if a.x is not None and b.x is not None and a.end < t < b.time and self.connected(a, b):
+                f = (t - a.end) / (b.time - a.end)
+                return a.map_id, a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f
+        p = self.point_at(int(t))
+        return self.locate(p.map_id, p.x, p.y, p.instance_id) if p else None
 
     def next_time_after(self, t: int) -> int | None:
         """Start time of the first point after t (used to skip gaps during playback)."""

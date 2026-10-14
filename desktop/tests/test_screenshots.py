@@ -2,6 +2,7 @@ import os
 from datetime import datetime, timedelta
 
 import pytest
+from conftest import unpack_all
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -18,7 +19,7 @@ GUID = "Player-4619-0112A417"
 
 @pytest.fixture
 def data(addon_fixture):
-    return parse_saved_variables(addon_fixture.read_text(encoding="utf-8"))
+    return unpack_all(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")))
 
 
 def shot_stamp(data):

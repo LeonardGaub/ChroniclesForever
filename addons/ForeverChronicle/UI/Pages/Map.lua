@@ -2,6 +2,11 @@
 -- Route replay on the client's own map art: map and session selection, route and event toggles,
 -- time slider, play/pause with speeds, live mode (follows the newest point) and focus from the Chronicle.
 -- 1x playback = one minute of play time per second; time without points is skipped.
+--
+-- The route is painted up to the shown moment: all of it, or only the last 15 minutes with older parts
+-- fading out. Lines are coloured by character level, by session or in one colour (blue = flight path).
+-- The slider is a timeline: a coloured band per zone in its track, ticks above it for level-ups, deaths,
+-- rares, achievements and new zones. Breaks between sessions are collapsed.
 
 local ADDON, FC = ...
 local L = FC.L
@@ -12,6 +17,26 @@ local page = { id = "map", labelKey = "TAB_MAP", icon = "Interface\\Icons\\INV_M
 local CANVAS_W, CANVAS_H = 780, 520
 local BASE_SPEED = 60
 local SPEEDS = { 1, 2, 4, 10 }
+local TRAIL_SECONDS = 15 * 60
+local COLOR_MODES = { "level", "session", "plain" }
+local LEGEND_ROWS = 10
+
+-- Route colours; blue stays reserved for flight paths. Neighbouring levels and sessions get different ones.
+local PALETTE = {
+  { 1, 0.82, 0 }, { 0.45, 1, 0.35 }, { 1, 0.42, 0.3 }, { 0.85, 0.5, 1 }, { 1, 1, 1 }, { 1, 0.62, 0.1 },
+}
+-- Slider bands per zone (muted, so the thumb stays visible) and ticks per event type.
+local ZONE_COLORS = {
+  { 0.62, 0.47, 0.25 }, { 0.33, 0.52, 0.3 }, { 0.3, 0.43, 0.6 }, { 0.6, 0.33, 0.33 },
+  { 0.52, 0.52, 0.28 }, { 0.45, 0.35, 0.6 }, { 0.28, 0.52, 0.52 }, { 0.65, 0.42, 0.3 },
+}
+local INSTANCE_COLOR = { 0.22, 0.18, 0.28 }
+local TICK_COLORS = {
+  level_up = { 1, 0.82, 0 }, player_died = { 1, 0.2, 0.2 }, rare_killed = { 0.8, 0.45, 1 },
+  achievement_earned = { 1, 0.55, 0.1 }, zone_discovered = { 0.45, 0.85, 1 },
+}
+local TRACK_INSET = 8 -- the slider thumb's centre never reaches the track's ends
+local MAX_BANDS, MAX_TICKS = 600, 300
 
 -------------------------------------------------------------------------------
 -- Small controls
@@ -45,6 +70,26 @@ local function createSlider(parent)
   return s
 end
 
+-- Cursor position from the left edge of a frame, in its own units.
+local function cursorX(frame)
+  local x = GetCursorPosition()
+  return x / frame:GetEffectiveScale() - (frame:GetLeft() or 0)
+end
+
+-- Index of the last entry whose [1] is <= t (0 if none); list sorted by [1].
+local function lastAtOrBefore(list, t)
+  local lo, hi, found = 1, #list, 0
+  while lo <= hi do
+    local mid = math.floor((lo + hi) / 2)
+    if list[mid][1] <= t then found, lo = mid, mid + 1 else hi = mid - 1 end
+  end
+  return found
+end
+
+local function settings()
+  return FC.db.settings.map
+end
+
 -------------------------------------------------------------------------------
 -- Page
 -------------------------------------------------------------------------------
@@ -58,10 +103,11 @@ function page:Create(c)
   self.mapSel.prev:SetPoint("TOPLEFT", 14, -8)
   self.sessionSel = cycler(c, 220, function(step) self:StepSession(step) end)
   self.sessionSel.prev:SetPoint("LEFT", self.mapSel.next, "RIGHT", 18, 0)
-  local function toggle(icon, title)
-    local b = UI:IconButton(c, 28, icon, title, nil)
+  local function toggle(icon, title, line, onChange)
+    local b = UI:IconButton(c, 28, icon, title, line)
     b:SetScript("OnClick", function(btn)
       UI:SetToggle(btn, not btn.on)
+      if onChange then onChange(btn.on) end
       self.dirty = true
       self:Refresh()
     end)
@@ -74,6 +120,22 @@ function page:Create(c)
   self.eventToggle:SetPoint("RIGHT", self.help, "LEFT", -12, 0)
   self.routeToggle = toggle(I .. "INV_Boots_05", "MAP_ROUTE")
   self.routeToggle:SetPoint("RIGHT", self.eventToggle, "LEFT", -6, 0)
+  self.trailToggle = toggle(I .. "INV_Misc_PocketWatch_01", "MAP_TRAIL", "MAP_TRAIL_TIP",
+    function(on) settings().trail = on end)
+  self.trailToggle:SetPoint("RIGHT", self.routeToggle, "LEFT", -12, 0)
+  UI:SetToggle(self.trailToggle, settings().trail)
+  self.colorButton = UI:IconButton(c, 28, I .. "INV_Misc_Gem_Variety_02",
+    function() return string.format(L.MAP_COLORS, L["MAP_COLORS_" .. self:ColorMode()]) end, "MAP_COLORS_TIP",
+    function(btn)
+      local mode = self:ColorMode()
+      local next = COLOR_MODES[1]
+      for i, m in ipairs(COLOR_MODES) do if m == mode then next = COLOR_MODES[i % #COLOR_MODES + 1] end end
+      settings().colors = next
+      self.dirty = true
+      self:Refresh()
+      if GameTooltip:IsOwned(btn) then btn:GetScript("OnEnter")(btn) end
+    end)
+  self.colorButton:SetPoint("RIGHT", self.trailToggle, "LEFT", -6, 0)
 
   -- Map
   self.canvas = UI.MapCanvas.New(c, CANVAS_W, CANVAS_H)
@@ -129,16 +191,103 @@ function page:Create(c)
   self.slider:SetPoint("LEFT", prev, "RIGHT", 14, 0)
   self.slider:SetPoint("RIGHT", self.time, "LEFT", -10, 0)
   self.slider:SetScript("OnValueChanged", function(_, value, userInput)
-    if self.updatingSlider or not self.range then return end
+    if self.updatingSlider or not self.timeline then return end
     if userInput == false then return end
     self.live = false
-    self.current = self.range[1] + math.floor(value)
+    self.current = Route.ValueToTime(self.timeline, value)
     self:UpdateMarker()
+  end)
+
+  -- Timeline: zone bands inside the slider track, event ticks just above it.
+  self.bands, self.separators, self.ticks, self.tickCount = {}, {}, {}, 0
+  self.tickBar = CreateFrame("Frame", nil, c)
+  self.tickBar:SetPoint("BOTTOMLEFT", self.slider, "TOPLEFT", 0, 0)
+  self.tickBar:SetPoint("BOTTOMRIGHT", self.slider, "TOPRIGHT", 0, 0)
+  self.tickBar:SetHeight(9)
+  self.tickBar:EnableMouse(true)
+  self.tickBar:SetScript("OnMouseUp", function()
+    local tick = self:HoveredTick()
+    if tick then self:JumpTo(tick.time) end
   end)
 
   c:SetScript("OnUpdate", function(_, elapsed) self:OnUpdate(elapsed) end)
   self:SyncSpeed()
   self:SyncPlay()
+end
+
+-------------------------------------------------------------------------------
+-- Route colours
+-------------------------------------------------------------------------------
+
+function page:ColorMode()
+  local mode = settings().colors
+  for _, m in ipairs(COLOR_MODES) do if m == mode then return m end end
+  return COLOR_MODES[1]
+end
+
+-- Level changes of the viewed character, sorted: list of { time, level }.
+local function levelChanges()
+  local list = {}
+  for _, r in ipairs(FC:ViewStream("events").records) do
+    local level = r.type == "level_up" and type(r.data) == "table" and tonumber(r.data.level)
+    if level and r.time then list[#list + 1] = { r.time, level } end
+  end
+  table.sort(list, function(a, b) return a[1] < b[1] end)
+  return list
+end
+
+function page:LevelAt(t)
+  local list = self.levels
+  local i = lastAtOrBefore(list, t)
+  if i > 0 then return list[i][2] end
+  if list[1] then return list[1][2] - 1 end
+  return tonumber(FC:ViewChar().info and FC:ViewChar().info.level) or 1
+end
+
+-- Session number (1 = oldest) at time t.
+function page:SessionAt(t)
+  return math.max(1, lastAtOrBefore(self.sessionStarts, t))
+end
+
+local function paletteColor(n)
+  local c = PALETTE[(n - 1) % #PALETTE + 1]
+  return c[1], c[2], c[3], 0.95
+end
+
+-- color(seg, time) for the canvas; nil keeps the default (gold, flight paths blue).
+function page:RouteColor()
+  local mode = self:ColorMode()
+  if mode == "plain" then return nil end
+  return function(seg, t)
+    if seg.taxi then return nil end
+    if mode == "level" then return paletteColor(self:LevelAt(t)) end
+    return paletteColor(self:SessionAt(t))
+  end
+end
+
+-- Legend for the colours used by the drawn segments (newest LEGEND_ROWS).
+function page:Legend(segments)
+  local mode = self:ColorMode()
+  if mode == "plain" then return nil end
+  local used, order = {}, {}
+  for _, seg in ipairs(segments) do
+    if not seg.taxi then
+      for _, pt in ipairs({ seg.points[1], seg.points[#seg.points] }) do
+        local key = mode == "level" and self:LevelAt(pt[3]) or self:SessionAt(pt[3])
+        if not used[key] then used[key] = true; order[#order + 1] = key end
+      end
+    end
+  end
+  table.sort(order)
+  local items = {}
+  for i = math.max(1, #order - LEGEND_ROWS + 1), #order do
+    local key = order[i]
+    local r, g, b = paletteColor(key)
+    local text = mode == "level" and string.format(L.MAP_LEVEL, key)
+      or FC.Util.FormatTime(self.sessionStarts[key] and self.sessionStarts[key][1] or 0)
+    items[#items + 1] = { r, g, b, text }
+  end
+  return items
 end
 
 -------------------------------------------------------------------------------
@@ -165,6 +314,7 @@ function page:Refresh()
     self.canvas:DrawRoute({})
     self.canvas:SetPins({})
     self.canvas:SetMarker(nil)
+    self.canvas:SetLegend(nil)
     self.mapSel.label:SetText("")
     self:ShowNotice(L.MAP_NO_POINTS)
     return
@@ -173,6 +323,7 @@ function page:Refresh()
   self:UpdateRange()
   if self.live then self.current = self.range[2] end
   if self.dirty then self:Redraw() end
+  if (self.slider:GetWidth() or 0) ~= self.timelineWidth then self:DrawTimeline() end
   self:UpdateMarker()
 end
 
@@ -184,14 +335,15 @@ function page:UpdateRange()
     local s = self.sessions[self.sessionIndex]
     self.range = { s.startedAt, math.max(s.endedAt, s.startedAt + 1) }
   end
-  self.updatingSlider = true
-  self.slider:SetMinMaxValues(0, self.range[2] - self.range[1])
-  self.updatingSlider = false
   if not self.current then self.current = self.range[1] end
 end
 
 function page:Redraw()
   self.dirty = false
+  self.levels = levelChanges()
+  self.sessionStarts = {}
+  for i = #self.sessions, 1, -1 do self.sessionStarts[#self.sessionStarts + 1] = { self.sessions[i].startedAt } end
+
   self.views = Route.Views(self.points)
   local known = false
   for _, v in ipairs(self.views) do if v == self.viewMap then known = true end end
@@ -206,7 +358,8 @@ function page:Redraw()
   self.artNotice = not hasArt and L.MAP_NO_ART or nil
 
   local segments = self.routeToggle.on and Route.Segments(self.points, self.viewMap, self.range[1], self.range[2]) or {}
-  self.canvas:DrawRoute(segments)
+  self.canvas:DrawRoute(segments, self:RouteColor())
+  self.canvas:SetLegend(self:Legend(segments))
 
   local pins = {}
   if self.eventToggle.on then
@@ -217,13 +370,148 @@ function page:Redraw()
         local x, y = Route.Project(spot, self.viewMap)
         if x then
           local text, icon = FC:DescribeEvent(r)
-          pins[#pins + 1] = { x = x, y = y, icon = icon, title = text, text = FC.Util.FormatTime(r.time) }
+          pins[#pins + 1] = { x = x, y = y, icon = icon, title = text, text = FC.Util.FormatTime(r.time), time = r.time }
         end
       end
     end
   end
   self.canvas:SetPins(pins)
+
+  self.timeline = Route.Timeline(self.points, self.range[1], self.range[2])
+  self.updatingSlider = true
+  self.slider:SetMinMaxValues(0, self.timeline.total)
+  self.updatingSlider = false
+  self:DrawTimeline()
 end
+
+-------------------------------------------------------------------------------
+-- Timeline (slider)
+-------------------------------------------------------------------------------
+
+local function placeOnTrack(self, region, x, y)
+  region:ClearAllPoints()
+  region:SetPoint("LEFT", self.slider, "LEFT", TRACK_INSET + x, y or 0)
+end
+
+function page:DrawTimeline()
+  local width = self.slider:GetWidth() or 0
+  self.timelineWidth = width
+  local inner = width - 2 * TRACK_INSET
+  local tl = self.timeline
+  local bandCount, sepCount, tickCount = 0, 0, 0
+  self.runs = {}
+  if inner > 0 and tl and self.range then
+    local function xOf(t) return Route.TimeToValue(tl, t) / tl.total * inner end
+
+    local colorOf, nextColor = {}, 0
+    self.runs = Route.ZoneRuns(self.points, self.range[1], self.range[2])
+    for _, run in ipairs(self.runs) do
+      local x0, x1 = xOf(run.from), xOf(run.to)
+      if x1 - x0 >= 0.5 and bandCount < MAX_BANDS then
+        local color = INSTANCE_COLOR
+        if not run.instanceID then
+          if not colorOf[run.mapID or 0] then
+            nextColor = nextColor % #ZONE_COLORS + 1
+            colorOf[run.mapID or 0] = ZONE_COLORS[nextColor]
+          end
+          color = colorOf[run.mapID or 0]
+        end
+        bandCount = bandCount + 1
+        local band = self.bands[bandCount] or self.slider:CreateTexture(nil, "ARTWORK", nil, -2)
+        self.bands[bandCount] = band
+        band:SetColorTexture(color[1], color[2], color[3], 0.9)
+        band:SetSize(math.max(1, x1 - x0), 5)
+        placeOnTrack(self, band, x0)
+        band:Show()
+      end
+    end
+
+    -- Collapsed breaks (logouts, long pauses) as dark marks.
+    for i = 2, #tl.intervals do
+      sepCount = sepCount + 1
+      local sep = self.separators[sepCount] or self.slider:CreateTexture(nil, "ARTWORK", nil, -1)
+      self.separators[sepCount] = sep
+      sep:SetColorTexture(0, 0, 0, 0.9)
+      sep:SetSize(2, 9)
+      placeOnTrack(self, sep, tl.intervals[i].offset / tl.total * inner - 1)
+      sep:Show()
+    end
+
+    for _, r in ipairs(FC:ViewStream("events").records) do
+      local color = TICK_COLORS[r.type]
+      if color and r.time and r.time >= self.range[1] and r.time <= self.range[2] and tickCount < MAX_TICKS then
+        tickCount = tickCount + 1
+        local tick = self.ticks[tickCount]
+        if not tick then
+          tick = { tex = self.tickBar:CreateTexture(nil, "OVERLAY") }
+          self.ticks[tickCount] = tick
+        end
+        tick.px, tick.time, tick.record = TRACK_INSET + xOf(r.time), r.time, r
+        tick.tex:SetColorTexture(color[1], color[2], color[3], 1)
+        tick.tex:SetSize(2, 7)
+        tick.tex:ClearAllPoints()
+        tick.tex:SetPoint("BOTTOMLEFT", self.tickBar, "BOTTOMLEFT", tick.px - 1, 1)
+        tick.tex:Show()
+      end
+    end
+  end
+  for i = bandCount + 1, #self.bands do self.bands[i]:Hide() end
+  for i = sepCount + 1, #self.separators do self.separators[i]:Hide() end
+  for i = tickCount + 1, #self.ticks do self.ticks[i].tex:Hide() end
+  self.tickCount = tickCount
+end
+
+function page:HoveredTick()
+  if not (self.tickBar.IsMouseOver and self.tickBar:IsMouseOver()) then return nil end
+  local x, best, bestDist = cursorX(self.tickBar), nil, nil
+  for i = 1, self.tickCount do
+    local tick = self.ticks[i]
+    local d = math.abs(tick.px - x)
+    if d <= 5 and (not bestDist or d < bestDist) then best, bestDist = tick, d end
+  end
+  return best
+end
+
+-- Tooltip over the timeline: the event under the cursor (ticks) or the zone at that time (slider).
+function page:UpdateHover()
+  local owner, title, line
+  local tick = self:HoveredTick()
+  if tick then
+    owner, title, line = self.tickBar, (FC:DescribeEvent(tick.record)), FC.Util.FormatTime(tick.time)
+  elseif self.timeline and self.slider.IsMouseOver and self.slider:IsMouseOver() then
+    local inner = (self.timelineWidth or 0) - 2 * TRACK_INSET
+    if inner > 0 then
+      local v = math.max(0, math.min(1, (cursorX(self.slider) - TRACK_INSET) / inner)) * self.timeline.total
+      local t = Route.ValueToTime(self.timeline, v)
+      for _, run in ipairs(self.runs or {}) do
+        if t >= run.from and t <= run.to then
+          local info = run.mapID and FC:MapInfo(run.mapID)
+          title = run.instanceID and FC:InstanceName(run.instanceID) or (info and info.name)
+          break
+        end
+      end
+      owner, line = self.slider, date(L.DATETIME_SECONDS, t)
+      title = title or line
+    end
+  end
+  local key = owner and (tostring(title) .. tostring(line)) or nil
+  if key == self.hoverKey then return end
+  self.hoverKey = key
+  if not owner then
+    if self.hoverOwner and GameTooltip:IsOwned(self.hoverOwner) then GameTooltip:Hide() end
+    self.hoverOwner = nil
+    return
+  end
+  self.hoverOwner = owner
+  GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+  GameTooltip:SetText(title, 1, 0.82, 0)
+  if line and line ~= title then GameTooltip:AddLine(line, 1, 1, 1) end
+  GameTooltip:Show()
+end
+
+-------------------------------------------------------------------------------
+-- Marker
+-------------------------------------------------------------------------------
 
 function page:ShowNotice(text)
   if text then
@@ -237,10 +525,14 @@ end
 
 function page:UpdateMarker()
   if not self.current or #self.points == 0 then return end
-  self.updatingSlider = true
-  self.slider:SetValue(self.current - self.range[1])
-  self.updatingSlider = false
+  if self.timeline then
+    self.updatingSlider = true
+    self.slider:SetValue(Route.TimeToValue(self.timeline, self.current))
+    self.updatingSlider = false
+  end
   self.time:SetText(date(L.DATETIME_SECONDS, self.current))
+  local trail = settings().trail
+  self.canvas:SetPaint(trail and self.current - TRAIL_SECONDS or nil, self.current, trail)
 
   local p = Route.PointAt(self.points, self.current)
   if not p then return end
@@ -251,6 +543,11 @@ function page:UpdateMarker()
     self.canvas:SetMarker(nil)
     self:ShowNotice(instanceName and string.format(L.MAP_INSTANCE, instanceName) or nil)
     return
+  end
+  -- Between two connected points the marker moves along the drawn line.
+  if not shown.entrance then
+    local glide = Route.Glide(self.points, self.current)
+    if glide and glide.x and glide.mapID == shown.mapID then shown = glide end
   end
   -- Follow the player's zone. A map picked by hand stays until the player changes zones.
   local zone = Route.ZoneFor(p)
@@ -283,6 +580,7 @@ function page:StepMap(step)
   self:UpdateMarker()
 end
 
+-- A session is shown at its end (the whole route painted); Play starts it from the beginning.
 function page:StepSession(step)
   local count = #(self.sessions or {}) + 1
   self.sessionIndex = (self.sessionIndex + step) % count
@@ -291,7 +589,7 @@ function page:StepSession(step)
   self.dirty = true
   self:SyncPlay()
   self:Refresh()
-  if self.range then self.current = self.range[1]; self:UpdateMarker() end
+  if self.range then self.current = self.range[2]; self:UpdateMarker() end
 end
 
 function page:SyncSpeed()
@@ -304,30 +602,37 @@ function page:SyncPlay()
 end
 
 function page:TogglePlay()
-  if #self.points == 0 then return end
+  if #self.points == 0 or not self.timeline then return end
   self.playing = not self.playing
   if self.playing then
     self.live = false
-    if not self.current or self.current >= self.range[2] then self.current = self.range[1] end
+    if not self.current or Route.TimeToValue(self.timeline, self.current) >= self.timeline.total - 1 then
+      self.current = Route.ValueToTime(self.timeline, 0)
+    end
   end
   self:SyncPlay()
 end
 
+-- Shows a moment without changing the selected session.
+function page:JumpTo(t)
+  self.live, self.playing = false, false
+  self.current = t
+  self:SyncPlay()
+  self:UpdateMarker()
+end
+
+-- Playback runs on the timeline, so breaks between sessions are skipped.
 function page:OnUpdate(elapsed)
-  if not self.playing or not self.range then return end
-  local step = SPEEDS[self.speedIndex] * BASE_SPEED * elapsed
-  local t = self.current + step
-  local p = Route.PointAt(self.points, t)
-  if not p or t > p.endTime + step then
-    local nextTime = Route.NextTimeAfter(self.points, self.current)
-    if nextTime and nextTime > t then t = nextTime end -- skip time without points
-  end
-  if t >= self.range[2] then
-    t = self.range[2]
+  self:UpdateHover()
+  if not self.playing or not self.timeline then return end
+  local tl = self.timeline
+  local v = Route.TimeToValue(tl, self.current) + SPEEDS[self.speedIndex] * BASE_SPEED * elapsed
+  if v >= tl.total then
+    v = tl.total
     self.playing = false
     self:SyncPlay()
   end
-  self.current = t
+  self.current = Route.ValueToTime(tl, v)
   self:UpdateMarker()
 end
 

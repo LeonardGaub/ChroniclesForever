@@ -157,7 +157,7 @@ function FC:SetOptionValue(def, value)
 end
 
 -------------------------------------------------------------------------------
--- Slash commands: /fc <name> <args>
+-- Slash commands: /fj <name> <args>
 -------------------------------------------------------------------------------
 
 FC.commands = {}

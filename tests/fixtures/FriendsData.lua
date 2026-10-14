@@ -124,74 +124,37 @@ ForeverChronicleShareDB = {
 			},
 			["streams"] = {
 				["events"] = {
+					["packed"] = {
+						["chunks"] = {
+							"{id=\"6acf27a80002b2df060c0c9ee0\",type=\"session_started\",time=1791961000,serverTime=1791961000,session=\"6acf27a800018512d60ea397e0\",data={level=22,},location={zone=\"The Barrens\",subzone=\"Crossroads\",mapID=1413,y=0.5913,x=0.4403,quality=\"exact\",},seq=1,},{id=\"6acf27b80003b07eb608567de0\",type=\"player_died\",time=1791961016,serverTime=1791961016,session=\"6acf27a800018512d60ea397e0\",data={},location={zone=\"The Barrens\",subzone=\"Crossroads\",mapID=1413,y=0.5913,x=0.38,quality=\"exact\",},seq=2,},", -- [1]
+						},
+						["format"] = 1,
+						["kind"] = "tables",
+					},
 					["records"] = {
-						{
-							["data"] = {
-								["level"] = 22,
-							},
-							["id"] = "6acf27a80002b2df060c0c9ee0",
-							["location"] = {
-								["mapID"] = 1413,
-								["quality"] = "exact",
-								["subzone"] = "Crossroads",
-								["x"] = 0.4403,
-								["y"] = 0.5913,
-								["zone"] = "The Barrens",
-							},
-							["seq"] = 1,
-							["serverTime"] = 1791961000,
-							["session"] = "6acf27a800018512d60ea397e0",
-							["time"] = 1791961000,
-							["type"] = "session_started",
-						}, -- [1]
-						{
-							["data"] = {
-							},
-							["id"] = "6acf27b80003b07eb608567de0",
-							["location"] = {
-								["mapID"] = 1413,
-								["quality"] = "exact",
-								["subzone"] = "Crossroads",
-								["x"] = 0.38,
-								["y"] = 0.5913,
-								["zone"] = "The Barrens",
-							},
-							["seq"] = 2,
-							["serverTime"] = 1791961016,
-							["session"] = "6acf27a800018512d60ea397e0",
-							["time"] = 1791961016,
-							["type"] = "player_died",
-						}, -- [2]
 					},
 				},
 				["positions"] = {
 					["nextSeq"] = 9,
+					["packed"] = {
+						["chunks"] = {
+							"1791961001,1413,0.3100,0.5913,1791961002,,\n1791961004,1413,0.3200,0.5913,,,\n1791961006,1413,0.3300,0.5913,,,\n1791961008,1413,0.3400,0.5913,,,\n1791961010,1413,0.3500,0.5913,,,\n1791961012,1413,0.3600,0.5913,,,\n1791961014,1413,0.3700,0.5913,,,\n1791961016,1413,0.3800,0.5913,,,", -- [1]
+						},
+						["format"] = 1,
+						["kind"] = "lines",
+					},
 					["records"] = {
-						"1791961001,1413,0.3100,0.5913,1791961002,,", -- [1]
-						"1791961004,1413,0.3200,0.5913,,,", -- [2]
-						"1791961006,1413,0.3300,0.5913,,,", -- [3]
-						"1791961008,1413,0.3400,0.5913,,,", -- [4]
-						"1791961010,1413,0.3500,0.5913,,,", -- [5]
-						"1791961012,1413,0.3600,0.5913,,,", -- [6]
-						"1791961014,1413,0.3700,0.5913,,,", -- [7]
-						"1791961016,1413,0.3800,0.5913,,,", -- [8]
 					},
 				},
 				["sessions"] = {
+					["packed"] = {
+						["chunks"] = {
+							"{id=\"6acf27a800018512d60ea397e0\",startedAt=1791961000,endReason=\"logout\",reloads=0,startLevel=22,endLevel=22,seq=1,playedAt=1791961010,playedLevel=7574,playedTotal=74113,endedAt=1791961016,},", -- [1]
+						},
+						["format"] = 1,
+						["kind"] = "tables",
+					},
 					["records"] = {
-						{
-							["endLevel"] = 22,
-							["endReason"] = "logout",
-							["endedAt"] = 1791961016,
-							["id"] = "6acf27a800018512d60ea397e0",
-							["playedAt"] = 1791961010,
-							["playedLevel"] = 7574,
-							["playedTotal"] = 74113,
-							["reloads"] = 0,
-							["seq"] = 1,
-							["startLevel"] = 22,
-							["startedAt"] = 1791961000,
-						}, -- [1]
 					},
 				},
 			},
@@ -220,7 +183,7 @@ ForeverChronicleShareDB = {
 	},
 	["entrances"] = {
 	},
-	["format"] = 1,
+	["format"] = 2,
 	["generatedAt"] = 1791961016,
 	["instances"] = {
 	},

@@ -49,7 +49,7 @@ character carry the character's natural key, not the local UUID. `Database.backu
 
 | Layer | Files | Role |
 |---|---|---|
-| Core | `Core/*.lua` | namespace, module registry, event dispatch, storage, diagnostics, registries, `/fc` |
+| Core | `Core/*.lua` | namespace, module registry, event dispatch, storage, diagnostics, registries, `/fj` |
 | Modules | `Modules/*.lua` | one file per feature: Character, Session, Progress |
 | UI | `UI/*.lua` | Blizzard templates (ButtonFrameTemplate, PanelTabButtonTemplate); one file per page |
 | Locales | `Locales/*.lua` | `deDE` (default) and `enUS` (fallback) |
@@ -104,7 +104,7 @@ records to files by their `fileStamp` (`importing/screenshot_matcher.py`, ±2 s,
 ### Professions and recipes
 `Modules/Professions.lua` keeps `snapshots.professions`: skill, maximum and kind (primary or secondary) per
 skill line, read with the Mainline `GetProfessions`/`GetProfessionInfo` at login, on `SKILL_LINES_CHANGED` /
-`CHAT_MSG_SKILL` and via `/fc professions`. Recipes are only readable while a profession window is open. They are
+`CHAT_MSG_SKILL` and via `/fj professions`. Recipes are only readable while a profession window is open. They are
 captured from the unfiltered `C_TradeSkillUI.GetAllRecipeIDs` list (at most once per 5 s). Linked, guild and NPC
 professions and skill lines the character does not have are skipped. Recipes use the compact format
 `recipeID,categoryID,icon,name`, and categories use `id,parentID,name`. Status `complete` means every recipe info

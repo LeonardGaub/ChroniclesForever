@@ -1,5 +1,28 @@
 # Journey Forever – Session Handoff
 
+## Latest: map route work, addon 0.15.0 (2026-10-14, not committed yet)
+- Slash command `/fj` (was `/fc`), `/fjshot` (was `/fcshot`).
+- Map page: the route is painted up to the shown moment, with a "last 15 minutes" toggle (fading trail), colours
+  by level / session / one colour plus a legend, a timeline slider (zone bands, event ticks, breaks collapsed),
+  a gliding marker, and route detail that follows the zoom (canvas draws again for the visible area).
+- Route archive: when `positions` is full, the oldest points go through `Route.Thin` into `routeArchive`
+  (400 points per record). Thinning keeps every dropped sample within 0.0005 map units of where the replay shows
+  the player, so replays look the same. The desktop importer reads the archive too.
+- Desktop: cinematic mode (`ui/cinematic.py`, `domain/cinematic.py`) with screenshots, opened from the map
+  page. The desktop route now breaks at teleports like the addon. The user wants screenshot features in the
+  desktop app because the addon cannot load the image files.
+- **Load test result (2026-10-14): the client refuses saved files with too many distinct constants.**
+  400,000 unique strings failed with "constant table overflow" (Lua limit ~262,143 per chunk), and the whole
+  file is dropped. Fix: schema 2, streams are packed in the saved file (`Core/Storage.lua`, "Packing"): compact
+  records 400 per string, table records 100 per string as Lua text, which is only compiled after a plain-data
+  check, in an empty environment. Unpacked on load (own characters) or on first use (friends, `ViewStream`),
+  packed after every PLAYER_LOGOUT handler (`Core.lua`). The friends share is packed the same way
+  (share format 2). Desktop importer: `unpack_stream`, SUPPORTED_SCHEMA = 2. The test addons are deleted.
+  Backups of the saved files before the first packed save: `SavedVariables\*.lua.before-0.15.0`.
+- Friends with an older companion see packed data as empty until they get the new companion: release the main
+  addon and the companion together.
+- Friends' routes on the map: written down in `docs/Friends_Map_Design.md`, not built.
+
 ## Current state (2026-10-14)
 - Spec: `ForeverChronicle_Feature_Spec_v1.3.docx`. Architecture and extension guide: `ARCHITECTURE.md`.
   Phase 0 results: `docs/Phase0_Compatibility_Report.md`.

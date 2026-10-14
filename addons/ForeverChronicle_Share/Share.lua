@@ -20,7 +20,7 @@ local Share = FC:NewModule("Share", { order = 60, defaults = {
   cats = { stats = true, chronicle = true, routes = true, sessions = true, professions = true, gear = true },
 } })
 
-Share.FORMAT = 1
+Share.FORMAT = 2               -- 2: streams packed (FC.Storage.Pack)
 Share.SHARE_ADDON = "ForeverChronicle_Share"
 Share.EVENTS = 200               -- newest chronicle entries per character
 Share.ROUTE_SESSIONS = 3         -- routes of the newest sessions
@@ -52,6 +52,7 @@ end
 
 -- One character's record for friends, limited to the shared categories.
 function Share:BuildCharacter(key, char)
+  FC.Storage.UnpackCharacter(char) -- packed when built after the save preparation (e.g. a second logout handler)
   local cats = self:GetSettings().cats
   local info = {}
   for _, field in ipairs(INFO_FIELDS) do info[field] = char.info[field] end
@@ -137,7 +138,10 @@ end
 -- Writes the share data; the game saves it right after (logout or /reload).
 function Share:Write()
   if not self:IsShareAddonLoaded() then return false end
-  ForeverChronicleShareDB = self:Build()
+  local db = self:Build()
+  -- Packed like the main file (many records per string), so the file and FriendsData.lua stay loadable.
+  for _, char in ipairs(db.characters) do FC.Storage.PackCharacter(char) end
+  ForeverChronicleShareDB = db
   return true
 end
 

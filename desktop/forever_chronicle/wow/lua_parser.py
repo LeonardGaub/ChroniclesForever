@@ -42,6 +42,18 @@ def parse_saved_variables(text: str) -> dict[str, Any]:
     return _Parser(text).parse_file()
 
 
+def parse_value(text: str) -> Any:
+    """Parse one literal value (e.g. the table text of a packed stream chunk); nothing may follow it."""
+    if len(text) > MAX_FILE_BYTES:
+        raise LuaParseError("value too large")
+    parser = _Parser(text)
+    value = parser.value()
+    parser.skip()
+    if parser.i < parser.n:
+        raise parser.error("unexpected text after the value")
+    return value
+
+
 def parse_saved_variables_bytes(data: bytes) -> dict[str, Any]:
     if len(data) > MAX_FILE_BYTES:
         raise LuaParseError("file too large")
