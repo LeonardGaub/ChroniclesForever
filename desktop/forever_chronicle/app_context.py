@@ -11,9 +11,7 @@ from .importing.screenshot_matcher import match_screenshots
 from .importing.sv_importer import ImportResult, SavedVariablesImporter
 from .storage.database import Database
 from .storage.jsonl import ExportResult, JsonlImportResult, export_jsonl, import_jsonl
-from .storage.share import ShareExportResult, ShareImportResult, export_share, import_share, remove_friend
 from .storage.repository import Repository
-from .wow.friends_data import FriendsDataResult, write_friends_data
 from .wow.paths import ClientInstall, SavedVariablesFile, client_from_path, find_forever_installs, find_saved_variables
 
 
@@ -28,7 +26,6 @@ class AppContext(QObject):
         self.repo = Repository(db.conn)
         self.importer = SavedVariablesImporter(db)
         self._client: ClientInstall | None = None
-        self.friends_data: FriendsDataResult | None = None  # last write for the addon
         self._client_searched = False
 
     def client(self) -> ClientInstall | None:
@@ -74,27 +71,6 @@ class AppContext(QObject):
             self.match_screenshots()
             self.data_changed.emit()
         return result
-
-    # -- friends (docs/Sharing_Design.md) ------------------------------------------------
-
-    def export_share(self, path: Path, selection: dict[str, set[str]],
-                     screenshots: set[tuple[str, str]]) -> ShareExportResult:
-        return export_share(self.db, path, self.config.share_id, self.config.share_name, selection, screenshots)
-
-    def import_share(self, path: Path) -> ShareImportResult:
-        result = import_share(self.db, path, self.config.share_id, self.config.friends_dir)
-        if result.status in ("ok", "partial"):
-            self.data_changed.emit()
-        return result
-
-    def remove_friend(self, owner_id: int) -> None:
-        remove_friend(self.db, owner_id, self.config.friends_dir)
-        self.data_changed.emit()
-
-    def update_friends_data(self) -> FriendsDataResult:
-        """Writes friends' characters into the addon folder (shown in game after /reload)."""
-        self.friends_data = write_friends_data(self.db.conn, self.client())
-        return self.friends_data
 
     def restore_backup(self, path: Path) -> Path | None:
         """Replaces all data with a backup (the current state is backed up first)."""

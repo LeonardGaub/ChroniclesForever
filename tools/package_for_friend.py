@@ -31,9 +31,8 @@ README = """Forever Chronicle {version}
 3. Im Spiel /reload eingeben (oder das Spiel neu starten). Das Fenster oeffnest du mit /fc oder dem
    Minimap-Knopf.
 
-Freunde: In der App im Tab "Freunde" deinen Namen eintragen, "Teilen ..." erzeugt eine Datei fuer deine
-Freunde, und Dateien von Freunden importierst du dort ebenfalls. Im Spiel waehlst du oben im Fenster aus,
-wessen Charakter du sehen willst.
+Freunde: Das Teilen mit Freunden laeuft ueber den gemeinsamen Cloud-Ordner (dort tools\Einrichten.bat
+einmal starten). Im Spiel waehlst du oben im Fenster aus, wessen Charakter du sehen willst.
 
 Die Kartenbilder fuer die Karte in der Desktop-App sind schon dabei.
 """

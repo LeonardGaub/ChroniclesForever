@@ -10,8 +10,8 @@ Import is a merge: idempotent, row by row, and invalid rows are counted and repo
 file. Which version of a record wins is defined per record type in ``RECORD_TYPES``. Local-only columns
 (database IDs, import bookkeeping, screenshot file paths of this computer) are not exported.
 
-Only my own characters are exported; friends' characters (docs/Sharing_Design.md) come back by importing
-their share files. Share files (storage/share.py) reuse this format with a filter.
+Only my own characters are exported; friends' characters (docs/Sharing_Design.md, version 1) are never
+exported again.
 """
 
 from __future__ import annotations
@@ -320,7 +320,7 @@ def import_jsonl(db: Database, path: Path) -> JsonlImportResult:
         return result
     if header.get("kind", "backup") != "backup":
         result.status = "rejected"
-        result.messages.append("this is a share file from a friend; import it on the Freunde tab")
+        result.messages.append("this is not a backup export")
         return result
 
     result.backup = db.backup("before-jsonl-import")

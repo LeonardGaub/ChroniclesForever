@@ -47,7 +47,11 @@ def world(tmp_path):
     shutil.copy(SHARE_FIXTURE, saved / "ForeverChronicle_Share.lua")
     (saved / "ForeverChronicle.lua").write_text("ForeverChronicleDB = {}\n")
     # A friend's file (the same data, under their ID), a malicious one, and an unexpected name.
-    text = SHARE_FIXTURE.read_text(encoding="utf-8").replace('["name"] = "Blind",', '["name"] = "Thrall",', 1)
+    text = SHARE_FIXTURE.read_text(encoding="utf-8")
+    renamed = text.replace('\n\t["name"] = "Blind",', '\n\t["name"] = "Bob \\"the\\" Friend",', 1)
+    renamed = renamed.replace('\t\t\t\t["name"] = "Blind",', '\t\t\t\t["name"] = "Thrall",', 1)
+    assert renamed.count("Thrall") == 1 and 'Bob \\"the\\" Friend' in renamed
+    text = renamed
     (cloud / "players" / f"{FRIEND_ID}-0badc0de.lua").write_text(text, encoding="utf-8")
     (cloud / "players" / f"{'e' * 32}-00000001.lua").write_text(
         'ForeverChronicleShareDB = { name = "x" } os.exit(1) ForeverChronicleFriends = nil', encoding="utf-8")
@@ -102,10 +106,13 @@ def test_setup_installs_shares_and_receives(world):
     lua = run_lua(friends)
     assert lua["extraGlobals"] == []
     [friend] = lua["data"]["friends"]
-    assert friend["name"] == "Thrall" or friend["characters"][0]["info"]["name"] == "Thrall"
+    assert friend["name"] == 'Bob "the" Friend' and friend["characters"][0]["info"]["name"] == "Thrall"
     assert friend["characters"][0]["snapshots"]["gear"]["slots"][0]["slotName"] == "HeadSlot"
     assert lua["data"]["maps"]["1413"]["continent"] == 1414
     assert "rejected" in log(world) and "ignored unexpected file readme.lua" in log(world)
+
+    # The addon tests (phase 12) load exactly this file.
+    (REPO / "tests" / "fixtures" / "FriendsData.lua").write_bytes(friends.read_bytes())
 
     # 4. daily backup of the addon's SavedVariables
     today = time.strftime("%Y-%m-%d")

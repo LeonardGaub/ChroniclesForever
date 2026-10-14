@@ -78,7 +78,7 @@ runPhase(11, null, 0);
 const shareData = runPhase(13, null, 0);
 fs.writeFileSync(path.join(fixtures, 'ForeverChronicle_Share.lua'), shareData);
 console.log('fixture written: tests/fixtures/ForeverChronicle_Share.lua');
-// Friends' characters as written by the desktop app (desktop/tests/test_friends_data.py writes the fixture).
+// Friends' characters as written by the sync script (desktop/tests/test_sync.py writes the fixture).
 const friendsFixture = path.join(__dirname, '..', 'fixtures', 'FriendsData.lua');
 if (fs.existsSync(friendsFixture)) {
   runPhase(12, null, 0, { 'Friends/FriendsData.lua': fs.readFileSync(friendsFixture, 'utf8') });

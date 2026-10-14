@@ -1,5 +1,251 @@
--- Forever Chronicle: friends' characters, written by the desktop app. Do not edit; it is replaced.
-ForeverChronicleFriends = {["version"]=1,["generatedAt"]=1791990000,["maps"]={["1413"]={["name"]="The Barrens",["mapType"]=3,["parent"]=1414,["continent"]=1414,["minX"]=0.4,["maxX"]=0.48,["minY"]=0.7,["maxY"]=0.78},["1414"]={["name"]="Kalimdor",["mapType"]=2,["parent"]=947}},["instances"]={},["entrances"]={},["friends"]={}}
-local F = ForeverChronicleFriends.friends
-F[1] = {["name"]="Bob\034]] os.exit(1) --\092\195\164\194\171",["sharedAt"]=1791990000,["characters"]={}}
-F[1].characters[1] = (function() return {["info"]={["key"]="Player-4619-0FRIEND1",["guid"]="Player-4619-0FRIEND1",["name"]="Thr\034all\010",["nameSuffix"]="Bullseye",["realm"]="Classic Beta PvP",["className"]="Hunter",["classFile"]="HUNTER",["raceName"]="Tauren",["raceFile"]="Tauren",["faction"]="Horde",["level"]=22,["firstSeenAt"]=1791961000,["lastSeenAt"]=1792051000},["stats"]={["achievements"]=1,["deaths"]=1,["kills"]=2,["levels_gained"]=1,["played_total"]=74113,["quests_completed"]=1,["screenshots"]=1,["sessions"]=2,["xp_earned"]=4200},["streams"]={["events"]={["records"]={{["id"]="6acf27a80002b2df060c0c9ee0",["seq"]=1,["type"]="session_started",["time"]=1791961000,["location"]={["zone"]="The Barrens",["subzone"]="Crossroads",["mapID"]=1413,["x"]=0.4403,["y"]=0.5913,["quality"]="exact"},["data"]={["level"]=22}},{["id"]="6acf27f10003b07eb608567de0",["seq"]=2,["type"]="quest_completed",["time"]=1791961073,["location"]={["zone"]="The Barrens",["subzone"]="Crossroads",["mapID"]=1413,["x"]=0.4403,["y"]=0.5913,["quality"]="exact"},["data"]={["money"]=0,["questID"]=3513,["title"]="The Runaway Shipment",["xp"]=2550}},{["id"]="6acf280f000426dde600c8f4e8",["seq"]=3,["type"]="player_died",["time"]=1791961103,["location"]={["zone"]="Ragefire Chasm",["instanceID"]=389,["quality"]="zone_only"},["data"]={}},{["id"]="6acf282d000539efcd04990a98",["seq"]=4,["type"]="level_up",["time"]=1791961133,["location"]={["zone"]="The Barrens",["subzone"]="Crossroads",["mapID"]=1413,["x"]=0.4403,["y"]=0.5913,["quality"]="exact"},["data"]={["level"]=23}},{["id"]="6acf282d0006ff3d8c0b5dcfc0",["seq"]=5,["type"]="achievement_earned",["time"]=1791961133,["location"]={["zone"]="The Barrens",["subzone"]="Crossroads",["mapID"]=1413,["x"]=0.4403,["y"]=0.5913,["quality"]="exact"},["data"]={["achievementID"]=6,["icon"]=236565,["name"]="Level 10",["points"]=10}},{["id"]="6ad087380002b2df060c0c9ee0",["seq"]=6,["type"]="session_started",["time"]=1792051000,["location"]={["zone"]="The Barrens",["subzone"]="Crossroads",["mapID"]=1413,["x"]=0.4403,["y"]=0.5913,["quality"]="exact"},["data"]={["level"]=22}}}},["sessions"]={["records"]={{["id"]="6acf27a800018512d60ea397e0",["seq"]=1,["startedAt"]=1791961000,["endedAt"]=1791962120,["endReason"]="logout",["reloads"]=1,["startLevel"]=22,["endLevel"]=22,["playedTotal"]=74236,["playedLevel"]=0,["playedAt"]=1791961133},{["id"]="6ad0873800018512d60ea397e0",["seq"]=2,["startedAt"]=1792051000,["endedAt"]=1792051301,["endReason"]="logout",["reloads"]=0,["startLevel"]=22,["endLevel"]=22,["playedTotal"]=74113,["playedLevel"]=7574,["playedAt"]=1792051010}}},["positions"]={["nextSeq"]=16,["records"]={"1791961001,1413,0.4403,0.5913,1791961132,,","1791961134,1413,0.4443,0.5883,1791961142,,","1791961144,1413,0.4483,0.5853,1791961152,,","1791961154,1413,0.4523,0.5823,1791961162,,","1791961164,1413,0.4563,0.5793,1791961172,,","1791961174,1413,0.4603,0.5763,1791961182,,","1791961184,1413,0.4643,0.5733,1791961192,,","1791961194,1413,0.4683,0.5703,1791961202,,","1791961204,1413,0.4723,0.5673,1791961212,,","1791961214,1413,0.4763,0.5643,1791961222,,","1791961224,1413,0.4803,0.5613,1791961232,,","1791961234,1413,0.4843,0.5583,1791961242,,","1791961244,1413,0.4883,0.5553,1791961852,,","1791962001,1413,0.4403,0.5913,1791962120,,","1792051001,1413,0.4403,0.5913,1792051300,,"}}},["snapshots"]={["professions"]={["list"]={{["skillLine"]=129,["name"]="First Aid",["icon"]=135966,["kind"]="secondary",["rank"]=23,["maxRank"]=75,["modifier"]=0,["active"]=true,["updatedAt"]=1792051005},{["skillLine"]=165,["name"]="Leatherworking",["icon"]=136247,["kind"]="primary",["rank"]=126,["maxRank"]=150,["modifier"]=0,["active"]=true,["updatedAt"]=1792051005,["recipes"]={["status"]="complete",["updatedAt"]=1792051000,["total"]=6,["format"]=2,["list"]={"2881,2550,134252,1,Light Leather","3816,2550,134366,1,Cured Light Hide","3817,2550,134354,1,Cured Medium Hide","9058,2552,133150,2,Handstitched Leather Cloak"},["categories"]={"2549,,Leatherworking","2550,2549,Materials","2552,2549,Cloaks"}}},{["skillLine"]=182,["name"]="Herbalism",["icon"]=136246,["kind"]="primary",["rank"]=59,["maxRank"]=150,["modifier"]=0,["active"]=true,["updatedAt"]=1792051005},{["skillLine"]=185,["name"]="Cooking",["icon"]=133971,["kind"]="secondary",["rank"]=13,["maxRank"]=75,["modifier"]=0,["active"]=true,["updatedAt"]=1792051005}},["baseline"]=true},["gear"]={["updatedAt"]=1791961000,["slots"]={{["slot"]=1,["slotName"]="HeadSlot",["link"]="|cff0070dd|Hitem:4385::::::::22:::::|h[Green Tinted Goggles]|h|r",["item"]=4385,["icon"]=133001,["quality"]=3},{["slot"]=16,["slotName"]="MainHandSlot",["link"]="|cff0070dd|Hitem:2099::::::::22:::::|h[Dwarven Hand Cannon]|h|r",["item"]=2099,["icon"]=133016,["quality"]=3}}}}} end)()
+-- Forever Chronicle: friends' characters, written by the sync script (ForeverSync.ps1). Do not edit.
+ForeverChronicleFriends = { version = 2, friends = {}, maps = {}, instances = {}, entrances = {} }
+local F, setfenv, loadstring, load, pcall, type, pairs = ForeverChronicleFriends, setfenv, loadstring, load, pcall, type, pairs
+-- Each friend's file is checked as plain data by the sync script and still runs alone, in an empty sandbox.
+local function add(source, text)
+  local env = {}
+  local fn = loadstring and loadstring(text, source) or load(text, source, "t", env)
+  if not fn then return end
+  if setfenv then setfenv(fn, env) end
+  if not pcall(fn) then return end
+  local d = env.ForeverChronicleShareDB
+  if type(d) ~= "table" or type(d.characters) ~= "table" then return end
+  F.friends[#F.friends + 1] = { name = type(d.name) == "string" and d.name or "?", characters = d.characters,
+    addonVersion = d.addonVersion, generatedAt = d.generatedAt, source = source }
+  for _, part in pairs({ "maps", "instances", "entrances" }) do
+    if type(d[part]) == "table" then
+      for k, v in pairs(d[part]) do if F[part][k] == nil then F[part][k] = v end end
+    end
+  end
+end
+add("ffffffffffffffffffffffffffffffff-0badc0de.lua", [=[
+
+ForeverChronicleShareDB = {
+	["addonVersion"] = "dev",
+	["characters"] = {
+		{
+			["info"] = {
+				["classFile"] = "HUNTER",
+				["className"] = "Hunter",
+				["faction"] = "Horde",
+				["firstSeenAt"] = 1791961000,
+				["guid"] = "Player-4619-0112A417",
+				["key"] = "Player-4619-0112A417",
+				["lastSeenAt"] = 1791961000,
+				["level"] = 22,
+				["name"] = "Thrall",
+				["nameSuffix"] = "Bullseye",
+				["raceFile"] = "Tauren",
+				["raceName"] = "Tauren",
+				["realm"] = "Classic Beta PvP",
+			},
+			["snapshots"] = {
+				["gear"] = {
+					["signature"] = "1=|cff0070dd|Hitem:4385::::::::22:::::|h[Green Tinted Goggles]|h|r;16=|cff0070dd|Hitem:2099::::::::22:::::|h[Dwarven Hand Cannon]|h|r",
+					["slots"] = {
+						{
+							["icon"] = 133001,
+							["item"] = 4385,
+							["link"] = "|cff0070dd|Hitem:4385::::::::22:::::|h[Green Tinted Goggles]|h|r",
+							["quality"] = 3,
+							["slot"] = 1,
+							["slotName"] = "HeadSlot",
+						}, -- [1]
+						{
+							["icon"] = 133016,
+							["item"] = 2099,
+							["link"] = "|cff0070dd|Hitem:2099::::::::22:::::|h[Dwarven Hand Cannon]|h|r",
+							["quality"] = 3,
+							["slot"] = 16,
+							["slotName"] = "MainHandSlot",
+						}, -- [2]
+					},
+					["updatedAt"] = 1791961000,
+				},
+				["professions"] = {
+					["baseline"] = true,
+					["list"] = {
+						{
+							["active"] = true,
+							["firstSeenAt"] = 1791961000,
+							["icon"] = 136247,
+							["kind"] = "primary",
+							["maxRank"] = 150,
+							["modifier"] = 0,
+							["name"] = "Leatherworking",
+							["rank"] = 126,
+							["skillLine"] = 165,
+							["updatedAt"] = 1791961005,
+						}, -- [1]
+						{
+							["active"] = true,
+							["firstSeenAt"] = 1791961000,
+							["icon"] = 136246,
+							["kind"] = "primary",
+							["maxRank"] = 150,
+							["modifier"] = 0,
+							["name"] = "Herbalism",
+							["rank"] = 59,
+							["skillLine"] = 182,
+							["updatedAt"] = 1791961005,
+						}, -- [2]
+						{
+							["active"] = true,
+							["firstSeenAt"] = 1791961000,
+							["icon"] = 135966,
+							["kind"] = "secondary",
+							["maxRank"] = 75,
+							["modifier"] = 0,
+							["name"] = "First Aid",
+							["rank"] = 23,
+							["skillLine"] = 129,
+							["updatedAt"] = 1791961005,
+						}, -- [3]
+						{
+							["active"] = true,
+							["firstSeenAt"] = 1791961000,
+							["icon"] = 133971,
+							["kind"] = "secondary",
+							["maxRank"] = 75,
+							["modifier"] = 0,
+							["name"] = "Cooking",
+							["rank"] = 13,
+							["skillLine"] = 185,
+							["updatedAt"] = 1791961005,
+						}, -- [4]
+					},
+					["scannedAt"] = 1791961005,
+				},
+			},
+			["stats"] = {
+				["deaths"] = 1,
+				["played_total"] = 74113,
+				["sessions"] = 1,
+			},
+			["streams"] = {
+				["events"] = {
+					["records"] = {
+						{
+							["data"] = {
+								["level"] = 22,
+							},
+							["id"] = "6acf27a80002b2df060c0c9ee0",
+							["location"] = {
+								["mapID"] = 1413,
+								["quality"] = "exact",
+								["subzone"] = "Crossroads",
+								["x"] = 0.4403,
+								["y"] = 0.5913,
+								["zone"] = "The Barrens",
+							},
+							["seq"] = 1,
+							["serverTime"] = 1791961000,
+							["session"] = "6acf27a800018512d60ea397e0",
+							["time"] = 1791961000,
+							["type"] = "session_started",
+						}, -- [1]
+						{
+							["data"] = {
+							},
+							["id"] = "6acf27b80003b07eb608567de0",
+							["location"] = {
+								["mapID"] = 1413,
+								["quality"] = "exact",
+								["subzone"] = "Crossroads",
+								["x"] = 0.38,
+								["y"] = 0.5913,
+								["zone"] = "The Barrens",
+							},
+							["seq"] = 2,
+							["serverTime"] = 1791961016,
+							["session"] = "6acf27a800018512d60ea397e0",
+							["time"] = 1791961016,
+							["type"] = "player_died",
+						}, -- [2]
+					},
+				},
+				["positions"] = {
+					["nextSeq"] = 9,
+					["records"] = {
+						"1791961001,1413,0.3100,0.5913,1791961002,,", -- [1]
+						"1791961004,1413,0.3200,0.5913,,,", -- [2]
+						"1791961006,1413,0.3300,0.5913,,,", -- [3]
+						"1791961008,1413,0.3400,0.5913,,,", -- [4]
+						"1791961010,1413,0.3500,0.5913,,,", -- [5]
+						"1791961012,1413,0.3600,0.5913,,,", -- [6]
+						"1791961014,1413,0.3700,0.5913,,,", -- [7]
+						"1791961016,1413,0.3800,0.5913,,,", -- [8]
+					},
+				},
+				["sessions"] = {
+					["records"] = {
+						{
+							["endLevel"] = 22,
+							["endReason"] = "logout",
+							["endedAt"] = 1791961016,
+							["id"] = "6acf27a800018512d60ea397e0",
+							["playedAt"] = 1791961010,
+							["playedLevel"] = 7574,
+							["playedTotal"] = 74113,
+							["reloads"] = 0,
+							["seq"] = 1,
+							["startLevel"] = 22,
+							["startedAt"] = 1791961000,
+						}, -- [1]
+					},
+				},
+			},
+		}, -- [1]
+		{
+			["info"] = {
+				["classFile"] = "MAGE",
+				["key"] = "Player-4619-0ALT0001",
+				["lastSeenAt"] = 1791900000,
+				["level"] = 10,
+				["name"] = "Altie",
+			},
+			["snapshots"] = {
+			},
+			["stats"] = {
+				["kills"] = 5,
+			},
+			["streams"] = {
+				["positions"] = {
+					["nextSeq"] = 1,
+					["records"] = {
+					},
+				},
+			},
+		}, -- [2]
+	},
+	["entrances"] = {
+	},
+	["format"] = 1,
+	["generatedAt"] = 1791961016,
+	["instances"] = {
+	},
+	["maps"] = {
+		["1413"] = {
+			["build"] = "70374",
+			["continent"] = 1414,
+			["entrancesChecked"] = true,
+			["mapType"] = 3,
+			["maxX"] = 0.48,
+			["maxY"] = 0.78,
+			["minX"] = 0.4,
+			["minY"] = 0.7,
+			["name"] = "The Barrens",
+			["parent"] = 1414,
+		},
+		["1414"] = {
+			["build"] = "70374",
+			["entrancesChecked"] = true,
+			["mapType"] = 2,
+			["name"] = "Kalimdor",
+			["parent"] = 947,
+		},
+	},
+	["name"] = "Bob \"the\" Friend",
+}
+
+]=])

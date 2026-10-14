@@ -158,8 +158,11 @@
     loaded on its own in an empty environment, a daily backup (10 days), and `sync.log`. Settings live in
     `%LOCALAPPDATA%/ForeverChronicle/sync`.
   - `tools/publish_to_cloud.py` copies the addons and the sync files into the cloud folder; every PC installs them.
-  - The desktop app no longer writes `FriendsData.lua`. Next: remove the desktop share feature (user: not
-    needed anymore).
+  - The desktop share feature is removed (Freunde tab, share dialog, `.fcshare` files, the desktop
+    FriendsData writer). The `owners` table and `characters.owner_id` stay (migration 8). `test_sync.py` now writes
+    `tests/fixtures/FriendsData.lua` from the script's real output, and addon phase 12 loads it.
+  - To start: create a shared cloud folder, run `tools/publish_to_cloud.py <folder>`, then on every PC
+    `<folder>/tools/Einrichten.bat`.
   - Tests: `desktop/tests/test_sync.py` runs the real script against temporary folders.
 - **Addon v0.12.0: gear for other characters (user request).** The `Modules/Gear.lua` snapshot `snapshots.gear` (slot,
   slotName, link, item, icon, quality) is taken at login and on `PLAYER_EQUIPMENT_CHANGED`. The overview shows alts'
@@ -194,7 +197,7 @@
   - Map art: the user's 52 explored-zone maps were imported into `%APPDATA%\ForeverChronicle\maps\<uiMapID>.jpg`.
     The Import tab has "Kartenbilder importieren …". Coordinates were verified against real probe data
     (Orgrimmar/Cleft of Shadow, Kalimdor rectangle).
-- Tests: `tests/addon` (`npm test`: 14 queue tests and 12 phases) and `desktop` (`pytest`, 102 tests). All pass.
+- Tests: `tests/addon` (`npm test`: 14 queue tests and 13 phases) and `desktop` (`pytest`, 93 tests). All pass.
 - In-game confirmed by the user: window, import, Screenshots tab (v0.2.0). Not yet seen in game: v0.2.1 and v0.3.0 changes.
 
 ## Confirmed client facts
