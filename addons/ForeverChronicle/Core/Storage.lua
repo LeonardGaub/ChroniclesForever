@@ -1,4 +1,4 @@
--- Forever Chronicle - Storage
+-- Journey Forever - Storage
 -- Owns the SavedVariables table, schema versioning, character records and bounded streams.
 --
 -- ForeverChronicleDB = {

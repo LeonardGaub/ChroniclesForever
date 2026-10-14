@@ -1,4 +1,4 @@
--- Forever Chronicle - Core
+-- Journey Forever - Core
 -- Namespace, module registry, event dispatch, internal messages and timers.
 --
 -- Extension model: every feature is a module created with FC:NewModule(). A module can
@@ -195,5 +195,5 @@ end
 
 function FC:Print(msg)
   local frame = DEFAULT_CHAT_FRAME or ChatFrame1
-  if frame then frame:AddMessage("|cffffd100Forever Chronicle|r: " .. tostring(msg)) end
+  if frame then frame:AddMessage("|cffffd100Journey Forever|r: " .. tostring(msg)) end
 end

@@ -1,4 +1,4 @@
--- Forever Chronicle - Settings page (spec F-009)
+-- Journey Forever - Settings page (spec F-009)
 -- One block per registered option section (FC:RegisterOptionSection), each generated from the options
 -- in that section. Modules add sections and options; this page needs no changes for that.
 

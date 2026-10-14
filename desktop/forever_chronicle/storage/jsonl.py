@@ -279,7 +279,7 @@ def read_records(lines: list[str], result: JsonlImportResult) -> tuple[dict[str,
             header = None
     if not isinstance(header, dict) or header.get("record_type") != "header" or header.get("format") != FORMAT:
         result.status = "rejected"
-        result.messages.append("not a Forever Chronicle export (header line missing)")
+        result.messages.append("not a Journey Forever export (header line missing)")
         return None, []
     version = header.get("format_version")
     if not isinstance(version, int) or version > FORMAT_VERSION:

@@ -1,4 +1,4 @@
-# Forever Chronicle – Session Handoff
+# Journey Forever – Session Handoff
 
 ## Current state (2026-10-14)
 - Spec: `ForeverChronicle_Feature_Spec_v1.3.docx`. Architecture and extension guide: `ARCHITECTURE.md`.
@@ -111,7 +111,7 @@
   (newest first, with its time and kind), confirm, then all data is replaced (`Database.restore`, SQLite backup API
   into the live connection). The current state is backed up first ("vor Wiederherstellen"), and the chosen file
   is protected from the 5-copy rotation. Older backups are migrated afterwards. Backups from newer versions and
-  files that are not Forever Chronicle databases are refused. Backup file names are unique (counter when two
+  files that are not Journey Forever databases are refused. Backup file names are unique (counter when two
   are made in the same second).
 - **Desktop v0.3.0: friends' characters, phase 1 (see docs/Sharing_Design.md).**
   - New tab "Freunde": your name (free text), "Teilen …" (dialog: own characters, categories per character, and
@@ -191,7 +191,7 @@
   changes, run npm test, pytest, then npm test again (phase 12 needs the friends file that pytest writes).
 - **Package for friends (user request).** `tools/package_for_friend.py` builds `dist/ForeverChronicle-<version>.zip`
   (about 28 MB; too big for Discord's free 10 MB limit, so share it via OneDrive, Google Drive or similar). It
-  contains the addon, the desktop app source, `Forever Chronicle starten.bat`, `LIES MICH.txt` and the 52 map images
+  contains the addon, the desktop app source, `Journey Forever starten.bat`, `LIES MICH.txt` and the 52 map images
   from `%APPDATA%\ForeverChronicle\maps` (bundled as `desktop/forever_chronicle/maps/`, never in git; `map_art`
   uses the user's own images first, then the bundled ones).
   - The batch finds Python 3.11+ (py launcher, PATH or the per-user install folder), offers
@@ -206,7 +206,7 @@
   - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
   - Open question for the user: real WoW icons for the desktop. Options: export from the local client with
     wow.export, or the Wowhead icon CDN.
-- **Desktop** (`desktop/`, start with `desktop/Forever Chronicle.bat`). Tabs: Übersicht, Chronik, Karte,
+- **Desktop** (`desktop/`, start with `desktop/Journey Forever.bat`). Tabs: Übersicht, Chronik, Karte,
   Berufe, Screenshots, Import, Diagnose.
   - The Karte tab shows your map art with the route, event markers, a time slider, play/pause and 1×/2×/4×/10× speeds
     (1× = 1 min of play per second), session filter, continent view, follow map, and an instance notice.

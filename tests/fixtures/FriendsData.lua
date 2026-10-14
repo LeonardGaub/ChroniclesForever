@@ -1,4 +1,4 @@
--- Forever Chronicle: friends' characters, written by the sync script (ForeverSync.ps1). Do not edit.
+-- Journey Forever: friends' characters, written by the sync script (ForeverSync.ps1). Do not edit.
 ForeverChronicleFriends = { version = 2, friends = {}, maps = {}, instances = {}, entrances = {} }
 local F, setfenv, loadstring, load, pcall, type, pairs = ForeverChronicleFriends, setfenv, loadstring, load, pcall, type, pairs
 -- Each friend's file is checked as plain data by the sync script and still runs alone, in an empty sandbox.

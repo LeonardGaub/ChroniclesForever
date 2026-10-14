@@ -1,4 +1,4 @@
--- Forever Chronicle - Professions module (spec F-008)
+-- Journey Forever - Professions module (spec F-008)
 -- Snapshot of the character's professions (skill, maximum) and of the recipes it knows.
 --
 -- Professions are read with the Mainline API at login, on skill changes and via /fc professions.

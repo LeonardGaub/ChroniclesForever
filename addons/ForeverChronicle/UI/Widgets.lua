@@ -1,4 +1,4 @@
--- Forever Chronicle - UI widgets
+-- Journey Forever - UI widgets
 -- Small building blocks on top of Blizzard templates and fonts, so every page looks like the
 -- native UI: gold section headers (GameFontNormal), white values (GameFontHighlight),
 -- grey hints (GameFontDisableSmall), standard scroll frames, buttons and check boxes.

@@ -1,4 +1,4 @@
--- Forever Chronicle - Metrics module
+-- Journey Forever - Metrics module
 -- A small time series for graphs: every minute (and on logout) the current totals are stored in the compact
 -- "metrics" stream when something changed:  time,xpEarned,kills,money,level
 -- Graphs show a window over the last hours of played time (Metrics:PlayedWindow, Metrics:WindowPoints).

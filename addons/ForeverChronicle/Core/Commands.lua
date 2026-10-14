@@ -1,4 +1,4 @@
--- Forever Chronicle - Commands
+-- Journey Forever - Commands
 -- /fc router plus the core commands. Modules add their own with FC:RegisterCommand.
 
 local ADDON, FC = ...

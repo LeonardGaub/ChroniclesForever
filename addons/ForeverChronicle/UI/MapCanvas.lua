@@ -1,4 +1,4 @@
--- Forever Chronicle - map canvas
+-- Journey Forever - map canvas
 -- Draws a map with the client's own map art (the same tiles and explored-area overlays as the world map),
 -- route lines, event icons and a position marker. If the client cannot provide the art, a plain
 -- parchment-coloured area with the map name is shown instead.

@@ -1,4 +1,4 @@
--- Forever Chronicle - Main frame
+-- Journey Forever - Main frame
 -- A Blizzard portrait frame (ButtonFrameTemplate) with one bottom tab per registered page,
 -- like the character and spellbook windows. Created lazily on first open.
 
@@ -26,7 +26,7 @@ function UI:Create()
   f:SetScript("OnDragStart", f.StartMoving)
   f:SetScript("OnDragStop", f.StopMovingOrSizing)
   if ButtonFrameTemplate_HideButtonBar then ButtonFrameTemplate_HideButtonBar(f) end
-  if f.SetTitle then f:SetTitle("Forever Chronicle") elseif f.TitleText then f.TitleText:SetText("Forever Chronicle") end
+  if f.SetTitle then f:SetTitle("Journey Forever") elseif f.TitleText then f.TitleText:SetText("Journey Forever") end
   tinsert(UISpecialFrames, FRAME_NAME) -- close with Escape
   f:Hide()
 

@@ -1,4 +1,4 @@
--- Forever Chronicle - friends: Share module (docs/Sharing_Design.md, version 2: cloud sync)
+-- Journey Forever - friends: Share module (docs/Sharing_Design.md, version 2: cloud sync)
 -- Part of ForeverChronicle_Share, the companion addon for a private friend group (not part of the main addon).
 -- On every logout and /reload, writes the data meant for friends into ForeverChronicleShareDB, this addon's
 -- saved variable. The game saves it as its own file (SavedVariables\ForeverChronicle_Share.lua), which the

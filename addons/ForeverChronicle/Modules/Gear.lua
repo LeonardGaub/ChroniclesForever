@@ -1,4 +1,4 @@
--- Forever Chronicle - Gear module
+-- Journey Forever - Gear module
 -- Snapshot of the equipped items, so the gear can be shown for characters that are not being played (alts,
 -- friends via the desktop app). Read at login and whenever the equipment changes.
 --

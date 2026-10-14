@@ -1,4 +1,4 @@
-# Forever Chronicle – Architecture
+# Journey Forever – Architecture
 
 ```
 addons/ForeverChronicle/      in-game addon (Lua, Interface 16001)

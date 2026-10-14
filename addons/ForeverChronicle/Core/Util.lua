@@ -1,4 +1,4 @@
--- Forever Chronicle - Util
+-- Journey Forever - Util
 -- Small helpers without game state: secret-value guards, safe calls, IDs, table helpers.
 
 local ADDON, FC = ...

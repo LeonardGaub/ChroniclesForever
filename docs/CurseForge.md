@@ -8,7 +8,7 @@ Your character's personal adventure history: a chronicle of every milestone, aut
 
 ## Description
 
-**Forever Chronicle** keeps a diary of your character while you play. Level-ups, quests, deaths, achievements, new zones and rare kills are recorded automatically. You can look back at all of it in one window that matches the game's own interface: a chronicle, your route on the world map, your professions and your statistics.
+**Journey Forever** keeps a diary of your character while you play. Level-ups, quests, deaths, achievements, new zones and rare kills are recorded automatically. You can look back at all of it in one window that matches the game's own interface: a chronicle, your route on the world map, your professions and your statistics.
 
 Everything is stored locally in your SavedVariables. The addon never sends anything to other players or the internet, and it has no ads.
 
@@ -71,7 +71,7 @@ Everything is stored locally in your SavedVariables. The addon never sends anyth
 
 ## Beschreibung (Deutsch)
 
-**Forever Chronicle** führt beim Spielen Tagebuch über deinen Charakter. Stufenaufstiege, Quests, Tode, Erfolge, neue Gebiete und besiegte seltene Gegner werden automatisch festgehalten. Alles kannst du in einem Fenster nachsehen, das aussieht wie die Oberfläche des Spiels: Chronik, deine Route auf der Weltkarte, deine Berufe und deine Statistiken.
+**Journey Forever** führt beim Spielen Tagebuch über deinen Charakter. Stufenaufstiege, Quests, Tode, Erfolge, neue Gebiete und besiegte seltene Gegner werden automatisch festgehalten. Alles kannst du in einem Fenster nachsehen, das aussieht wie die Oberfläche des Spiels: Chronik, deine Route auf der Weltkarte, deine Berufe und deine Statistiken.
 
 Alles wird lokal in deinen SavedVariables gespeichert. Das Addon sendet nichts an andere Spieler oder ins Internet und zeigt keine Werbung.
 

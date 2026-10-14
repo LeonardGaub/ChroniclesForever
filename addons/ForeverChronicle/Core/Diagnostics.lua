@@ -1,4 +1,4 @@
--- Forever Chronicle - Diagnostics
+-- Journey Forever - Diagnostics
 -- A small rotating log and the capability registry.
 --
 -- Capability status:

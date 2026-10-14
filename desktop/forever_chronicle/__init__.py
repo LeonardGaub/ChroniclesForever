@@ -1,3 +1,3 @@
-"""Forever Chronicle desktop application."""
+"""Journey Forever desktop application."""
 
 __version__ = "0.4.0"

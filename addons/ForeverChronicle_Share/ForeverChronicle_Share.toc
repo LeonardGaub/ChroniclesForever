@@ -1,12 +1,12 @@
 ## Interface: 16001
-## Title: Forever Chronicle |cff999999- Freunde|r
-## Notes: Companion of Forever Chronicle for a private friend group: shares your characters through a cloud folder (sync script) and shows your friends' characters.
-## Notes-deDE: Ergänzung zu Forever Chronicle für eine private Freundesgruppe: teilt deine Charaktere über einen Cloud-Ordner (Sync-Skript) und zeigt die Charaktere deiner Freunde.
-## Author: Forever Chronicle
-## Version: 0.14.0
+## Title: Journey Forever |cff999999- Freunde|r
+## Notes: Companion of Journey Forever for a private friend group: shares your characters through a cloud folder (sync script) and shows your friends' characters.
+## Notes-deDE: Ergänzung zu Journey Forever für eine private Freundesgruppe: teilt deine Charaktere über einen Cloud-Ordner (Sync-Skript) und zeigt die Charaktere deiner Freunde.
+## Author: Journey Forever
+## Version: 0.14.1
 ## Dependencies: ForeverChronicle
 ## Group: ForeverChronicle
-## Category: Forever Chronicle
+## Category: Journey Forever
 ## SavedVariables: ForeverChronicleShareDB
 ## IconTexture: Interface\Icons\INV_Letter_15
 

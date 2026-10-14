@@ -1,4 +1,4 @@
--- Forever Chronicle - Chronicle page
+-- Journey Forever - Chronicle page
 -- The most recent recorded events, newest first. Text and icon come from the event type registry.
 
 local ADDON, FC = ...

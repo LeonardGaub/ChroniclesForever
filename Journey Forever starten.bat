@@ -1,9 +1,9 @@
 @echo off
-rem Forever Chronicle: installs/updates the addon in WoW Forever and starts the desktop app.
+rem Journey Forever: installs/updates the addon in WoW Forever and starts the desktop app.
 rem First start: sets up Python and the app (a few minutes). Later starts take a few seconds.
 setlocal EnableExtensions
 cd /d "%~dp0"
-title Forever Chronicle
+title Journey Forever
 rem Python environment in a short, fixed place: independent of where this folder was unzipped and well
 rem below the Windows path length limit; a newer version of this folder reuses it.
 set "VENV=%LOCALAPPDATA%\ForeverChronicle\venv"
@@ -11,7 +11,7 @@ set "VPY=%VENV%\Scripts\python.exe"
 
 if exist "%VPY%" goto :deps
 
-echo Ersteinrichtung: Python-Umgebung fuer Forever Chronicle wird angelegt ...
+echo Ersteinrichtung: Python-Umgebung fuer Journey Forever wird angelegt ...
 call :findpython
 if not defined PY call :installpython
 if not defined PY goto :nopython

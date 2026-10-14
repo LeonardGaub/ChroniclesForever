@@ -1,4 +1,4 @@
--- Forever Chronicle - Professions page (spec F-008)
+-- Journey Forever - Professions page (spec F-008)
 -- Left: the character's professions with icon, skill bar and rank. Right: the known recipes of the selected
 -- profession, grouped by category, with a search box and the capture status (complete / partial / not yet).
 

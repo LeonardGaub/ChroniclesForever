@@ -1,4 +1,4 @@
--- Forever Chronicle - Route
+-- Journey Forever - Route
 -- Reads the compact "positions" stream into points (cached, updated incrementally) and provides the route
 -- rules shared with the desktop app (spec F-005):
 --   * coordinates are never interpolated; lines only connect consecutive recorded points

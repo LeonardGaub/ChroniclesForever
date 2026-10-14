@@ -1,4 +1,4 @@
--- Forever Chronicle - Recorder
+-- Journey Forever - Recorder
 -- Builds normalized event records (spec F-002) and appends them to the "events" stream.
 --
 -- Record layout (schema 1):

@@ -1,4 +1,4 @@
--- Forever Chronicle - Registry
+-- Journey Forever - Registry
 -- Declarative registries that modules use to plug into recording, the UI and commands.
 
 local ADDON, FC = ...

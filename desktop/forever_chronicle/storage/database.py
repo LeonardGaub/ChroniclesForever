@@ -343,9 +343,9 @@ class Database:
                 has_characters = src.execute(
                     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'characters'").fetchone()
             except sqlite3.DatabaseError as exc:
-                raise ValueError(f"not a Forever Chronicle backup ({exc})") from exc
+                raise ValueError(f"not a Journey Forever backup ({exc})") from exc
             if not has_characters or version < 1:
-                raise ValueError("not a Forever Chronicle backup")
+                raise ValueError("not a Journey Forever backup")
             if version > SCHEMA_VERSION:
                 raise ValueError(f"backup schema {version} is newer than this app ({SCHEMA_VERSION})")
             before = self.backup("before-restore", protect=source)

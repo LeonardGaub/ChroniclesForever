@@ -1,4 +1,4 @@
--- Forever Chronicle - Overview page
+-- Journey Forever - Overview page
 -- Left: full name, level line, XP bar and gold, then the stat groups (heading, short description,
 -- tiles with icon, name and value). Right: the character model with the equipped gear around it,
 -- like the Classic character window. Stats and groups come from the registry (FC:RegisterStat/StatGroup).

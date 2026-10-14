@@ -1,4 +1,4 @@
--- Forever Chronicle - English strings (also the fallback for missing keys in other languages)
+-- Journey Forever - English strings (also the fallback for missing keys in other languages)
 
 local ADDON, FC = ...
 

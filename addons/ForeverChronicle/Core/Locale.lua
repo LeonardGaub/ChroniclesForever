@@ -1,4 +1,4 @@
--- Forever Chronicle - Locale
+-- Journey Forever - Locale
 -- Language tables are registered by Locales/*.lua. FC.L resolves keys against the active
 -- language, then English, then returns the key itself so a missing string is visible but harmless.
 

@@ -207,7 +207,7 @@ def test_restore_migrates_older_backups_and_refuses_bad_files(other_db, tmp_path
     c.close()
     empty = tmp_path / "empty.db"
     sqlite3.connect(empty).close()
-    for bad, reason in ((garbage, "not a Forever Chronicle"), (newer, "newer"), (empty, "not a Forever Chronicle")):
+    for bad, reason in ((garbage, "not a Journey Forever"), (newer, "newer"), (empty, "not a Journey Forever")):
         with pytest.raises(ValueError, match=reason):
             other_db.restore(bad)
     assert other_db.conn.execute("SELECT name FROM characters").fetchone()[0] == "Oldie"  # untouched

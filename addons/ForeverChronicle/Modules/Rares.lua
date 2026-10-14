@@ -1,4 +1,4 @@
--- Forever Chronicle - Rares module
+-- Journey Forever - Rares module
 -- Records kills of rare mobs ("rare" and "rare elite") as "rare_killed" events; the screenshot module has a
 -- trigger for them. The kill itself (PARTY_KILL) only carries GUIDs, so rares are remembered when they are
 -- seen as target, mouseover or nameplate (name and classification by GUID). If the client hides the GUIDs

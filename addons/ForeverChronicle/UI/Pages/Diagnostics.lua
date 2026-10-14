@@ -1,4 +1,4 @@
--- Forever Chronicle - Diagnostics page (spec F-012)
+-- Journey Forever - Diagnostics page (spec F-012)
 -- Capability status per feature (status icon + name, details in the tooltip) and the diagnostic log.
 
 local ADDON, FC = ...

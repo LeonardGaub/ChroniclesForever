@@ -1,4 +1,4 @@
--- Forever Chronicle - Session module (spec F-004)
+-- Journey Forever - Session module (spec F-004)
 -- Sessions, reload detection and server-reported played time.
 --
 -- Session records live in the "sessions" stream and are updated in place:

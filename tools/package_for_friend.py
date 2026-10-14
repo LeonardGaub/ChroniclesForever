@@ -1,5 +1,5 @@
 """Builds dist/ForeverChronicle-<version>.zip for a friend: the addon, the desktop app (source, no venv),
-"Forever Chronicle starten.bat", which sets everything up on the friend's PC, and the map images from this
+"Journey Forever starten.bat", which sets everything up on the friend's PC, and the map images from this
 PC's app folder (%APPDATA%\\ForeverChronicle\\maps), bundled as desktop/forever_chronicle/maps/.
 
     desktop\\.venv\\Scripts\\python tools\\package_for_friend.py
@@ -18,11 +18,11 @@ IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png")
 TOP = "ForeverChronicle"
 SKIP_PARTS = {"__pycache__", ".venv", "tests", "forever_chronicle.egg-info"}
 
-README = """Forever Chronicle {version}
+README = """Journey Forever {version}
 ==========================
 
 1. Diesen Ordner an einen festen Platz entpacken (z. B. Dokumente\\ForeverChronicle), nicht im ZIP starten.
-2. "Forever Chronicle starten.bat" doppelklicken.
+2. "Journey Forever starten.bat" doppelklicken.
    - Beim ersten Start wird Python eingerichtet (fragt nach, falls Python fehlt) und die App installiert.
      Das dauert ein paar Minuten.
    - Das Addon wird automatisch in deinen WoW-Forever-Ordner kopiert (gefunden ueber Battle.net).
@@ -45,7 +45,7 @@ def version() -> str:
 
 
 def files() -> list[tuple[Path, str]]:
-    out = [(ROOT / "Forever Chronicle starten.bat", "Forever Chronicle starten.bat"),
+    out = [(ROOT / "Journey Forever starten.bat", "Journey Forever starten.bat"),
            (ROOT / "desktop" / "pyproject.toml", "desktop/pyproject.toml")]
     for base in (ROOT / "addons" / "ForeverChronicle", ROOT / "desktop" / "forever_chronicle"):
         for f in sorted(base.rglob("*")):

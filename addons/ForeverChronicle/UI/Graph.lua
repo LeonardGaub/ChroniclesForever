@@ -1,4 +1,4 @@
--- Forever Chronicle - line graph
+-- Journey Forever - line graph
 -- A value over time: one line through the points, the largest and smallest value as labels, clock times
 -- along the bottom, faint vertical lines where play sessions were joined, and a tooltip with the value
 -- under the cursor.

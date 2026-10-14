@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "forever-chronicle"
 version = "0.1.0"
-description = "Desktop companion for the Forever Chronicle WoW Forever addon"
+description = "Desktop companion for the Journey Forever WoW Forever addon"
 requires-python = ">=3.11"
 dependencies = ["PySide6>=6.6"]
 

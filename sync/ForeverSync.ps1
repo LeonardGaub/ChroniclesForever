@@ -1,5 +1,5 @@
 <#
-Forever Chronicle - cloud sync (docs/Sharing_Design.md, version 2). Uses only what Windows brings along.
+Journey Forever - cloud sync (docs/Sharing_Design.md, version 2). Uses only what Windows brings along.
 
   Setup (Einrichten.bat, from the tools folder inside the shared cloud folder):
       powershell -ExecutionPolicy Bypass -File ForeverSync.ps1 -Setup
@@ -260,7 +260,7 @@ function Receive-Friends($Config, $State) {
     }
   }
   $sb = New-Object Text.StringBuilder
-  [void]$sb.AppendLine('-- Forever Chronicle: friends'' characters, written by the sync script (ForeverSync.ps1). Do not edit.')
+  [void]$sb.AppendLine('-- Journey Forever: friends'' characters, written by the sync script (ForeverSync.ps1). Do not edit.')
   [void]$sb.AppendLine('ForeverChronicleFriends = { version = 2, friends = {}, maps = {}, instances = {}, entrances = {} }')
   [void]$sb.AppendLine('local F, setfenv, loadstring, load, pcall, type, pairs = ForeverChronicleFriends, setfenv, loadstring, load, pcall, type, pairs')
   [void]$sb.AppendLine(@'
@@ -337,7 +337,7 @@ function Invoke-Sync {
 
 function Invoke-Setup {
   if (-not $CloudFolder) { $CloudFolder = Split-Path (Split-Path $PSCommandPath) }
-  if (-not (Test-Path (Join-Path $CloudFolder 'tools'))) { throw "Not a Forever Chronicle cloud folder: $CloudFolder" }
+  if (-not (Test-Path (Join-Path $CloudFolder 'tools'))) { throw "Not a Journey Forever cloud folder: $CloudFolder" }
   if (-not $ClientFolder) { $ClientFolder = Find-Client }
   if (-not $ClientFolder) {
     Add-Type -AssemblyName System.Windows.Forms
@@ -358,17 +358,17 @@ function Invoke-Setup {
   if (-not $NoStartup) {
     $startup = [Environment]::GetFolderPath('Startup')
     $shell = New-Object -ComObject WScript.Shell
-    $link = $shell.CreateShortcut((Join-Path $startup 'Forever Chronicle Sync.lnk'))
+    $link = $shell.CreateShortcut((Join-Path $startup 'Journey Forever Sync.lnk'))
     $link.TargetPath = Join-Path $env:WINDIR 'System32\wscript.exe'
     $link.Arguments = '"' + (Join-Path $DataDir 'ForeverSync.vbs') + '"'
-    $link.Description = 'Forever Chronicle: Addon und Freunde-Daten mit dem Cloud-Ordner abgleichen'
+    $link.Description = 'Journey Forever: Addon und Freunde-Daten mit dem Cloud-Ordner abgleichen'
     $link.Save()
   }
   Write-Log "setup: cloud $CloudFolder, client $ClientFolder"
   Invoke-Sync
   if (-not $NoStartup) { Start-Process -FilePath (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList ('"' + (Join-Path $DataDir 'ForeverSync.vbs') + '"') }
   Write-Host ''
-  Write-Host 'Forever Chronicle Sync ist eingerichtet.'
+  Write-Host 'Journey Forever Sync ist eingerichtet.'
   Write-Host "  Cloud-Ordner: $CloudFolder"
   Write-Host "  Spiel:        $ClientFolder"
   Write-Host '  Laeuft ab jetzt unsichtbar bei jeder Windows-Anmeldung (alle 10 Minuten).'

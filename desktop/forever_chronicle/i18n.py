@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 STRINGS: dict[str, dict[str, str]] = {
     "de": {
-        "app.title": "Forever Chronicle",
+        "app.title": "Journey Forever",
         "common.unknown": "unbekannt",
         "common.decimal_sep": ",",
         "common.date": "%d.%m.%Y",
@@ -76,7 +76,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "import.client_none": "Nicht gefunden – bitte den Ordner wählen.",
         "import.choose": "Ordner wählen …",
         "import.files": "Gefundene Addon-Daten",
-        "import.files_none": "Keine Daten von Forever Chronicle gefunden. Ist das Addon installiert und hast du dich einmal ausgeloggt oder /reload benutzt?",
+        "import.files_none": "Keine Daten von Journey Forever gefunden. Ist das Addon installiert und hast du dich einmal ausgeloggt oder /reload benutzt?",
         "import.file_line": "Account {account}  ·  zuletzt gespeichert {when}",
         "import.run": "Jetzt importieren",
         "import.auto": "Beim Start automatisch importieren",
@@ -264,7 +264,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "recipes.partial_note": "  ·  Liste unvollständig",
     },
     "en": {
-        "app.title": "Forever Chronicle",
+        "app.title": "Journey Forever",
         "common.unknown": "unknown",
         "common.decimal_sep": ".",
         "common.date": "%Y-%m-%d",
@@ -333,7 +333,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "import.client_none": "Not found - please choose the folder.",
         "import.choose": "Choose folder …",
         "import.files": "Addon data found",
-        "import.files_none": "No Forever Chronicle data found. Is the addon installed, and have you logged out or used /reload once?",
+        "import.files_none": "No Journey Forever data found. Is the addon installed, and have you logged out or used /reload once?",
         "import.file_line": "Account {account}  ·  last saved {when}",
         "import.run": "Import now",
         "import.auto": "Import automatically on start",

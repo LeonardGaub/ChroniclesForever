@@ -1,4 +1,4 @@
--- Forever Chronicle - character chooser around the window (docs/Sharing_Design.md, phase 2)
+-- Journey Forever - character chooser around the window (docs/Sharing_Design.md, phase 2)
 -- A wide dropdown bar across the top of the window shows whose character the window shows; it opens a
 -- scrollable list of all characters: mine (this account; the played one first) and, grouped by owner, the
 -- characters other addons add (FC:RegisterViewSource, e.g. friends). Choosing one makes every tab show that character (FC:SetView) and

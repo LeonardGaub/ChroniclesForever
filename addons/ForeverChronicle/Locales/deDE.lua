@@ -1,4 +1,4 @@
--- Forever Chronicle - Deutsche Texte (Standardsprache)
+-- Journey Forever - Deutsche Texte (Standardsprache)
 
 local ADDON, FC = ...
 

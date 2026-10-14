@@ -19,7 +19,7 @@ DAILY = 24 * 3600
 
 def main(argv: list[str] | None = None) -> int:
     app = QApplication(argv if argv is not None else sys.argv)
-    app.setApplicationName("Forever Chronicle")
+    app.setApplicationName("Journey Forever")
     theme.apply(app)
 
     config = AppConfig.load()

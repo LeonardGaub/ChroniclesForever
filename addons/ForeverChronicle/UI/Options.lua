@@ -1,4 +1,4 @@
--- Forever Chronicle - option controls
+-- Journey Forever - option controls
 -- Builds check boxes, choice rows and text fields from the option registry, one section at a time;
 -- type "custom" lets a module build its own control (def.create).
 -- Options choose their section with def.section (default "general") and their column with def.column.

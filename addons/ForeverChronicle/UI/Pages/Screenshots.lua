@@ -1,4 +1,4 @@
--- Forever Chronicle - Screenshots page
+-- Journey Forever - Screenshots page
 -- Latest screenshot requests: status icon, event icon, event and time. Details in the row tooltip.
 -- Icon buttons: test screenshot, open the screenshot settings.
 

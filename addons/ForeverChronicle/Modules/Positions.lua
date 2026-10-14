@@ -1,4 +1,4 @@
--- Forever Chronicle - Positions module (spec F-005)
+-- Journey Forever - Positions module (spec F-005)
 -- Samples the player's position at a fixed interval into the compact "positions" stream and records the
 -- geometry of every map once (account-wide), so the desktop app can draw routes on zone and continent maps.
 --

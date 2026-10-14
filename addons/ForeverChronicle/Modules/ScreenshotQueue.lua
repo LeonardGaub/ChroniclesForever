@@ -1,4 +1,4 @@
--- Forever Chronicle - Screenshot queue (spec F-003)
+-- Journey Forever - Screenshot queue (spec F-003)
 -- Pure scheduling logic without game API calls, so it can be tested outside the client.
 -- Time values are seconds from a monotonic clock supplied by the caller.
 --

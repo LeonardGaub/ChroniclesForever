@@ -1,4 +1,4 @@
--- Forever Chronicle - minimap button
+-- Journey Forever - minimap button
 -- Classic-style round button on the minimap edge: left-click opens the window, right-click the settings,
 -- drag moves it around the minimap (the angle is saved). Can be hidden in the settings.
 
@@ -66,7 +66,7 @@ function Button:Create()
   end)
   b:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-    GameTooltip:SetText("Forever Chronicle", 1, 0.82, 0)
+    GameTooltip:SetText("Journey Forever", 1, 0.82, 0)
     GameTooltip:AddLine(L.MINIMAP_TIP, 1, 1, 1, true)
     GameTooltip:Show()
   end)

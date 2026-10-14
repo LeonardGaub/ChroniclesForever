@@ -1,4 +1,4 @@
--- Forever Chronicle - screenshot countdown
+-- Journey Forever - screenshot countdown
 -- A small tooltip-style box at the top of the screen: "Screenshot in 4 s". The screenshot module hides
 -- it before every capture, so it never appears in a screenshot. Drag it with Shift + left mouse to move it;
 -- the position is saved.

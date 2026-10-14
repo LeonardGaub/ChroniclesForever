@@ -1,4 +1,4 @@
--- Forever Chronicle - Character module (spec F-001)
+-- Journey Forever - Character module (spec F-001)
 -- Keeps the character's identity and metadata up to date.
 
 local ADDON, FC = ...

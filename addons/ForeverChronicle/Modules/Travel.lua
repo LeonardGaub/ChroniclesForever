@@ -1,4 +1,4 @@
--- Forever Chronicle - Travel module (spec F-005, first part)
+-- Journey Forever - Travel module (spec F-005, first part)
 -- Known zones per character and "zone discovered" events (first visit since tracking began).
 -- A zone counts as discovered after the player has stayed in it for the dwell time, not on a taxi
 -- and not during a loading screen. The zone the character is in at the very first run is known

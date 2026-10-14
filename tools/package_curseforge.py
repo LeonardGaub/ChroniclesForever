@@ -4,7 +4,7 @@
 
 Output in dist/curseforge/:
     ForeverChronicle/                     the addon folder as uploaded (for a look before uploading)
-    ForeverChronicle-<version>.zip        the upload: the addon folder at the top level of the zip
+    JourneyForever-<version>.zip          the upload: the addon folder at the top level of the zip
 
 Not part of it: the friends companion (ForeverChronicle_Share), the cloud sync scripts, the desktop app, tests.
 
@@ -113,7 +113,7 @@ def build() -> Path:
     if folder.exists():
         shutil.rmtree(folder)
     shutil.copytree(SOURCE, folder, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    zip_path = DIST / f"{ADDON}-{version}.zip"
+    zip_path = DIST / f"JourneyForever-{version}.zip"   # project name; the folder inside stays ForeverChronicle
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in sorted(folder.rglob("*")):
             if f.is_file():

@@ -1,4 +1,4 @@
--- Forever Chronicle - Screenshot manager (spec F-003)
+-- Journey Forever - Screenshot manager (spec F-003)
 -- Reacts to recorded events (FC_EVENT_RECORDED), schedules screenshots through FC.ScreenshotQueue
 -- and stores one record per request in the "screenshots" stream:
 --   { id, seq, trigger, events = { eventId, ... }, requestedAt, capturedAt, fileStamp, status, error }

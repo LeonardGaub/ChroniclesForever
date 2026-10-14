@@ -1,4 +1,4 @@
--- Forever Chronicle - Map page (spec F-005, in-game)
+-- Journey Forever - Map page (spec F-005, in-game)
 -- Route replay on the client's own map art: map and session selection, route and event toggles,
 -- time slider, play/pause with speeds, live mode (follows the newest point) and focus from the Chronicle.
 -- 1x playback = one minute of play time per second; time without points is skipped.

@@ -1,4 +1,4 @@
-# Forever Chronicle
+# Journey Forever
 
 A personal adventure history for **World of Warcraft: Forever** (Blizzard's Classic+), private use.
 
@@ -14,7 +14,7 @@ German UI by default, English switchable.
 
 - Addon: copy `addons/ForeverChronicle` into `<WoW>\_classic_beta_\Interface\AddOns\`.
 - Desktop: `cd desktop`, `python -m venv .venv`, `.venv\Scripts\pip install -e .[dev]`, then start
-  `desktop\Forever Chronicle.bat` (or `.venv\Scripts\python -m forever_chronicle`).
+  `desktop\Journey Forever.bat` (or `.venv\Scripts\python -m forever_chronicle`).
 
 ## Tests
 

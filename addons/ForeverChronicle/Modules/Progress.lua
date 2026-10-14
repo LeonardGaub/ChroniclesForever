@@ -1,4 +1,4 @@
--- Forever Chronicle - Progress module (spec F-003 triggers, F-006, F-007)
+-- Journey Forever - Progress module (spec F-003 triggers, F-006, F-007)
 -- Level-ups, quest completions, deaths and achievements.
 
 local ADDON, FC = ...

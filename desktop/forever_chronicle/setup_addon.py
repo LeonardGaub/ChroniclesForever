@@ -1,4 +1,4 @@
-"""Installs (or updates) the addon in this PC's WoW Forever client. Used by "Forever Chronicle starten.bat":
+"""Installs (or updates) the addon in this PC's WoW Forever client. Used by "Journey Forever starten.bat":
 
     python -m forever_chronicle.setup_addon <path to addons\\ForeverChronicle>
 
@@ -107,7 +107,7 @@ def main(argv: list[str] | None = None, ask=input) -> int:
         print(f"Addon konnte nicht installiert werden: {exc}")
         print("Tipp: Spiel schließen und erneut starten; ggf. Schreibrechte für den Spielordner prüfen.")
         return 1
-    print(f"Addon Forever Chronicle {result.version or ''} installiert: {result.target}")
+    print(f"Addon Journey Forever {result.version or ''} installiert: {result.target}")
     print("Läuft das Spiel gerade, im Spiel /reload eingeben (bei einer neuen Addon-Version: Spiel neu starten).")
     return 0
 

@@ -40,7 +40,7 @@ files and the desktop share dialog are no longer needed.
 
 ## Version 1 (share files; superseded by version 2)
 
-Goal: a few friends who all use Forever Chronicle see each other's characters, in the desktop app and in game.
+Goal: a few friends who all use Journey Forever see each other's characters, in the desktop app and in game.
 This is the "future sharing" of the spec (§1, §2 out of MVP, privacy rules: opt-in per character and data category,
 screenshots never automatic).
 
