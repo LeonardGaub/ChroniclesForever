@@ -1,5 +1,6 @@
 -- Forever Chronicle - option controls
--- Builds check boxes and choice rows from the option registry, one section at a time.
+-- Builds check boxes, choice rows and text fields from the option registry, one section at a time;
+-- type "custom" lets a module build its own control (def.create).
 -- Options choose their section with def.section (default "general") and their column with def.column.
 
 local ADDON, FC = ...
@@ -68,6 +69,34 @@ local function createChoice(c, def)
   return row
 end
 
+-- A label above a text field. def.maxLetters limits the length; the value is saved on Enter or when leaving.
+local function createText(c, def)
+  local row = CreateFrame("Frame", nil, c)
+  row:SetSize(250, 46)
+  local label = UI:Label(row, def.labelKey, "GameFontHighlight")
+  label:SetPoint("TOPLEFT", 4, 0)
+  local box = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
+  box:SetSize(220, 20)
+  box:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 6, -6)
+  box:SetAutoFocus(false)
+  box:SetMaxLetters(def.maxLetters or 32)
+  local function save(b)
+    local text = b:GetText()
+    text = type(text) == "string" and strtrim(text) or ""
+    if text ~= (FC:GetOptionValue(def) or "") then FC:SetOptionValue(def, text) end
+  end
+  box:SetScript("OnEnterPressed", function(b) save(b); b:ClearFocus() end)
+  box:SetScript("OnEditFocusLost", save)
+  box:SetScript("OnEscapePressed", function(b) b:ClearFocus(); row:Sync() end)
+  if def.tooltipKey then UI:Tooltip(box, def.labelKey, def.tooltipKey) end
+  row.box = box
+  row.Sync = function(self)
+    if not (self.box.HasFocus and self.box:HasFocus() == true) then self.box:SetText(FC:GetOptionValue(def) or "") end
+  end
+  row.height = 52
+  return row
+end
+
 -- Creates controls for all options of a section below `top`. Returns the controls; controls.bottom is
 -- the lowest y offset used (relative to top), for placing what follows.
 function UI:BuildOptions(c, section, top, topOffset)
@@ -80,6 +109,10 @@ function UI:BuildOptions(c, section, top, topOffset)
         control = createToggle(c, def)
       elseif def.type == "choice" then
         control = createChoice(c, def)
+      elseif def.type == "text" then
+        control = createText(c, def)
+      elseif def.type == "custom" then
+        control = def.create(c, def)   -- a module's own control: needs :Sync() and .height
       end
       if control then
         local col = def.column or 1

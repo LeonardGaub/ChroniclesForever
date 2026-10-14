@@ -1,4 +1,41 @@
-# Friends' characters: design (draft)
+# Friends' characters: design
+
+## Version 2: cloud sync, in-game first (decided 2026-10-14, replaces share files)
+The user wants to move mostly into the addon: the desktop app is hard to keep updated on friends' PCs. Share
+files and the desktop share dialog are no longer needed.
+
+- **Data:** a second, data-only addon `ForeverChronicle_Share` declares `## SavedVariables: ForeverChronicleShareDB`,
+  so the game itself writes a separate, small file with only the data meant for friends. The main addon fills it on
+  every logout and `/reload`: one entry per character of the account, in the record shape the character chooser
+  already reads (info, stats, gear, professions, last 200 events, routes of the last 3 sessions, sessions, the maps,
+  instances and entrances used), plus the sender's name and addon version.
+- **Sharing settings in game:** "Teilen" settings section with the name for friends (free text), per character
+  on/off, and per category on/off. Default: everything on. Screenshots are not shared (the game cannot show images).
+- **Sync script** (`ForeverSync.ps1`, PowerShell, built into Windows, no extra app). It is set up once by a setup
+  file: pick the shared cloud folder (any synced folder: OneDrive, Google Drive, Dropbox), find the game folder
+  (Battle.net records, then the usual folders), and register a hidden Windows task at logon, repeating every
+  10 minutes. Each run:
+  1. updates itself from `<cloud>/tools/`;
+  2. addon update: if `<cloud>/addon/` holds a newer version, mirrors it into the game's AddOns folder (keeps
+     `Friends\FriendsData.lua`); only while WoW is not running, otherwise next run;
+  3. upload: copies each account's `ForeverChronicle_Share.lua` to `<cloud>/players/<shareId>-<account>.lua`
+     when it changed (one file per person and account; nobody writes another's file);
+  4. download: reads all other players' files, accepts them only if they are pure data (strict literal-only
+     check, size limit), and writes `Friends\FriendsData.lua` (one function per friend); visible after `/reload`;
+  5. backup: once a day copies the addon's SavedVariables to a local backup folder (newest 10 kept);
+  6. log file `%LOCALAPPDATA%\ForeverChronicle\sync.log`.
+- **Releases:** a new addon version is published by copying it to `<cloud>/addon/` (plus the script to
+  `<cloud>/tools/`); everyone's script installs it, also on the developer's own PC.
+- **Desktop app:** optional (long history beyond the SavedVariables caps, screenshot gallery). It stops writing
+  `FriendsData.lua` (the script owns it); share files and the share dialog are removed.
+- **Postponed:** addon messages between online friends (cloud sync already brings all data, also offline; maybe
+  later for live info such as who is online where).
+- **Limits:** new data arrives after the sender's logout or `/reload` plus the sync interval and is shown after
+  the receiver's `/reload`. History in game is limited by the SavedVariables caps; daily backups keep older states.
+
+---
+
+## Version 1 (share files; superseded by version 2)
 
 Goal: a few friends who all use Forever Chronicle see each other's characters, in the desktop app and in game.
 This is the "future sharing" of the spec (§1, §2 out of MVP, privacy rules: opt-in per character and data category,

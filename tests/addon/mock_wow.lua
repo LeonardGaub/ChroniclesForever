@@ -209,6 +209,8 @@ MOCK.gearLinks = {
   [16] = "|cff0070dd|Hitem:2099::::::::22:::::|h[Dwarven Hand Cannon]|h|r",
 }
 function GetInventoryItemLink(_, id) return MOCK.gearLinks[id] end
+-- Which addons are loaded (the data-only addon ForeverChronicle_Share is loaded unless a test says otherwise).
+C_AddOns = { IsAddOnLoaded = function(name) return name == "ForeverChronicle_Share" and not MOCK.shareMissing end }
 local QUALITY_COLORS = { [1] = { 1, 1, 1 }, [2] = { 0.12, 1, 0 }, [3] = { 0, 0.44, 0.87 } }
 function GetItemQualityColor(q) local c = QUALITY_COLORS[q] or QUALITY_COLORS[3]; return c[1], c[2], c[3] end
 function GetCursorPosition() return MOCK.cursorX or 0, MOCK.cursorY or 0 end

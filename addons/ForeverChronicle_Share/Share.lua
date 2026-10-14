@@ -1,0 +1,2 @@
+-- Forever Chronicle - data for friends. This addon only provides the saved variable ForeverChronicleShareDB;
+-- the main addon fills it on logout and /reload (Modules/Share.lua). See docs/Sharing_Design.md.

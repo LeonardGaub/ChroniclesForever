@@ -75,6 +75,7 @@ runPhase(8, oldSettings(5), 0);
 runPhase(9, null, 0);
 runPhase(10, null, 0);
 runPhase(11, null, 0);
+runPhase(13, null, 0);
 // Friends' characters as written by the desktop app (desktop/tests/test_friends_data.py writes the fixture).
 const friendsFixture = path.join(__dirname, '..', 'fixtures', 'FriendsData.lua');
 if (fs.existsSync(friendsFixture)) {

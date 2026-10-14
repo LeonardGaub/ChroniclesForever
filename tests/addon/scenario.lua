@@ -859,4 +859,99 @@ if PHASE == 12 then
   check(errors == 0, "no errors logged")
 end
 
+if PHASE == 13 then
+  print("phase 13: data for friends (Share module, cloud sync)")
+  local FC = startClient(true, false)
+  local me = "Player-4619-0112A417"
+  local Share = FC:GetModule("Share")
+  -- Some play: a route over two sessions, events.
+  for i = 1, 8 do MOCK.x = 0.30 + i * 0.01; MOCK.advance(2) end
+  MOCK.fire("PLAYER_DEAD")
+  ForeverChronicleDB.characters["Player-4619-0ALT0001"] = {
+    info = { name = "Altie", level = 10, classFile = "MAGE", lastSeenAt = 1791900000 }, stats = { kills = 5 },
+    streams = {}, snapshots = {}, state = {} }
+
+  MOCK.fire("PLAYER_LOGOUT")
+  local data = ForeverChronicleShareDB
+  check(type(data) == "table" and data.format == 1 and data.name == "Blind" and #data.characters == 2,
+    "written on logout: both characters, name defaults to the character's")
+  local mine = data.characters[1]
+  check(mine.info.name == "Blind" and mine.info.key == me and mine.stats.kills == ForeverChronicleDB.characters[me].stats.kills,
+    "info and stats")
+  check(#mine.streams.events.records >= 2 and #mine.streams.positions.records >= 8, "chronicle and route")
+  check(mine.snapshots.gear and #mine.snapshots.gear.slots == 2, "gear")
+  check(data.maps["1413"] and data.maps["1414"], "maps of the route and their continent")
+  check(mine.streams.screenshots == nil, "no screenshots")
+
+  -- Limits: only the newest events, only the newest sessions' route.
+  Share.EVENTS = 1
+  data = Share:Build()
+  check(#data.characters[1].streams.events.records == 1, "event limit")
+  Share.EVENTS = 200
+
+  -- Categories and characters can be switched off.
+  local s = Share:GetSettings()
+  s.cats.routes, s.cats.gear, s.cats.stats = false, false, false
+  s.chars["Player-4619-0ALT0001"] = false
+  s.name = "Leon"
+  data = Share:Build()
+  mine = data.characters[1]
+  check(#data.characters == 1 and data.name == "Leon", "alt excluded, own name")
+  check(mine.streams.positions == nil and mine.snapshots.gear == nil and mine.stats == nil, "categories off")
+  check(mine.streams.events ~= nil and mine.streams.sessions ~= nil and mine.snapshots.professions ~= nil,
+    "the other categories stay on")
+  s.cats.routes, s.cats.gear, s.cats.stats = true, true, true
+  s.chars["Player-4619-0ALT0001"] = nil
+
+  -- Settings page: the name field and one check box per character.
+  FC.UI:Toggle()
+  local settings
+  for i, p in ipairs(FC.UI.pages) do if p.id == "settings" then settings = p; FC.UI:SelectPage(i) end end
+  local nameRow, charRow
+  for _, control in ipairs(settings.controls) do
+    if rawget(control, "box") then nameRow = control end
+    if rawget(control, "boxes") then charRow = control end
+  end
+  check(nameRow and nameRow.box.text == "Leon", "name field shows the setting")
+  nameRow.box:SetText("  Leonard ")
+  nameRow.box:GetScript("OnEnterPressed")(nameRow.box)
+  check(Share:GetSettings().name == "Leonard", "name saved (trimmed)")
+  check(charRow and #charRow.boxes == 2, "one check box per character")
+  local alt
+  for _, cb in ipairs(charRow.boxes) do if cb.key == "Player-4619-0ALT0001" then alt = cb end end
+  alt:SetChecked(false)
+  alt:GetScript("OnClick")(alt)
+  check(Share:GetSettings().chars["Player-4619-0ALT0001"] == false and #Share:Build().characters == 1,
+    "unticking a character stops sharing it")
+  alt:SetChecked(true)
+  alt:GetScript("OnClick")(alt)
+  check(Share:GetSettings().chars["Player-4619-0ALT0001"] == nil, "ticking shares it again")
+
+  -- What the sync script delivers to friends: the share data as one friend of ForeverChronicleFriends.
+  data = Share:Build()
+  ForeverChronicleFriends = { friends = { { name = data.name, characters = data.characters } }, maps = data.maps,
+    instances = data.instances, entrances = data.entrances }
+  local entry
+  for _, e in ipairs(FC:ViewEntries()) do if e.owner == "Leonard" and e.char.info.name == "Blind" then entry = e end end
+  check(entry ~= nil, "a shared character appears in a friend's chooser")
+  FC:SetView(entry.key)
+  for i = 1, #FC.UI.pages do FC.UI:SelectPage(i) end
+  local ov = FC.UI.pages[1]
+  FC.UI:SelectPage(1)
+  check(ov.name.text:find("Blind", 1, true) and rawget(ov.slots[1], "link"), "overview of the shared character")
+
+  -- Without the data addon nothing is written.
+  ForeverChronicleShareDB = nil
+  MOCK.shareMissing = true
+  check(Share:Write() == false and ForeverChronicleShareDB == nil, "nothing written without ForeverChronicle_Share")
+  SlashCmdList.FOREVERCHRONICLE("share")
+  local said = false
+  for _, line in ipairs(MOCK.chat) do if line:find("nicht aktiv", 1, true) then said = true end end
+  check(said, "/fc share explains that the data addon is missing")
+
+  local errors = 0
+  for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
+  check(errors == 0, "no errors logged")
+end
+
 print("PHASE " .. PHASE .. " PASSED")
