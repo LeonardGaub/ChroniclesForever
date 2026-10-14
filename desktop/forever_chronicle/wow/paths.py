@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import string
 from dataclasses import dataclass
 from pathlib import Path
+
+from . import battlenet
 
 ADDON_NAME = "ForeverChronicle"
 # Product flavors that run Forever. The beta uses "wow_classic_beta"; add the live flavor when known.
@@ -54,33 +57,45 @@ def candidate_roots() -> list[Path]:
     return roots
 
 
-def find_forever_installs(extra_roots: list[Path] | None = None) -> list[ClientInstall]:
-    """All client folders whose flavor is a known Forever flavor."""
-    found = []
-    seen = set()
-    for root in (extra_roots or []) + candidate_roots():
+def scan_roots(roots: list[Path]) -> list[ClientInstall]:
+    """Forever clients in the given folders: a root that is a client folder itself, or its subfolders."""
+    found: list[ClientInstall] = []
+    seen: set[str] = set()
+
+    def add(folder: Path) -> None:
+        key = os.path.normcase(str(folder))
+        if key in seen:
+            return
+        flavor = read_flavor(folder)
+        if flavor in FOREVER_FLAVORS:
+            seen.add(key)
+            found.append(ClientInstall(folder, flavor))
+
+    for root in roots:
         try:
             if not root.is_dir():
                 continue
-            children = list(root.iterdir())
+            add(root)
+            children = [c for c in root.iterdir() if c.is_dir()]
         except OSError:
             continue
         for child in children:
-            if not child.is_dir() or child in seen:
-                continue
-            flavor = read_flavor(child)
-            if flavor in FOREVER_FLAVORS:
-                seen.add(child)
-                found.append(ClientInstall(child, flavor))
+            add(child)
     return found
 
 
+def find_forever_installs(extra_roots: list[Path] | None = None, use_battlenet: bool = True) -> list[ClientInstall]:
+    """All Forever clients: given folders first, then where Battle.net says it installed World of Warcraft
+    (wow/battlenet.py), then the usual folders on every drive."""
+    roots = list(extra_roots or [])
+    if use_battlenet:
+        roots += battlenet.install_roots()
+    return scan_roots(roots + candidate_roots())
+
+
 def client_from_path(path: Path) -> ClientInstall | None:
-    """Accepts the client folder itself or the World of Warcraft root folder."""
-    flavor = read_flavor(path)
-    if flavor:
-        return ClientInstall(path, flavor)
-    installs = find_forever_installs([path])
+    """Accepts the client folder itself or the World of Warcraft root folder. Only looks at this folder."""
+    installs = scan_roots([path])
     return installs[0] if installs else None
 
 
