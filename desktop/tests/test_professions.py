@@ -24,9 +24,14 @@ def leatherworking(data):
 
 
 def test_recipe_parsing():
+    # format 1 (addon v0.10.0, no quality)
     assert Recipe.parse("2881,2550,134252,Light Leather") == Recipe(2881, 2550, 134252, "Light Leather")
     assert Recipe.parse("100,,,Pattern: Hide, Cured") == Recipe(100, None, None, "Pattern: Hide, Cured")
     assert Recipe.parse("abc,1,2,x") is None and Recipe.parse("1,2,3") is None and Recipe.parse("1,2,3,") is None
+    # format 2: quality before the name
+    assert Recipe.parse("9058,2552,133150,2,Handstitched Leather Cloak", 2) ==         Recipe(9058, 2552, 133150, "Handstitched Leather Cloak", 2)
+    assert Recipe.parse("100,,,,Enchant Bracer, Minor", 2) == Recipe(100, None, None, "Enchant Bracer, Minor", None)
+    assert Recipe.parse("100,1,2,x,Name", 2) is None and Recipe.parse("100,1,2,Name", 2) is None
     assert RecipeCategory.parse("2549,,Leatherworking") == RecipeCategory(2549, None, "Leatherworking")
     assert RecipeCategory.parse("2550,2549,Materials") == RecipeCategory(2550, 2549, "Materials")
 
@@ -46,9 +51,9 @@ def test_import_professions(db, data):
     assert herb["recipe_status"] is None and herb["recipe_count"] == 0
 
     recipes = repo.recipes(cid)
-    assert [(r["name"], r["category"]) for r in recipes] == [
-        ("Handstitched Leather Cloak", "Cloaks"), ("Cured Light Hide", "Materials"),
-        ("Cured Medium Hide", "Materials"), ("Light Leather", "Materials")]
+    assert [(r["name"], r["category"], r["quality"]) for r in recipes] == [
+        ("Handstitched Leather Cloak", "Cloaks", 2), ("Cured Light Hide", "Materials", 1),
+        ("Cured Medium Hide", "Materials", 1), ("Light Leather", "Materials", 1)]
     assert [r["name"] for r in repo.recipes(cid, search="hide")] == ["Cured Light Hide", "Cured Medium Hide"]
     assert repo.recipes(cid, skill_line=185) == []
     assert dict((s.key, v) for s, v in stats.compute_all(repo, cid))["recipes"] == 4
@@ -67,15 +72,15 @@ def test_partial_snapshot_never_removes_recipes(db, data):
     partial = copy.deepcopy(data)
     lw = leatherworking(partial)
     lw["recipes"]["status"] = "partial"
-    lw["recipes"]["list"] = ["2149,2553,132539,Handstitched Leather Boots"]
+    lw["recipes"]["list"] = ["2149,2553,132539,2,Handstitched Leather Boots"]
     importer.import_data(partial, "partial")
     assert len(repo.recipes(cid, skill_line=165)) == 5
     assert next(p for p in repo.professions(cid) if p["skill_line"] == 165)["recipe_status"] == "partial"
 
     complete = copy.deepcopy(data)
-    leatherworking(complete)["recipes"]["list"] = ["2881,2550,134252,Light Leather"]
+    leatherworking(complete)["recipes"]["list"] = ["2881,2550,134252,,Light Leather"]  # quality unknown this time
     importer.import_data(complete, "complete")
-    assert [r["name"] for r in repo.recipes(cid, skill_line=165)] == ["Light Leather"]
+    assert [(r["name"], r["quality"]) for r in repo.recipes(cid, skill_line=165)] == [("Light Leather", 1)]  # kept
 
 
 def test_unlearned_profession_and_invalid_records(db, data):

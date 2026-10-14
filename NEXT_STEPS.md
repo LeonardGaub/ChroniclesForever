@@ -70,6 +70,15 @@
   - Not yet seen in game: `NEW_RECIPE_LEARNED`, `SKILL_LINES_CHANGED`, `C_TradeSkillUI.GetCategoryInfo`, and
     whether `GetBaseProfessionInfo` reports the window's profession. To check, open the Lederverarbeitung window
     once and look at the Berufe tab.
+- **Addon v0.10.1 (user requests).**
+  - Recipe names are shown in the item quality colour of what they create (in game and desktop). The recipe format
+    is now v2 `recipeID,categoryID,icon,quality,name` (`recipes.format = 2`). Quality comes from the output
+    item's hyperlink colour or from `C_Item.GetItemQualityByID`, and is empty for enchants. Desktop migration 6
+    adds `recipes.quality`. v0.10.0 data (format 1) is still readable.
+  - Map replay always opens the zone, not the continent. The real data had a few points with continent IDs
+    (1414/1415, recorded between zones). `Route.ZoneFor` / `Route.view_for` map them to the smallest known zone
+    containing them. Projection now also works from continent to zone, and following switches whenever the zone
+    changes. A map picked by hand stays until then.
 - **Desktop:** the icon overhaul was reverted at the user's request; text UI stays.
   - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
   - Open question for the user: real WoW icons for the desktop. Options: export from the local client with
@@ -82,7 +91,7 @@
   - Map art: the user's 52 explored-zone maps were imported into `%APPDATA%\ForeverChronicle\maps\<uiMapID>.jpg`.
     The Import tab has "Kartenbilder importieren …". Coordinates were verified against real probe data
     (Orgrimmar/Cleft of Shadow, Kalimdor rectangle).
-- Tests: `tests/addon` (`npm test`: 14 queue tests and 11 phases) and `desktop` (`pytest`, 65 tests). All pass.
+- Tests: `tests/addon` (`npm test`: 14 queue tests and 11 phases) and `desktop` (`pytest`, 66 tests). All pass.
 - In-game confirmed by the user: window, import, Screenshots tab (v0.2.0). Not yet seen in game: v0.2.1 and v0.3.0 changes.
 
 ## Confirmed client facts

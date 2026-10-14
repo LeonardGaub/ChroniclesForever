@@ -64,6 +64,7 @@ local regionMT = { __index = function() return function() end end }
 local function newRegion()
   local r = { shown = true }
   r.SetText = function(self, t) self.text = t end
+  r.SetTextColor = function(self, red, g, b) self.color = { red, g, b } end
   r.GetText = function(self) return self.text end
   r.Show = function(self) self.shown = true end
   r.Hide = function(self) self.shown = false end
@@ -198,7 +199,8 @@ local SLOT_IDS = { HeadSlot = 1, NeckSlot = 2, ShoulderSlot = 3, ShirtSlot = 4, 
 function GetInventorySlotInfo(name) return SLOT_IDS[name], "Interface\\PaperDoll\\UI-PaperDoll-Slot-" .. name end
 function GetInventoryItemTexture(_, id) if id == 1 or id == 16 then return 133000 + id end end
 function GetInventoryItemQuality(_, id) if id == 1 or id == 16 then return 3 end end
-function GetItemQualityColor() return 0, 0.44, 0.87 end
+local QUALITY_COLORS = { [1] = { 1, 1, 1 }, [2] = { 0.12, 1, 0 }, [3] = { 0, 0.44, 0.87 } }
+function GetItemQualityColor(q) local c = QUALITY_COLORS[q] or QUALITY_COLORS[3]; return c[1], c[2], c[3] end
 function GetCursorPosition() return MOCK.cursorX or 0, MOCK.cursorY or 0 end
 function Screenshot()
   table.insert(MOCK.screenshots, MOCK.now)
@@ -276,6 +278,16 @@ C_TradeSkillUI = {
   IsTradeSkillGuild = function() return false end,
   IsNPCCrafting = function() return false end,
 }
+-- Created item: hyperlink (colour = quality), only an item ID (quality from the item cache), or nothing.
+local OUTPUT = {
+  [2881] = { itemID = 2318, hyperlink = "|cffffffff|Hitem:2318::::::::22:::::|h[Light Leather]|h|r" },
+  [3816] = { itemID = 4231 },
+  [3817] = { itemID = 4233, hyperlink = "|cffffffff|Hitem:4233::::::::22:::::|h[Cured Medium Hide]|h|r" },
+  [9058] = { itemID = 7276, hyperlink = "|cff1eff00|Hitem:7276::::::::22:::::|h[Handstitched Leather Cloak]|h|r" },
+  [2149] = { itemID = 2302, hyperlink = "|cff1eff00|Hitem:2302::::::::22:::::|h[Handstitched Leather Boots]|h|r" },
+}
+C_TradeSkillUI.GetRecipeOutputItemData = function(id) return OUTPUT[id] or {} end
+C_Item = { GetItemQualityByID = function(itemID) return itemID == 4231 and 1 or nil end }
 C_Spell = { GetSpellName = function(id) return id == 2149 and "Handstitched Leather Boots" or nil end }
 
 -- Opens / closes the profession window of a skill line.

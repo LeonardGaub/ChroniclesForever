@@ -131,6 +131,20 @@ UI.STATUS_ICONS = {
   bad = "Interface\\RaidFrame\\ReadyCheck-NotReady",
 }
 
+-- Colour of an item quality (0 poor ... 7 heirloom) as r, g, b, or nil if unknown.
+function UI:QualityColor(quality)
+  if type(quality) ~= "number" then return nil end
+  local Util = FC.Util
+  if C_Item and C_Item.GetItemQualityColor then
+    local r, g, b = Util.SafeValues(C_Item.GetItemQualityColor, quality)
+    if type(r) == "number" then return r, g, b end
+  end
+  if GetItemQualityColor then
+    local r, g, b = Util.SafeValues(GetItemQualityColor, quality)
+    if type(r) == "number" then return r, g, b end
+  end
+end
+
 -- Sets a texture; falls back to the question mark icon if the client does not have the file.
 function UI:SetIcon(tex, path)
   local ok = tex:SetTexture(path or self.ICON_FALLBACK)

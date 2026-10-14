@@ -42,11 +42,12 @@ ForeverChronicleDB = {
 									"2549,,Leatherworking", -- [2]
 									"2552,2549,Cloaks", -- [3]
 								},
+								["format"] = 2,
 								["list"] = {
-									"2881,2550,134252,Light Leather", -- [1]
-									"3816,2550,134366,Cured Light Hide", -- [2]
-									"3817,2550,134354,Cured Medium Hide", -- [3]
-									"9058,2552,133150,Handstitched Leather Cloak", -- [4]
+									"2881,2550,134252,1,Light Leather", -- [1]
+									"3816,2550,134366,1,Cured Light Hide", -- [2]
+									"3817,2550,134354,1,Cured Medium Hide", -- [3]
+									"9058,2552,133150,2,Handstitched Leather Cloak", -- [4]
 								},
 								["status"] = "complete",
 								["total"] = 6,

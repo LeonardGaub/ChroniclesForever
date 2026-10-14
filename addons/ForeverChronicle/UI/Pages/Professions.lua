@@ -96,6 +96,9 @@ local function updateRow(row, item)
   else
     UI:SetIcon(row.icon, item.recipe.icon ~= "" and item.recipe.icon or nil)
     row.text:SetText(item.recipe.name)
+    -- Name in the colour of the item it creates (white when unknown, e.g. enchants).
+    local r, g, b = UI:QualityColor(item.recipe.quality)
+    if r then row.text:SetTextColor(r, g, b) else row.text:SetTextColor(1, 1, 1) end
   end
 end
 
@@ -108,7 +111,7 @@ local function recipeItems(prof, search)
   local groups, order, shown = {}, {}, 0
   search = search and search ~= "" and search:lower() or nil
   for _, text in ipairs(recipes.list) do
-    local recipe = P.ParseRecipe(text)
+    local recipe = P.ParseRecipe(text, recipes.format)
     if recipe and (not search or recipe.name:lower():find(search, 1, true)) then
       local cat = recipe.category and categories[recipe.category]
       local name = cat and cat.name or L.RECIPE_CATEGORY_OTHER

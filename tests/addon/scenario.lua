@@ -416,6 +416,14 @@ if PHASE == 9 then
   check(views == "1413,1411,1414", "views: zones then continent (" .. views .. ")")
   local cx, cy = Route.Project({ mapID = 1413, x = 0.5, y = 0.5 }, 1414)
   check(math.abs(cx - 0.44) < 1e-9 and math.abs(cy - 0.74) < 1e-9, "projection onto the continent")
+  -- Continent points (between zones) belong to the smallest known zone that contains them.
+  FC.db.maps["1454"] = { continent = 1414, minX = 0.43, maxX = 0.45, minY = 0.73, maxY = 0.75 }
+  check(Route.ZoneFor({ mapID = 1414, x = 0.44, y = 0.74 }) == 1454, "continent point -> smallest zone")
+  check(Route.ZoneFor({ mapID = 1414, x = 0.9, y = 0.1 }) == 1414, "no zone contains it -> continent")
+  check(Route.ZoneFor({ mapID = 1413, x = 0.5, y = 0.5 }) == 1413, "zone point keeps its zone")
+  local zx, zy = Route.Project({ mapID = 1414, x = 0.44, y = 0.74 }, 1413)
+  check(math.abs(zx - 0.5) < 1e-9 and math.abs(zy - 0.5) < 1e-9, "continent point projected onto the zone")
+  FC.db.maps["1454"] = nil
 
   -- Window: open the map page.
   SlashCmdList.FOREVERCHRONICLE("")
@@ -472,6 +480,26 @@ if PHASE == 9 then
   local before = page.sessionIndex
   page:StepSession(1)
   check(page.sessionIndex ~= before and page.sessionSel.label.text ~= nil, "session filter steps (" .. before .. " -> " .. page.sessionIndex .. ")")
+
+  -- Between zones the client reports only the continent: the map still opens a zone (user request).
+  MOCK.mapID, MOCK.x, MOCK.y = 1414, 0.44, 0.74
+  MOCK.advance(4)
+  local continentTime = MOCK.clock + math.floor(MOCK.now) - 1
+  MOCK.mapID, MOCK.x, MOCK.y = 1411, 0.5, 0.5
+  MOCK.advance(4)
+  FC.UI:FocusMap(continentTime)
+  check(Route.PointAt(Route.Points(), continentTime).mapID == 1414, "continent point recorded")
+  check((page.viewMap == 1413 or page.viewMap == 1411) and page.canvas.marker:IsShown(),
+    "continent moment opens the zone (" .. tostring(page.viewMap) .. ")")
+  page:StepMap(1)
+  page:StepMap(1)
+  local picked = page.viewMap
+  page.current = continentTime + 2
+  page:UpdateMarker()
+  check(page.viewMap == picked, "a map picked by hand stays while the zone does not change")
+  page.current = continentTime + 5
+  page:UpdateMarker()
+  check(page.viewMap == 1411, "follows the player into the next zone (" .. tostring(page.viewMap) .. ")")
   for i = 1, #FC.UI.pages do FC.UI:SelectPage(i) end
 
   local errors = 0
@@ -564,7 +592,12 @@ if PHASE == 11 then
   MOCK.advance(1)
   check(lw.recipes and lw.recipes.status == "complete" and #lw.recipes.list == 4 and lw.recipes.total == 6,
     "learned recipes captured (" .. (lw.recipes and #lw.recipes.list or 0) .. " of 6)")
-  check(lw.recipes.list[1] == "2881,2550,134252,Light Leather", "compact recipe format: " .. lw.recipes.list[1])
+  check(lw.recipes.format == 2 and lw.recipes.list[1] == "2881,2550,134252,1,Light Leather",
+    "compact recipe format with item quality: " .. lw.recipes.list[1])
+  check(lw.recipes.list[2] == "3816,2550,134366,1,Cured Light Hide", "quality from the item ID when there is no link")
+  check(lw.recipes.list[4] == "9058,2552,133150,2,Handstitched Leather Cloak", "uncommon (green) recipe")
+  local old = P.ParseRecipe("2881,2550,134252,Light Leather")
+  check(old.name == "Light Leather" and old.quality == nil, "format 1 recipes (v0.10.0) still readable")
   local cats = P.ParseCategories(lw.recipes.categories)
   check(cats[2550].name == "Materials" and cats[2550].parent == 2549 and cats[2549].name == "Leatherworking",
     "categories stored with their parents")
@@ -658,6 +691,8 @@ if PHASE == 11 then
   check(shownRows() == 8, "3 category headers and 5 recipes (" .. shownRows() .. ")")
   check(page.list.rows[1].header.text == "Armor" and page.list.rows[2].text.text == "Handstitched Leather Boots",
     "categories sorted, recipes below their category")
+  local green, white = page.list.rows[2].text.color, page.list.rows[8].text.color
+  check(green[1] == 0.12 and green[2] == 1 and white[1] == 1 and white[3] == 1, "recipe names in item quality colour")
   check(page.status.text:find("unvollst", 1, true) ~= nil, "status shows the partial capture: " .. page.status.text)
   page.search:SetText("hide")
   page.search:GetScript("OnTextChanged")(page.search)

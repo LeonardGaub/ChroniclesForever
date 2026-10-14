@@ -220,6 +220,10 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (character_id, skill_line, category_id)
     );
     """,
+    # 6: item quality of what a recipe creates (0 poor ... 7 heirloom; NULL = unknown, e.g. enchants)
+    """
+    ALTER TABLE recipes ADD COLUMN quality INTEGER;
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

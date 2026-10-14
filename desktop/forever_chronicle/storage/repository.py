@@ -111,14 +111,20 @@ class Recipe:
     category_id: int | None
     icon: int | None
     name: str
+    quality: int | None = None          # item quality of what the recipe creates
 
     @classmethod
-    def parse(cls, text: str) -> "Recipe | None":
-        """Parses the addon's compact format: recipeID,categoryID,icon,name (the name may contain commas)."""
-        parts = text.split(",", 3)
-        if len(parts) != 4 or not parts[0].isdigit() or not parts[3]:
+    def parse(cls, text: str, fmt: int | None = None) -> "Recipe | None":
+        """Parses the addon's compact format (the name is last and may contain commas):
+        format 2: recipeID,categoryID,icon,quality,name - format 1 (addon v0.10.0): recipeID,categoryID,icon,name."""
+        fields = 5 if (fmt or 1) >= 2 else 4
+        parts = text.split(",", fields - 1)
+        if len(parts) != fields or not parts[0].isdigit() or not parts[-1]:
             return None
-        return cls(int(parts[0]), _int_or_none(parts[1]), _int_or_none(parts[2]), parts[3])
+        quality = _int_or_none(parts[3]) if fields == 5 else None
+        if fields == 5 and parts[3] and quality is None:
+            return None
+        return cls(int(parts[0]), _int_or_none(parts[1]), _int_or_none(parts[2]), parts[-1], quality)
 
 
 @dataclass(frozen=True)
@@ -438,10 +444,11 @@ class Repository:
                                   AND recipe_id NOT IN ({marks})""", (character_id, skill_line, *ids))
         for r in recipes:
             self.conn.execute(
-                """INSERT INTO recipes (character_id, skill_line, recipe_id, name, category_id, icon, first_seen_at)
-                   VALUES (?,?,?,?,?,?,?) ON CONFLICT (character_id, skill_line, recipe_id) DO UPDATE SET
-                   name = excluded.name, category_id = excluded.category_id, icon = excluded.icon""",
-                (character_id, skill_line, r.recipe_id, r.name, r.category_id, r.icon, seen_at))
+                """INSERT INTO recipes (character_id, skill_line, recipe_id, name, category_id, icon, quality,
+                   first_seen_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT (character_id, skill_line, recipe_id) DO UPDATE
+                   SET name = excluded.name, category_id = excluded.category_id, icon = excluded.icon,
+                   quality = COALESCE(excluded.quality, recipes.quality)""",
+                (character_id, skill_line, r.recipe_id, r.name, r.category_id, r.icon, r.quality, seen_at))
 
     def upsert_recipe_category(self, character_id: str, skill_line: int, category_id: int, parent_id: int | None,
                                name: str) -> None:

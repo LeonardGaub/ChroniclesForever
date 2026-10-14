@@ -73,6 +73,7 @@ local function mapInfo(mapID)
 end
 
 -- Normalized position of a point on the view map, or nil if it is not on that map.
+-- Zone points can be shown on their continent, and continent points on a zone that contains them.
 function Route.Project(p, view)
   if not p.mapID or not p.x then return nil end
   if p.mapID == view then return p.x, p.y end
@@ -80,7 +81,31 @@ function Route.Project(p, view)
   if info and info.continent == view and info.minX then
     return info.minX + p.x * (info.maxX - info.minX), info.minY + p.y * (info.maxY - info.minY)
   end
+  local zone = mapInfo(view)
+  if zone and zone.continent == p.mapID and zone.minX and zone.maxX > zone.minX and zone.maxY > zone.minY then
+    local x, y = (p.x - zone.minX) / (zone.maxX - zone.minX), (p.y - zone.minY) / (zone.maxY - zone.minY)
+    if x >= 0 and x <= 1 and y >= 0 and y <= 1 then return x, y end
+  end
   return nil
+end
+
+-- The map to show for a point: its zone. The client sometimes reports only the continent (between zones,
+-- on boats and zeppelins); then the smallest known zone containing the point is used, else the continent.
+function Route.ZoneFor(p)
+  if not p or not p.mapID then return nil end
+  if not p.x or not FC.db.maps then return p.mapID end
+  local best, bestArea
+  for key, info in pairs(FC.db.maps) do
+    local id = tonumber(key)
+    if id and id ~= p.mapID and info.continent == p.mapID and info.minX then
+      local area = (info.maxX - info.minX) * (info.maxY - info.minY)
+      if p.x >= info.minX and p.x <= info.maxX and p.y >= info.minY and p.y <= info.maxY
+          and (not bestArea or area < bestArea) then
+        best, bestArea = id, area
+      end
+    end
+  end
+  return best or p.mapID
 end
 
 -- Zone maps that have points, followed by the continents that contain them.

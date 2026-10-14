@@ -15,6 +15,9 @@ PANEL_ALT = "#15110d"
 BORDER = "#5a4630"
 SELECT = "#3a2c18"
 RED = "#ff4040"
+# Item quality colours (0 poor ... 7 heirloom), as in the game.
+QUALITY_COLORS = {0: "#9d9d9d", 1: "#ffffff", 2: "#1eff00", 3: "#0070dd", 4: "#a335ee", 5: "#ff8000",
+                  6: "#e6cc80", 7: "#00ccff"}
 
 HEADING_FONTS = ["Friz Quadrata TT", "Palatino Linotype", "Book Antiqua", "Georgia", "serif"]
 

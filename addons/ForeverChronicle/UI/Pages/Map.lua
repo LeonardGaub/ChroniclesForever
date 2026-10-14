@@ -197,7 +197,7 @@ function page:Redraw()
   for _, v in ipairs(self.views) do if v == self.viewMap then known = true end end
   if not known then
     local p = Route.PointAt(self.points, self.current or self.range[2])
-    self.viewMap = (p and p.mapID) or self.views[1]
+    self.viewMap = Route.ZoneFor(p) or self.views[1]
   end
   for i, v in ipairs(self.views) do if v == self.viewMap then self.viewIndex = i end end
   local hasArt = self.canvas:SetMap(self.viewMap)
@@ -249,12 +249,13 @@ function page:UpdateMarker()
     self:ShowNotice(string.format(L.MAP_INSTANCE, name))
     return
   end
+  -- Follow the player's zone. A map picked by hand stays until the player changes zones.
+  local zone = Route.ZoneFor(p)
+  local movedZone = zone ~= self.lastZone
+  self.lastZone = zone
   local x, y = Route.Project(p, self.viewMap)
-  -- Follow the player onto a new map, but only when the player changed maps; a map picked by hand stays.
-  local movedMap = p.mapID ~= self.lastPointMap
-  self.lastPointMap = p.mapID
-  if not x and p.mapID and movedMap then
-    self.viewMap = p.mapID
+  if zone and zone ~= self.viewMap and movedZone then
+    self.viewMap = zone
     self:Redraw()
     x, y = Route.Project(p, self.viewMap)
   end

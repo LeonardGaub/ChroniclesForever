@@ -286,8 +286,9 @@ class SavedVariablesImporter:
                     self.repo.upsert_recipe_category(character_id, skill_line, cat.category_id, cat.parent_id,
                                                      cat.name)
             parsed = []
+            fmt = _int(recipes.get("format"))
             for text in as_list(recipes.get("list")):
-                recipe = Recipe.parse(text) if isinstance(text, str) else None
+                recipe = Recipe.parse(text, fmt) if isinstance(text, str) else None
                 if recipe is None:
                     result.invalid += 1
                 else:

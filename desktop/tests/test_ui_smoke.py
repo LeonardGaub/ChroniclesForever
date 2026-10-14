@@ -52,6 +52,8 @@ def test_main_window_with_data(app, db, tmp_path, monkeypatch, addon_fixture):
     window.tabs.setCurrentWidget(professions)
     assert professions.prof_table.rowCount() == 4 and professions.recipe_table.rowCount() == 4
     assert professions.prof_table.item(1, 1).text() == "126 / 150" and professions.prof_table.item(1, 2).text() == "Geselle"
+    cloak = professions.recipe_table.item(0, 0)
+    assert cloak.text() == "Handstitched Leather Cloak" and cloak.foreground().color().name() == "#1eff00"
     professions.search.setText("hide")
     assert professions.recipe_table.rowCount() == 2 and professions.count.text() == "2 Rezepte"
     professions.prof_table.setCurrentCell(0, 0)  # Herbalism: gathering, no recipes

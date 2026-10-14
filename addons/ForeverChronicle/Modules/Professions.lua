@@ -11,7 +11,10 @@
 --   list = { { skillLine, name, icon, rank, maxRank, modifier, kind = "primary" | "secondary", active,
 --              firstSeenAt, updatedAt,
 --              recipes = { status = "complete" | "partial", updatedAt, total, unreadable,
---                          list = { "recipeID,categoryID,icon,name" }, categories = { "id,parentID,name" } } } },
+--                          format = 2, list = { "recipeID,categoryID,icon,quality,name" },
+--                          categories = { "id,parentID,name" } } } },
+-- quality: item quality of what the recipe creates (0 poor ... 5 legendary), empty if unknown (e.g. enchants).
+-- Format 1 (v0.10.0) had no quality field: "recipeID,categoryID,icon,name".
 -- }
 
 local ADDON, FC = ...
@@ -114,11 +117,46 @@ function Professions:CountRecipes()
   return n
 end
 
--- "recipeID,categoryID,icon,name" -> table
-function Professions.ParseRecipe(text)
-  local id, cat, icon, name = text:match("^(%d+),(%d*),([^,]*),(.*)$")
+local RECIPE_FORMAT = 2
+
+-- Recipe string -> table. format: the recipe list's format (nil = 1, before item quality was stored).
+function Professions.ParseRecipe(text, format)
+  local id, cat, icon, quality, name
+  if (format or 1) >= 2 then
+    id, cat, icon, quality, name = text:match("^(%d+),(%d*),([^,]*),(%d*),(.*)$")
+  else
+    id, cat, icon, name = text:match("^(%d+),(%d*),([^,]*),(.*)$")
+  end
   if not id then return nil end
-  return { id = tonumber(id), category = tonumber(cat), icon = tonumber(icon) or icon, name = name }
+  return { id = tonumber(id), category = tonumber(cat), icon = tonumber(icon) or icon, quality = tonumber(quality),
+    name = name }
+end
+
+local function formatRecipe(r)
+  local icon = r.icon and tostring(r.icon):gsub(",", "") or ""
+  return string.format("%d,%s,%s,%s,%s", r.id, r.category or "", icon, r.quality or "", r.name)
+end
+
+-- Item quality by hyperlink colour (works without the item being cached).
+local LINK_QUALITY = { ["9d9d9d"] = 0, ffffff = 1, ["1eff00"] = 2, ["0070dd"] = 3, a335ee = 4, ff8000 = 5,
+  e6cc80 = 6, ["00ccff"] = 7 }
+
+-- Quality of the item a recipe creates, or nil (enchants, data not loaded yet).
+local function recipeQuality(id)
+  local link, itemID
+  local ok, out = pcall(api("GetRecipeOutputItemData"), id)
+  if ok and type(out) == "table" then link, itemID = Util.Plain(out.hyperlink), Util.Plain(out.itemID) end
+  if type(link) ~= "string" and api("GetRecipeItemLink") then link = call(api("GetRecipeItemLink"), id) end
+  if type(link) == "string" then
+    local color = link:match("|c%x%x(%x%x%x%x%x%x)")
+    local q = color and LINK_QUALITY[color:lower()]
+    if q then return q end
+    itemID = itemID or tonumber(link:match("item:(%d+)"))
+  end
+  if type(itemID) == "number" and C_Item and C_Item.GetItemQualityByID then
+    local q = call(C_Item.GetItemQualityByID, itemID)
+    if type(q) == "number" then return q end
+  end
 end
 
 -- "id,parentID,name" list -> { [id] = { name, parent } }
@@ -243,6 +281,12 @@ function Professions:CaptureRecipes()
   local ids = call(api("GetAllRecipeIDs"))
   if type(ids) ~= "table" then return "not_ready" end
   local learned, unreadable = {}, 0
+  -- Earlier capture by recipe ID: keeps qualities that cannot be read right now, and recipes of a partial read.
+  local previous, before = prof.recipes, {}
+  for _, text in ipairs(previous and previous.list or {}) do
+    local r = self.ParseRecipe(text, previous.format)
+    if r then before[r.id] = r end
+  end
   local hasCategoryInfo = api("GetCategoryInfo") ~= nil
   local categories, catSeen = {}, {}
   for _, id in ipairs(ids) do
@@ -250,8 +294,9 @@ function Professions:CaptureRecipes()
     if ok and type(info) == "table" and not Util.IsSecret(info.learned) then
       if info.learned and type(info.name) == "string" then
         local cat = type(info.categoryID) == "number" and info.categoryID or nil
-        local icon = (type(info.icon) == "number" or type(info.icon) == "string") and tostring(info.icon):gsub(",", "") or ""
-        learned[id] = string.format("%d,%s,%s,%s", id, cat or "", icon, info.name)
+        local icon = (type(info.icon) == "number" or type(info.icon) == "string") and info.icon or nil
+        local quality = recipeQuality(id) or (before[id] and before[id].quality)
+        learned[id] = formatRecipe({ id = id, category = cat, icon = icon, quality = quality, name = info.name })
         if cat and hasCategoryInfo then categoryLine(cat, catSeen, categories) end
       end
     else
@@ -260,12 +305,10 @@ function Professions:CaptureRecipes()
   end
 
   local status = unreadable == 0 and "complete" or "partial"
-  local previous = prof.recipes
   -- A partial capture never removes recipes that an earlier capture found.
   if status == "partial" and previous then
-    for _, text in ipairs(previous.list) do
-      local id = tonumber(text:match("^(%d+),"))
-      if id and not learned[id] then learned[id] = text end
+    for id, r in pairs(before) do
+      if not learned[id] then learned[id] = formatRecipe(r) end
     end
     if #categories == 0 then categories = previous.categories end
   end
@@ -274,7 +317,7 @@ function Professions:CaptureRecipes()
   table.sort(list, function(a, b) return tonumber(a:match("^(%d+)")) < tonumber(b:match("^(%d+)")) end)
 
   prof.recipes = { status = status, updatedAt = time(), total = #ids, unreadable = unreadable,
-    list = list, categories = categories }
+    format = RECIPE_FORMAT, list = list, categories = categories }
   if status == "complete" then FC:ConfirmCapability("recipes") end
   FC:SendMessage("FC_PROFESSIONS_UPDATED", skillLine)
   return "ok", prof

@@ -48,7 +48,8 @@ class Route:
         return maps.continent_of(map_id, self.map_infos)
 
     def project(self, map_id: int | None, x: float | None, y: float | None, view: int) -> tuple[float, float] | None:
-        """Normalized position of (map_id, x, y) on the view map, or None if it is not on that map."""
+        """Normalized position of (map_id, x, y) on the view map, or None if it is not on that map.
+        Zone points can be shown on their continent, and continent points on a zone that contains them."""
         if map_id is None or x is None:
             return None
         if map_id == view:
@@ -57,10 +58,31 @@ class Route:
         if info is not None and info["continent_id"] == view and info["min_x"] is not None:
             return (info["min_x"] + x * (info["max_x"] - info["min_x"]),
                     info["min_y"] + y * (info["max_y"] - info["min_y"]))
+        zone = self.map_infos.get(view)
+        if (zone is not None and zone["continent_id"] == map_id and zone["min_x"] is not None
+                and zone["max_x"] > zone["min_x"] and zone["max_y"] > zone["min_y"]):
+            zx = (x - zone["min_x"]) / (zone["max_x"] - zone["min_x"])
+            zy = (y - zone["min_y"]) / (zone["max_y"] - zone["min_y"])
+            if 0 <= zx <= 1 and 0 <= zy <= 1:
+                return zx, zy
         return None
 
-    def view_for(self, point: PositionPoint) -> int | None:
-        return point.map_id
+    def view_for(self, point: PositionPoint | None) -> int | None:
+        """The map to show for a point: its zone. The client sometimes reports only the continent (between
+        zones, on boats and zeppelins); then the smallest known zone containing the point is used."""
+        if point is None or point.map_id is None:
+            return None
+        if point.x is None:
+            return point.map_id
+        best, best_area = None, None
+        for map_id, info in self.map_infos.items():
+            if map_id == point.map_id or info["continent_id"] != point.map_id or info["min_x"] is None:
+                continue
+            if info["min_x"] <= point.x <= info["max_x"] and info["min_y"] <= point.y <= info["max_y"]:
+                area = (info["max_x"] - info["min_x"]) * (info["max_y"] - info["min_y"])
+                if best_area is None or area < best_area:
+                    best, best_area = map_id, area
+        return best if best is not None else point.map_id
 
     def available_views(self) -> list[int]:
         """Zone maps with points, then the continents that contain them (if their geometry is known)."""

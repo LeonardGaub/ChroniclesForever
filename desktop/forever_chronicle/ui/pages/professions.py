@@ -127,7 +127,12 @@ class ProfessionsPage(Page):
             cells = [r["name"], r["category"] or "", r["profession"], str(r["recipe_id"])]
             for col, text in enumerate(cells):
                 item = QTableWidgetItem(text)
-                if col in (1, 2, 3):
+                if col == 0:
+                    # Name in the colour of the item it creates (default text colour when unknown).
+                    color = theme.QUALITY_COLORS.get(r["quality"])
+                    if color:
+                        item.setForeground(QColor(color))
+                else:
                     item.setForeground(QColor(theme.MUTED))
                 if col == 3:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)

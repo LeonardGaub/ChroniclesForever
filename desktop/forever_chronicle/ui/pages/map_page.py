@@ -78,6 +78,7 @@ class MapPage(Page):
         super().__init__(ctx)
         self.route: Route | None = None
         self.view_map: int | None = None
+        self._last_zone: int | None = None  # zone of the last shown point (map follow)
         self.range: tuple[int, int] | None = None
         self.current_t: int | None = None
         self.pending_focus: int | None = None
@@ -211,8 +212,8 @@ class MapPage(Page):
         self.slider.setEnabled(True)
         self.play.setEnabled(True)
         self._updating = False
-        first = self.route.point_at(start)
-        self._set_view(first.map_id if first and first.map_id else self._first_view(), redraw=True)
+        self._last_zone = None
+        self._set_view(self.route.view_for(self.route.point_at(start)) or self._first_view(), redraw=True)
         self._set_time(start)
 
     def _first_view(self) -> int | None:
@@ -267,9 +268,13 @@ class MapPage(Page):
                 self.marker.hide()
             self._show_notice(tr("map.instance", name=self.route.instance_name(point)))
             return
+        # Follow the player's zone. A map picked by hand stays until the zone changes or the point is not on it.
+        zone = self.route.view_for(point)
+        moved_zone = zone != self._last_zone
+        self._last_zone = zone
         xy = self.route.project(point.map_id, point.x, point.y, self.view_map) if self.view_map else None
-        if xy is None and self.follow.isChecked() and point.map_id is not None:
-            self._set_view(point.map_id, redraw=True)
+        if self.follow.isChecked() and zone is not None and zone != self.view_map and (moved_zone or xy is None):
+            self._set_view(zone, redraw=True)
             xy = self.route.project(point.map_id, point.x, point.y, self.view_map)
         if xy is None:
             if self.marker:
@@ -422,9 +427,9 @@ class MapPage(Page):
         self.session_select.setCurrentIndex(index)
         self.session_select.blockSignals(False)
         self._apply_range()
-        point = self.route.point_at(t)
-        if point is not None and point.map_id is not None and point.map_id != self.view_map:
-            self._set_view(point.map_id, redraw=True)
+        zone = self.route.view_for(self.route.point_at(t))
+        if zone is not None and zone != self.view_map:
+            self._set_view(zone, redraw=True)
         self._set_time(t)
 
     def showEvent(self, event) -> None:

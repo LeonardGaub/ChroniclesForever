@@ -49,15 +49,6 @@ end
 -- Gear slots
 -------------------------------------------------------------------------------
 
-local function qualityColor(quality)
-  if type(quality) ~= "number" then return nil end
-  if C_Item and C_Item.GetItemQualityColor then
-    local r, g, b = Util.SafeValues(C_Item.GetItemQualityColor, quality)
-    if r then return r, g, b end
-  end
-  if GetItemQualityColor then return Util.SafeValues(GetItemQualityColor, quality) end
-end
-
 local function gearSlot(parent, slotName)
   local slotID, emptyTexture = Util.SafeValues(GetInventorySlotInfo, slotName)
   local b = CreateFrame("Button", nil, parent)
@@ -85,7 +76,7 @@ local function updateSlot(b)
   if texture then
     b.icon:SetTexture(texture)
     b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    local r, g, bl = qualityColor(Util.SafeValue("number", GetInventoryItemQuality, "player", b.slotID))
+    local r, g, bl = UI:QualityColor(Util.SafeValue("number", GetInventoryItemQuality, "player", b.slotID))
     b.border:SetColorTexture(r or 0.3, g or 0.3, bl or 0.3, 1)
   else
     UI:SetIcon(b.icon, b.emptyTexture)

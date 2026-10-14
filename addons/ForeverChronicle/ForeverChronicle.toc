@@ -3,7 +3,7 @@
 ## Notes: Your personal adventure history: sessions, level-ups, quests, deaths, achievements, zones, routes, professions and screenshots.
 ## Notes-deDE: Deine persönliche Abenteuerchronik: Sitzungen, Stufenaufstiege, Quests, Tode, Erfolge, Gebiete, Routen, Berufe und Screenshots.
 ## Author: Forever Chronicle
-## Version: 0.10.0
+## Version: 0.10.1
 ## SavedVariables: ForeverChronicleDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 ## AddonCompartmentFunc: ForeverChronicle_OnAddonCompartmentClick

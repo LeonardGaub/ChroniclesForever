@@ -150,3 +150,21 @@ def test_map_page_replay_and_timeline_focus(db, tmp_path, monkeypatch, addon_fix
     window.tabs.setCurrentWidget(page)
     assert page.current_t == death_time
     window.close()
+
+
+def test_continent_points_open_the_zone():
+    """The client reports only the continent between zones; the map still shows the zone (user request)."""
+    infos = {1413: {"continent_id": 1414, "min_x": 0.4, "max_x": 0.6, "min_y": 0.5, "max_y": 0.7},     # Barrens
+             1454: {"continent_id": 1414, "min_x": 0.45, "max_x": 0.5, "min_y": 0.5, "max_y": 0.55},  # Orgrimmar
+             1414: {"continent_id": None, "min_x": None, "max_x": None, "min_y": None, "max_y": None}}
+    route = Route([P(0, map_id=1413), P(10, map_id=1414, x=0.5, y=0.6), P(20, map_id=1414, x=0.46, y=0.52),
+                   P(30, map_id=1414, x=0.9, y=0.9), P(40, map_id=None, x=None, y=None, instance=389)], infos)
+    assert route.view_for(route.points[0]) == 1413
+    assert route.view_for(route.points[1]) == 1413          # continent point inside the Barrens
+    assert route.view_for(route.points[2]) == 1454          # smallest zone wins (city inside the zone)
+    assert route.view_for(route.points[3]) == 1414          # over the sea: no zone contains it
+    assert route.view_for(route.points[4]) is None
+    assert route.project(1414, 0.5, 0.6, 1413) == pytest.approx((0.5, 0.5))
+    assert route.project(1414, 0.9, 0.9, 1413) is None
+    # Continent points are drawn on the zone map (a map change still starts a new line, as everywhere).
+    assert [[t for t, _, _ in seg.points] for seg in route.segments(1413)] == [[0], [10, 20]]
