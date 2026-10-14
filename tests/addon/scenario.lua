@@ -8,11 +8,18 @@ end
 local function loadAddon()
   if SAVED then assert(load(SAVED, "=SavedVariables"))() end
   MOCK.clock = MOCK.clock + (PHASE_OFFSET or 0)
-  local ns = {}
+  -- Like the game: the main addon's files, its ADDON_LOADED, then the companion addon's files.
+  local ns, other, mainLoaded = {}, {}, false
   for _, name in ipairs(ADDON_FILES) do
+    local addon = ADDON_OF and ADDON_OF[name] or "ForeverChronicle"
+    if addon ~= "ForeverChronicle" and not mainLoaded then
+      MOCK.fire("ADDON_LOADED", "ForeverChronicle")
+      mainLoaded = true
+    end
     local chunk = assert(load(ADDON_SRC[name], "@" .. name))
-    chunk("ForeverChronicle", ns)
+    chunk(addon, addon == "ForeverChronicle" and ns or other)
   end
+  if not mainLoaded then MOCK.fire("ADDON_LOADED", "ForeverChronicle") end
   return ns
 end
 
@@ -46,7 +53,6 @@ end
 
 local function startClient(isInitialLogin, isReloadingUi)
   local FC = loadAddon()
-  MOCK.fire("ADDON_LOADED", "ForeverChronicle")
   MOCK.fire("PLAYER_LOGIN")
   MOCK.fire("PLAYER_ENTERING_WORLD", isInitialLogin, isReloadingUi)
   return FC
@@ -954,6 +960,32 @@ if PHASE == 13 then
   for _, line in ipairs(MOCK.chat) do if line:find("nicht aktiv", 1, true) then said = true end end
   check(said, "/fc share explains that the data addon is missing")
 
+  local errors = 0
+  for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
+  check(errors == 0, "no errors logged")
+end
+
+if PHASE == 14 then
+  print("phase 14: the main addon alone (CurseForge build)")
+  local FC = startClient(true, false)
+  check(FC.ready and FC:GetModule("Share") == nil and #FC.viewSources == 0, "no friends parts loaded")
+  local sections = {}
+  for _, section in ipairs(FC.optionSections) do sections[section.key] = true end
+  check(not sections.share, "no sharing settings")
+  MOCK.travel(1413, "The Barrens")
+  for i = 1, 6 do MOCK.x = 0.30 + i * 0.01; MOCK.advance(2) end
+  MOCK.fire("PLAYER_DEAD")
+  FC.UI:Toggle()
+  for i = 1, #FC.UI.pages do FC.UI:SelectPage(i) end
+  FC.UI.viewBar:GetScript("OnClick")(FC.UI.viewBar)
+  local rows = 0
+  for _, row in ipairs(FC.UI.viewRows.rows) do if row:IsShown() then rows = rows + 1 end end
+  check(rows == 2, "chooser: my characters only, no friends note (" .. rows .. " rows)")
+  local caps = {}
+  for _, cap in ipairs(FC.Diagnostics:GetCapabilities()) do caps[cap.key] = true end
+  check(not caps.share, "no sharing capability")
+  MOCK.fire("PLAYER_LOGOUT")
+  check(rawget(_G, "ForeverChronicleShareDB") == nil, "no data for friends written")
   local errors = 0
   for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
   check(errors == 0, "no errors logged")

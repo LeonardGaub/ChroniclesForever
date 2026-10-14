@@ -32,7 +32,9 @@ entrance lookups go through `FC:MapInfo`, `FC:InstanceName` and `FC:StoredEntran
 counts as well. A new page that reads character data must use these helpers. A stat that needs live state can add
 `fromRecord(char)` for other characters. `UI/ViewBar.lua` is the chooser; `FC_VIEW_CHANGED` calls
 `page:OnViewChanged()` if a page has one.
-Friends' characters come from `Friends/FriendsData.lua` (`ForeverChronicleFriends`), which the sync script
+Other addons add characters with `FC:RegisterViewSource` (entries, map/instance/entrance data). The private
+companion addon `ForeverChronicle_Share` (not part of the CurseForge upload) does this for friends: their
+characters come from its `Friends/FriendsData.lua` (`ForeverChronicleFriends`), which the sync script
 (`sync/ForeverSync.ps1`) writes from the friends' `ForeverChronicle_Share.lua` files. The game writes those files
 from `Modules/Share.lua` into the data-only addon `ForeverChronicle_Share`, in the addon's own record shape. Each
 friend is loaded on its own in an empty environment after a strict plain-data check.

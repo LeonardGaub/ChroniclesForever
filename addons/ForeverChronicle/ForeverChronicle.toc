@@ -3,13 +3,10 @@
 ## Notes: Your personal adventure history: sessions, level-ups, quests, deaths, achievements, zones, routes, professions and screenshots.
 ## Notes-deDE: Deine persönliche Abenteuerchronik: Sitzungen, Stufenaufstiege, Quests, Tode, Erfolge, Gebiete, Routen, Berufe und Screenshots.
 ## Author: Forever Chronicle
-## Version: 0.13.0
+## Version: 0.14.0
 ## SavedVariables: ForeverChronicleDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 ## AddonCompartmentFunc: ForeverChronicle_OnAddonCompartmentClick
-
-# Friends' characters, written by the desktop app (replaced by it; see docs/Sharing_Design.md)
-Friends\FriendsData.lua
 
 # Core (no game features; loaded first)
 Core\Util.lua
@@ -34,7 +31,6 @@ Modules\Progress.lua
 Modules\Rares.lua
 Modules\Professions.lua
 Modules\Gear.lua
-Modules\Share.lua
 Modules\Metrics.lua
 Modules\ScreenshotQueue.lua
 Modules\Screenshots.lua

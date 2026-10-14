@@ -99,7 +99,7 @@ def test_setup_installs_shares_and_receives(world):
     assert mine[0].read_bytes() == (world["saved"] / "ForeverChronicle_Share.lua").read_bytes()
 
     # 3. friends: only the plain-data friend file, never my own, the malicious or the oddly named one
-    friends = addons / "ForeverChronicle" / "Friends" / "FriendsData.lua"
+    friends = addons / "ForeverChronicle_Share" / "Friends" / "FriendsData.lua"
     text = friends.read_text(encoding="utf-8")
     assert f"{FRIEND_ID}-0badc0de.lua" in text and config["shareId"] not in text
     assert "os.exit" not in text and "Mallory" not in text
@@ -121,7 +121,7 @@ def test_setup_installs_shares_and_receives(world):
 
 def test_second_run_changes_nothing_then_updates(world):
     setup(world)
-    friends = world["client"] / "Interface" / "AddOns" / "ForeverChronicle" / "Friends" / "FriendsData.lua"
+    friends = world["client"] / "Interface" / "AddOns" / "ForeverChronicle_Share" / "Friends" / "FriendsData.lua"
     stamp = friends.stat().st_mtime_ns
     lines = log(world).count("\n")
     once(world)
@@ -159,5 +159,5 @@ def test_pure_data_check_is_fast_on_big_files(world, tmp_path):
     start = time.time()
     once(world)
     assert time.time() - start < 60
-    friends = world["client"] / "Interface" / "AddOns" / "ForeverChronicle" / "Friends" / "FriendsData.lua"
+    friends = world["client"] / "Interface" / "AddOns" / "ForeverChronicle_Share" / "Friends" / "FriendsData.lua"
     assert '"Big"' in friends.read_text(encoding="utf-8")

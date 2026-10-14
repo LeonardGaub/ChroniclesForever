@@ -1,7 +1,7 @@
 -- Forever Chronicle - character chooser around the window (docs/Sharing_Design.md, phase 2)
 -- A wide dropdown bar across the top of the window shows whose character the window shows; it opens a
--- scrollable list of all characters: mine (this account; the played one first) and, grouped by friend, my
--- friends' characters from the desktop app. Choosing one makes every tab show that character (FC:SetView) and
+-- scrollable list of all characters: mine (this account; the played one first) and, grouped by owner, the
+-- characters other addons add (FC:RegisterViewSource, e.g. friends). Choosing one makes every tab show that character (FC:SetView) and
 -- the portrait in the corner shows it (live portrait for the played character, class emblem otherwise).
 -- For any other character the bar says so ("nur lesen") and offers a button back to my own.
 
@@ -75,17 +75,20 @@ end
 -- List items: headers and characters, in FC:ViewEntries order.
 local function items()
   local out, group = {}, false
-  local hasFriends = false
+  local others = false
   for _, e in ipairs(FC:ViewEntries()) do
     local g = e.owner or ""
     if g ~= group then
       group = g
       out[#out + 1] = { header = e.owner and e.owner or L.VIEW_MINE }
     end
-    if e.owner then hasFriends = true end
+    if e.owner then others = true end
     out[#out + 1] = { entry = e }
   end
-  if not hasFriends then out[#out + 1] = { note = L.VIEW_NO_FRIENDS } end
+  -- A view source (e.g. friends) may explain how its characters get here while it has none.
+  for _, source in ipairs(FC.viewSources) do
+    if source.emptyNoteKey and not others then out[#out + 1] = { note = L[source.emptyNoteKey] } end
+  end
   return out
 end
 

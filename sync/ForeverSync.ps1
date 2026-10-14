@@ -12,7 +12,7 @@ Each run:
   1. updates this script from <cloud>\tools
   2. installs a newer addon from <cloud>\addon (only while WoW is not running; keeps Friends\FriendsData.lua)
   3. uploads this PC's ForeverChronicle_Share.lua (per WoW account) to <cloud>\players\<shareId>-<account hash>.lua
-  4. downloads all other players' files, accepts only pure data, writes Friends\FriendsData.lua for the addon
+  4. downloads all other players' files, accepts only pure data, writes ForeverChronicle_Share\Friends\FriendsData.lua
   5. daily backup of the addon's SavedVariables (newest 10 days kept)
 Settings and log: %LOCALAPPDATA%\ForeverChronicle\sync (config.json, sync.log, state.json).
 #>
@@ -204,7 +204,7 @@ function Update-Addon($Config) {
       if ($LASTEXITCODE -ge 8) { throw "robocopy failed for $name ($LASTEXITCODE)" }
     }
   }
-  $friends = Join-Path $addons "ForeverChronicle\Friends\$FriendsFile"
+  $friends = Join-Path $addons "ForeverChronicle_Share\Friends\$FriendsFile"
   if (-not (Test-Path $friends)) { $script:ForceFriends = $true }
   Write-Log "addon installed: $installed -> $newest"
 }
@@ -242,7 +242,7 @@ function Get-LongBracketLevel([string]$Text) {
 
 function Receive-Friends($Config, $State) {
   $players = Join-Path $Config.cloud 'players'
-  $target = Join-Path $Config.client "Interface\AddOns\ForeverChronicle\Friends\$FriendsFile"
+  $target = Join-Path $Config.client "Interface\AddOns\ForeverChronicle_Share\Friends\$FriendsFile"
   if (-not (Test-Path (Split-Path $target))) { return }  # addon not installed (yet)
   $accepted = @()
   $total = 0

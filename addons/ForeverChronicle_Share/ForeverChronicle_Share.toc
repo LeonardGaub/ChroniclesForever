@@ -1,13 +1,17 @@
 ## Interface: 16001
-## Title: Forever Chronicle |cff999999- Freunde-Daten|r
-## Notes: Part of Forever Chronicle: the data your friends see (written on logout and /reload, synced by the cloud script). No window of its own.
-## Notes-deDE: Teil von Forever Chronicle: die Daten, die deine Freunde sehen (beim Logout und /reload geschrieben, vom Cloud-Skript abgeglichen). Kein eigenes Fenster.
+## Title: Forever Chronicle |cff999999- Freunde|r
+## Notes: Companion of Forever Chronicle for a private friend group: shares your characters through a cloud folder (sync script) and shows your friends' characters.
+## Notes-deDE: Ergänzung zu Forever Chronicle für eine private Freundesgruppe: teilt deine Charaktere über einen Cloud-Ordner (Sync-Skript) und zeigt die Charaktere deiner Freunde.
 ## Author: Forever Chronicle
-## Version: 0.13.0
+## Version: 0.14.0
 ## Dependencies: ForeverChronicle
 ## Group: ForeverChronicle
 ## Category: Forever Chronicle
 ## SavedVariables: ForeverChronicleShareDB
 ## IconTexture: Interface\Icons\INV_Letter_15
 
+Locales.lua
+# Friends' characters, written by the sync script (replaced by it; see docs/Sharing_Design.md)
+Friends\FriendsData.lua
+Friends.lua
 Share.lua

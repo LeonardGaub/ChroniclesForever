@@ -63,6 +63,11 @@ function FC:NewModule(name, opts)
     defaults = (opts and opts.defaults) or {} }, Module)
   self.modules[name] = module
   table.insert(self.moduleOrder, module)
+  -- A module from an addon that loads after this one (e.g. ForeverChronicle_Share): the saved variables
+  -- are already there, so its settings get their defaults right away.
+  if self.db then
+    self.db.settings.modules[name] = self.Util.MergeDefaults(self.db.settings.modules[name] or {}, module.defaults)
+  end
   return module
 end
 

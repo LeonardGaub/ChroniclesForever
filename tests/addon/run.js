@@ -5,11 +5,21 @@ const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 
-const addonDir = path.join(__dirname, '..', '..', 'addons', 'ForeverChronicle');
-const toc = fs.readFileSync(path.join(addonDir, 'ForeverChronicle.toc'), 'utf8');
-const files = toc.split(/\r?\n/).map(l => l.trim()).filter(l => l.endsWith('.lua')).map(l => l.replace(/\\/g, '/'));
+const addonsDir = path.join(__dirname, '..', '..', 'addons');
+const addonDir = path.join(addonsDir, 'ForeverChronicle');
+function tocFiles(addon) {
+  const toc = fs.readFileSync(path.join(addonsDir, addon, addon + '.toc'), 'utf8');
+  return toc.split(/\r?\n/).map(l => l.trim()).filter(l => l.endsWith('.lua') && !l.startsWith('#'))
+    .map(l => l.replace(/\\/g, '/'));
+}
+// Main addon files by their path inside the addon; the companion's files with its folder in front.
+const mainFiles = tocFiles('ForeverChronicle');
+const companion = 'ForeverChronicle_Share';
+const companionFiles = tocFiles(companion).map(f => companion + '/' + f);
+const sourceOf = f => f.startsWith(companion + '/') ? path.join(addonsDir, f) : path.join(addonDir, f);
 
-function runPhase(phase, saved, offset, overrides) {
+function runPhase(phase, saved, offset, overrides, mainOnly) {
+  const files = mainOnly ? mainFiles : mainFiles.concat(companionFiles);
   const L = lauxlib.luaL_newstate();
   lualib.luaL_openlibs(L);
   const setStr = (name, value) => { lua.lua_pushstring(L, to_luastring(value)); lua.lua_setglobal(L, to_luastring(name)); };
@@ -18,11 +28,19 @@ function runPhase(phase, saved, offset, overrides) {
   lua.lua_setglobal(L, to_luastring('ADDON_FILES'));
   lua.lua_newtable(L);
   for (const f of files) {
-    const text = overrides && overrides[f] !== undefined ? overrides[f] : fs.readFileSync(path.join(addonDir, f), 'utf8');
+    const text = overrides && overrides[f] !== undefined ? overrides[f] : fs.readFileSync(sourceOf(f), 'utf8');
     lua.lua_pushstring(L, to_luastring(text));
     lua.lua_setfield(L, -2, to_luastring(f));
   }
   lua.lua_setglobal(L, to_luastring('ADDON_SRC'));
+  lua.lua_newtable(L);
+  for (const f of files) {
+    if (f.startsWith(companion + '/')) {
+      lua.lua_pushstring(L, to_luastring(companion));
+      lua.lua_setfield(L, -2, to_luastring(f));
+    }
+  }
+  lua.lua_setglobal(L, to_luastring('ADDON_OF'));
   lua.lua_pushinteger(L, phase); lua.lua_setglobal(L, to_luastring('PHASE'));
   lua.lua_pushinteger(L, offset); lua.lua_setglobal(L, to_luastring('PHASE_OFFSET'));
   if (saved) setStr('SAVED', saved);
@@ -81,9 +99,11 @@ console.log('fixture written: tests/fixtures/ForeverChronicle_Share.lua');
 // Friends' characters as written by the sync script (desktop/tests/test_sync.py writes the fixture).
 const friendsFixture = path.join(__dirname, '..', 'fixtures', 'FriendsData.lua');
 if (fs.existsSync(friendsFixture)) {
-  runPhase(12, null, 0, { 'Friends/FriendsData.lua': fs.readFileSync(friendsFixture, 'utf8') });
+  runPhase(12, null, 0, { 'ForeverChronicle_Share/Friends/FriendsData.lua': fs.readFileSync(friendsFixture, 'utf8') });
 } else {
   console.log('phase 12 skipped: run the desktop tests first (they write tests/fixtures/FriendsData.lua)');
 }
 
+// The main addon alone, as uploaded to CurseForge.
+runPhase(14, null, 0, null, true);
 console.log('ALL PHASES PASSED');

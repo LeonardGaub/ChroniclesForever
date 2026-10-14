@@ -4,7 +4,10 @@
 The user wants to move mostly into the addon: the desktop app is hard to keep updated on friends' PCs. Share
 files and the desktop share dialog are no longer needed.
 
-- **Data:** a second, data-only addon `ForeverChronicle_Share` declares `## SavedVariables: ForeverChronicleShareDB`,
+- **Split (2026-10-14, for CurseForge):** everything about friends lives in the companion addon
+  `ForeverChronicle_Share` (Share module, settings, friends view source, `Friends/FriendsData.lua`); the main addon
+  is standalone and is what goes to CurseForge. The companion is only distributed through the cloud folder.
+- **Data:** a second addon `ForeverChronicle_Share` declares `## SavedVariables: ForeverChronicleShareDB`,
   so the game itself writes a separate, small file with only the data meant for friends. The main addon fills it on
   every logout and `/reload`: one entry per character of the account, in the record shape the character chooser
   already reads (info, stats, gear, professions, last 200 events, routes of the last 3 sessions, sessions, the maps,

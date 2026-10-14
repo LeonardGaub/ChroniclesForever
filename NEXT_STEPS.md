@@ -148,6 +148,23 @@
     missing, and compare hashes without that file (the desktop app owns it in the game folder).
   - Tests: desktop `test_battlenet`, `test_friends_data` (writes `tests/fixtures/FriendsData.lua`); addon
     phase 12 loads that fixture.
+- **Split for CurseForge (addon v0.14.0).** `addons/ForeverChronicle` is the standalone public addon.
+  `addons/ForeverChronicle_Share` is the private companion for the friend group (Share module, `Friends.lua` view
+  source, `Friends/FriendsData.lua`, its strings, `## Dependencies: ForeverChronicle`), distributed only through
+  the cloud folder.
+  - Main addon extension points: `FC:RegisterViewSource{ entries, data(kind), emptyNoteKey }` (characters for the
+    chooser), and modules from later-loading addons get their default settings in `FC:NewModule`.
+  - Player-visible texts no longer mention the desktop app.
+  - `tools/package_curseforge.py` checks the main addon (file types, .toc and files in sync, no links, donation
+    or ad words, no references to desktop, cloud or companion in visible texts; code without companion data or
+    runtime code loading), then builds `dist/curseforge/ForeverChronicle/` and `ForeverChronicle-<version>.zip`.
+  - The sync script writes `ForeverChronicle_Share/Friends/FriendsData.lua`. The test runner loads the
+    companion after the main addon's ADDON_LOADED (like the game); phase 14 runs the main addon alone.
+  - Install rule: the main addon is mirrored completely; in the companion, keep `Friends\FriendsData.lua`.
+  - Incident: installing removed the old `ForeverChronicle\Friends\FriendsData.lua` in the game folder, which held
+    the friend "Gigel" (character Zitter) imported with the old desktop share. It was regenerated from the desktop
+    database (writer from commit 6a79977, read-only) into the companion folder. The cloud sync replaces it as soon
+    as it runs, so Gigel needs the cloud setup.
 - **Cloud sync, in-game first (user decision; docs/Sharing_Design.md version 2).**
   - Addon v0.13.0: the data-only addon `ForeverChronicle_Share` plus `Modules/Share.lua` (written on logout and
     /reload) and the settings section "Mit Freunden teilen" (name, characters, categories; default everything on).

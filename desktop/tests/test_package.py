@@ -30,7 +30,7 @@ def test_package_contents(tmp_path):
     top = "ForeverChronicle/"
     assert top + "Forever Chronicle starten.bat" in names and top + "LIES MICH.txt" in names
     assert top + "addons/ForeverChronicle/ForeverChronicle.toc" in names
-    assert top + "addons/ForeverChronicle/Friends/FriendsData.lua" in names       # placeholder
+    assert not [n for n in names if "ForeverChronicle_Share" in n or "Friends/" in n]  # friends parts: cloud only
     assert top + "desktop/forever_chronicle/app.py" in names and top + "desktop/pyproject.toml" in names
     assert top + "desktop/forever_chronicle/maps/1413.jpg" in names
     assert not [n for n in names if "notes.txt" in n or "/tests/" in n or ".venv" in n or "__pycache__" in n]
