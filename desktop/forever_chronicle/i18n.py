@@ -1,0 +1,365 @@
+"""German/English UI strings. German is the default (spec); English is the fallback for missing keys."""
+
+from __future__ import annotations
+
+import time
+from typing import Any, Callable
+
+STRINGS: dict[str, dict[str, str]] = {
+    "de": {
+        "app.title": "Forever Chronicle",
+        "common.unknown": "unbekannt",
+        "common.decimal_sep": ",",
+        "common.date": "%d.%m.%Y",
+        "common.datetime": "%d.%m.%Y %H:%M",
+        "duration.dhm": "{d} T. {h} Std. {m} Min.",
+        "duration.hm": "{h} Std. {m} Min.",
+        "duration.m": "{m} Min.",
+
+        "menu.file": "&Datei",
+        "menu.import": "Jetzt &importieren",
+        "menu.quit": "&Beenden",
+        "menu.language": "&Sprache",
+
+        "sidebar.characters": "Charaktere",
+        "sidebar.empty": "Noch keine Charaktere.\nImportiere zuerst die Addon-Daten.",
+        "char.details": "Stufe {level} {race} {cls}",
+        "char.none": "Kein Charakter ausgewählt",
+        "sidebar.char_line": "Stufe {level}  ·  {realm}",
+
+        "tab.overview": "Übersicht",
+        "tab.timeline": "Chronik",
+        "tab.import": "Import",
+        "tab.diagnostics": "Diagnose",
+
+        "stats.group.time": "Spielzeit",
+        "stats.group.progress": "Fortschritt",
+        "stats.played_total": "Gesamte Spielzeit (Server)",
+        "stats.tracked_time": "Aufgezeichnete Spielzeit",
+        "stats.sessions": "Sitzungen",
+        "stats.longest_session": "Längste Sitzung",
+        "stats.first_tracked": "Aufgezeichnet seit",
+        "stats.levels_gained": "Stufenaufstiege",
+        "stats.quests": "Abgeschlossene Quests",
+        "stats.quests_per_hour": "Quests pro Stunde",
+        "stats.deaths": "Tode",
+        "stats.achievements": "Erfolge",
+        "overview.recent": "Letzte Ereignisse",
+        "overview.estimated_hint": "Aufgezeichnete Zeiten enden bei einem Absturz mit der letzten Speicherung des Spiels.",
+
+        "timeline.filter_all": "Alle Ereignisse",
+        "timeline.search": "Suchen …",
+        "timeline.col.time": "Zeit",
+        "timeline.col.event": "Ereignis",
+        "timeline.col.location": "Ort",
+        "timeline.count": "{n} Einträge",
+        "timeline.gap": "Datenlücke: {n} Einträge fehlen (Addon-Speicher war voll)",
+
+        "evt.session_started": "Logins",
+        "evt.session_started.text": "Eingeloggt",
+        "evt.level_up": "Stufenaufstiege",
+        "evt.level_up.text": "Stufe {level} erreicht",
+        "evt.quest_completed": "Quests",
+        "evt.quest_completed.text": "Quest abgeschlossen: {title}",
+        "evt.player_died": "Tode",
+        "evt.player_died.text": "Gestorben",
+        "evt.player_died.text_in": "Gestorben in {where}",
+        "evt.achievement_earned": "Erfolge",
+        "evt.achievement_earned.text": "Erfolg: {name}",
+
+        "import.client": "WoW-Forever-Ordner",
+        "import.client_none": "Nicht gefunden – bitte den Ordner wählen.",
+        "import.choose": "Ordner wählen …",
+        "import.files": "Gefundene Addon-Daten",
+        "import.files_none": "Keine Daten von Forever Chronicle gefunden. Ist das Addon installiert und hast du dich einmal ausgeloggt oder /reload benutzt?",
+        "import.file_line": "Account {account}  ·  zuletzt gespeichert {when}",
+        "import.run": "Jetzt importieren",
+        "import.auto": "Beim Start automatisch importieren",
+        "import.history": "Import-Verlauf",
+        "import.col.when": "Zeitpunkt",
+        "import.col.source": "Quelle",
+        "import.col.status": "Status",
+        "import.col.result": "Ergebnis",
+        "import.result": "{imported} neu, {duplicates} bekannt, {invalid} ungültig, {gaps} Lücken",
+        "import.done": "Import abgeschlossen: {imported} neue Einträge.",
+        "import.unchanged": "Keine Änderungen seit dem letzten Import.",
+        "import.failed": "Import fehlgeschlagen: {message}",
+        "import.choose_title": "WoW-Forever-Ordner wählen",
+        "import.invalid_dir": "In diesem Ordner wurde kein WoW-Forever-Client gefunden.",
+        "status.ok": "erfolgreich",
+        "status.partial": "teilweise",
+        "status.rejected": "abgelehnt",
+        "status.failed": "fehlgeschlagen",
+        "status.running": "läuft",
+        "status.unchanged": "unverändert",
+
+        "diag.capabilities": "Funktionen im Spielclient",
+        "diag.col.feature": "Funktion",
+        "diag.col.status": "Status",
+        "diag.col.since": "Bestätigt am",
+        "diag.cap.confirmed": "bestätigt",
+        "diag.cap.present": "verfügbar, noch nicht beobachtet",
+        "diag.cap.missing": "nicht unterstützt",
+        "diag.gaps": "Datenlücken",
+        "diag.gaps_none": "Keine Datenlücken.",
+        "diag.gap_line": "{stream}: Einträge {start}–{end} fehlen (vor {when})",
+        "diag.paths": "Speicherorte",
+        "diag.database": "Datenbank: {path}",
+        "diag.backups": "Sicherungen: {path}",
+        "cap.identity": "Charakter-Identität",
+        "cap.played_time": "Spielzeit",
+        "cap.level_up": "Stufenaufstiege",
+        "cap.quests": "Quest-Abschlüsse",
+        "cap.deaths": "Tode",
+        "cap.achievements": "Erfolge",
+
+        "statusbar.last_import": "Letzter Import: {when}",
+        "statusbar.never": "Noch kein Import",
+        "tab.map": "Karte",
+        "map.session_all": "Alle Sitzungen",
+        "map.session_item": "{date}  ·  {duration}",
+        "map.trail": "Route",
+        "map.events": "Ereignisse",
+        "map.follow": "Karte folgen",
+        "map.play": "▶  Abspielen",
+        "map.pause": "❚❚  Pause",
+        "map.speed_tip": "1× = 1 Minute Spielzeit pro Sekunde. Zeiten ohne Routenpunkte werden übersprungen.",
+        "map.no_points": "Noch keine Routenpunkte. Das Addon zeichnet sie ab Version 0.3 auf („Route aufzeichnen“).",
+        "map.no_art": "Kein Kartenbild – Schema-Ansicht. Kartenbilder über den Reiter Import hinzufügen.",
+        "map.instance": "In {name} – im Dungeon gibt es keine Position",
+        "map.elsewhere": "Gerade auf einer anderen Karte: {name}",
+        "map.unknown_map": "Karte {id}",
+        "import.maps": "Kartenbilder",
+        "import.maps_count": "{n} Kartenbilder vorhanden.",
+        "import.maps_none": "Noch keine Kartenbilder. Ohne sie zeigt die Karte eine Schema-Ansicht.",
+        "import.maps_button": "Kartenbilder importieren …",
+        "import.maps_title": "ZIP-Archiv mit Kartenbildern wählen",
+        "import.maps_done": "{n} Kartenbilder importiert.",
+        "cap.positions": "Positionen",
+        "tab.gallery": "Screenshots",
+        "gallery.count": "{n} Screenshots  ·  Doppelklick öffnet das Bild",
+        "gallery.empty": "Noch keine Screenshots.",
+        "gallery.loading": "Lädt …",
+        "gallery.missing": "Datei nicht gefunden",
+        "gallery.missing_tip": "Keine Datei WoWScrnShot_{stamp} im Screenshots-Ordner gefunden.",
+        "gallery.open_folder": "Ordner öffnen",
+        "gallery.more": " (+{n})",
+        "timeline.screenshot_tip": "Doppelklick öffnet den Screenshot",
+        "trigger.manual": "Test-Screenshot",
+        "trigger.level": "Stufenaufstieg",
+        "trigger.achievement": "Erfolg",
+        "trigger.zone": "Neues Gebiet",
+        "trigger.quest": "Quest",
+        "trigger.death": "Tod",
+        "stats.zones": "Entdeckte Gebiete",
+        "stats.screenshots": "Screenshots",
+        "evt.zone_discovered": "Neue Gebiete",
+        "evt.zone_discovered.text": "Neues Gebiet entdeckt: {zone}",
+        "cap.zones": "Gebietsentdeckung",
+        "cap.screenshots": "Screenshots",
+    },
+    "en": {
+        "app.title": "Forever Chronicle",
+        "common.unknown": "unknown",
+        "common.decimal_sep": ".",
+        "common.date": "%Y-%m-%d",
+        "common.datetime": "%Y-%m-%d %H:%M",
+        "duration.dhm": "{d}d {h}h {m}m",
+        "duration.hm": "{h}h {m}m",
+        "duration.m": "{m}m",
+
+        "menu.file": "&File",
+        "menu.import": "&Import now",
+        "menu.quit": "&Quit",
+        "menu.language": "&Language",
+
+        "sidebar.characters": "Characters",
+        "sidebar.empty": "No characters yet.\nImport the addon data first.",
+        "char.details": "Level {level} {race} {cls}",
+        "char.none": "No character selected",
+        "sidebar.char_line": "Level {level}  ·  {realm}",
+
+        "tab.overview": "Overview",
+        "tab.timeline": "Chronicle",
+        "tab.import": "Import",
+        "tab.diagnostics": "Diagnostics",
+
+        "stats.group.time": "Play time",
+        "stats.group.progress": "Progress",
+        "stats.played_total": "Total played (server)",
+        "stats.tracked_time": "Tracked play time",
+        "stats.sessions": "Sessions",
+        "stats.longest_session": "Longest session",
+        "stats.first_tracked": "Tracked since",
+        "stats.levels_gained": "Levels gained",
+        "stats.quests": "Quests completed",
+        "stats.quests_per_hour": "Quests per hour",
+        "stats.deaths": "Deaths",
+        "stats.achievements": "Achievements",
+        "overview.recent": "Recent events",
+        "overview.estimated_hint": "After a client crash, tracked time ends at the game's last save.",
+
+        "timeline.filter_all": "All events",
+        "timeline.search": "Search …",
+        "timeline.col.time": "Time",
+        "timeline.col.event": "Event",
+        "timeline.col.location": "Location",
+        "timeline.count": "{n} entries",
+        "timeline.gap": "Data gap: {n} entries missing (addon storage was full)",
+
+        "evt.session_started": "Logins",
+        "evt.session_started.text": "Logged in",
+        "evt.level_up": "Level-ups",
+        "evt.level_up.text": "Reached level {level}",
+        "evt.quest_completed": "Quests",
+        "evt.quest_completed.text": "Quest completed: {title}",
+        "evt.player_died": "Deaths",
+        "evt.player_died.text": "Died",
+        "evt.player_died.text_in": "Died in {where}",
+        "evt.achievement_earned": "Achievements",
+        "evt.achievement_earned.text": "Achievement: {name}",
+
+        "import.client": "WoW Forever folder",
+        "import.client_none": "Not found - please choose the folder.",
+        "import.choose": "Choose folder …",
+        "import.files": "Addon data found",
+        "import.files_none": "No Forever Chronicle data found. Is the addon installed, and have you logged out or used /reload once?",
+        "import.file_line": "Account {account}  ·  last saved {when}",
+        "import.run": "Import now",
+        "import.auto": "Import automatically on start",
+        "import.history": "Import history",
+        "import.col.when": "Time",
+        "import.col.source": "Source",
+        "import.col.status": "Status",
+        "import.col.result": "Result",
+        "import.result": "{imported} new, {duplicates} known, {invalid} invalid, {gaps} gaps",
+        "import.done": "Import finished: {imported} new entries.",
+        "import.unchanged": "No changes since the last import.",
+        "import.failed": "Import failed: {message}",
+        "import.choose_title": "Choose the WoW Forever folder",
+        "import.invalid_dir": "No WoW Forever client was found in this folder.",
+        "status.ok": "ok",
+        "status.partial": "partial",
+        "status.rejected": "rejected",
+        "status.failed": "failed",
+        "status.running": "running",
+        "status.unchanged": "unchanged",
+
+        "diag.capabilities": "Features in the game client",
+        "diag.col.feature": "Feature",
+        "diag.col.status": "Status",
+        "diag.col.since": "Confirmed on",
+        "diag.cap.confirmed": "confirmed",
+        "diag.cap.present": "available, not seen yet",
+        "diag.cap.missing": "not supported",
+        "diag.gaps": "Data gaps",
+        "diag.gaps_none": "No data gaps.",
+        "diag.gap_line": "{stream}: entries {start}–{end} missing (before {when})",
+        "diag.paths": "Locations",
+        "diag.database": "Database: {path}",
+        "diag.backups": "Backups: {path}",
+        "cap.identity": "Character identity",
+        "cap.played_time": "Played time",
+        "cap.level_up": "Level-ups",
+        "cap.quests": "Quest completions",
+        "cap.deaths": "Deaths",
+        "cap.achievements": "Achievements",
+
+        "statusbar.last_import": "Last import: {when}",
+        "statusbar.never": "No import yet",
+        "tab.map": "Map",
+        "map.session_all": "All sessions",
+        "map.session_item": "{date}  ·  {duration}",
+        "map.trail": "Route",
+        "map.events": "Events",
+        "map.follow": "Follow map",
+        "map.play": "▶  Play",
+        "map.pause": "❚❚  Pause",
+        "map.speed_tip": "1× = 1 minute of play time per second. Time without route points is skipped.",
+        "map.no_points": "No route points yet. The addon records them from version 0.3 (\"Record route\").",
+        "map.no_art": "No map image - schematic view. Add map images on the Import tab.",
+        "map.instance": "In {name} - there is no position inside dungeons",
+        "map.elsewhere": "Currently on another map: {name}",
+        "map.unknown_map": "Map {id}",
+        "import.maps": "Map images",
+        "import.maps_count": "{n} map images available.",
+        "import.maps_none": "No map images yet. Without them the map shows a schematic view.",
+        "import.maps_button": "Import map images …",
+        "import.maps_title": "Choose a ZIP archive with map images",
+        "import.maps_done": "{n} map images imported.",
+        "cap.positions": "Positions",
+        "tab.gallery": "Screenshots",
+        "gallery.count": "{n} screenshots  ·  double-click opens the image",
+        "gallery.empty": "No screenshots yet.",
+        "gallery.loading": "Loading …",
+        "gallery.missing": "File not found",
+        "gallery.missing_tip": "No file WoWScrnShot_{stamp} found in the Screenshots folder.",
+        "gallery.open_folder": "Open folder",
+        "gallery.more": " (+{n})",
+        "timeline.screenshot_tip": "Double-click opens the screenshot",
+        "trigger.manual": "Test screenshot",
+        "trigger.level": "Level-up",
+        "trigger.achievement": "Achievement",
+        "trigger.zone": "New zone",
+        "trigger.quest": "Quest",
+        "trigger.death": "Death",
+        "stats.zones": "Zones discovered",
+        "stats.screenshots": "Screenshots",
+        "evt.zone_discovered": "New zones",
+        "evt.zone_discovered.text": "New zone discovered: {zone}",
+        "cap.zones": "Zone discovery",
+        "cap.screenshots": "Screenshots",
+    },
+}
+
+LANGUAGES = {"de": "Deutsch", "en": "English"}
+_language = "de"
+_listeners: list[Callable[[], None]] = []
+
+
+def set_language(lang: str) -> None:
+    global _language
+    if lang in STRINGS and lang != _language:
+        _language = lang
+        for listener in list(_listeners):
+            listener()
+
+
+def language() -> str:
+    return _language
+
+
+def on_language_changed(callback: Callable[[], None]) -> None:
+    _listeners.append(callback)
+
+
+def remove_listener(callback: Callable[[], None]) -> None:
+    if callback in _listeners:
+        _listeners.remove(callback)
+
+
+def tr(key: str, **kwargs: Any) -> str:
+    text = STRINGS[_language].get(key) or STRINGS["en"].get(key) or key
+    return text.format(**kwargs) if kwargs else text
+
+
+def format_duration(seconds: int | float | None) -> str:
+    if seconds is None or seconds < 0:
+        return tr("common.unknown")
+    seconds = int(seconds)
+    d, rest = divmod(seconds, 86400)
+    h, rest = divmod(rest, 3600)
+    m = rest // 60
+    if d:
+        return tr("duration.dhm", d=d, h=h, m=m)
+    if h:
+        return tr("duration.hm", h=h, m=m)
+    return tr("duration.m", m=m)
+
+
+def format_date(ts: int | None) -> str:
+    return time.strftime(tr("common.date"), time.localtime(ts)) if ts else tr("common.unknown")
+
+
+def format_datetime(ts: int | None) -> str:
+    return time.strftime(tr("common.datetime"), time.localtime(ts)) if ts else tr("common.unknown")

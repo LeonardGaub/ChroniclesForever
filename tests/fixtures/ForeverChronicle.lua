@@ -1,0 +1,356 @@
+
+ForeverChronicleDB = {
+	["addonVersion"] = "dev",
+	["characters"] = {
+		["Player-4619-0112A417"] = {
+			["info"] = {
+				["classFile"] = "HUNTER",
+				["className"] = "Hunter",
+				["clientBuild"] = "70374",
+				["clientVersion"] = "1.60.1",
+				["faction"] = "Horde",
+				["firstSeenAt"] = 1791961000,
+				["guid"] = "Player-4619-0112A417",
+				["identityQuality"] = "guid",
+				["key"] = "Player-4619-0112A417",
+				["lastSeenAt"] = 1792051000,
+				["level"] = 22,
+				["locale"] = "enUS",
+				["name"] = "Blind",
+				["nameSuffix"] = "Bullseye",
+				["raceFile"] = "Tauren",
+				["raceName"] = "Tauren",
+				["realm"] = "Classic Beta PvP",
+				["realmNormalized"] = "ClassicBetaPvP",
+			},
+			["state"] = {
+				["Travel"] = {
+					["known"] = {
+						["map:1413"] = {
+							["firstSeenAt"] = 1791961000,
+							["initial"] = true,
+						},
+					},
+				},
+			},
+			["stats"] = {
+				["achievements"] = 1,
+				["deaths"] = 1,
+				["levels_gained"] = 1,
+				["played_total"] = 74113,
+				["quests_completed"] = 1,
+				["screenshots"] = 1,
+				["sessions"] = 2,
+			},
+			["streams"] = {
+				["events"] = {
+					["dropped"] = 0,
+					["nextSeq"] = 7,
+					["records"] = {
+						{
+							["data"] = {
+								["level"] = 22,
+							},
+							["id"] = "6acf27a80002b2df060c0c9ee0",
+							["location"] = {
+								["mapID"] = 1413,
+								["quality"] = "exact",
+								["subzone"] = "Crossroads",
+								["x"] = 0.4403,
+								["y"] = 0.5913,
+								["zone"] = "The Barrens",
+							},
+							["seq"] = 1,
+							["serverTime"] = 1791961000,
+							["session"] = "6acf27a800018512d60ea397e0",
+							["time"] = 1791961000,
+							["type"] = "session_started",
+						}, -- [1]
+						{
+							["data"] = {
+								["money"] = 0,
+								["questID"] = 3513,
+								["title"] = "The Runaway Shipment",
+								["xp"] = 2550,
+							},
+							["id"] = "6acf27f10003b07eb608567de0",
+							["location"] = {
+								["mapID"] = 1413,
+								["quality"] = "exact",
+								["subzone"] = "Crossroads",
+								["x"] = 0.4403,
+								["y"] = 0.5913,
+								["zone"] = "The Barrens",
+							},
+							["seq"] = 2,
+							["serverTime"] = 1791961073,
+							["session"] = "6acf27a800018512d60ea397e0",
+							["time"] = 1791961073,
+							["type"] = "quest_completed",
+						}, -- [2]
+						{
+							["data"] = {
+							},
+							["id"] = "6acf280f000426dde600c8f4e8",
+							["location"] = {
+								["instanceID"] = 389,
+								["quality"] = "zone_only",
+								["zone"] = "Ragefire Chasm",
+							},
+							["seq"] = 3,
+							["serverTime"] = 1791961103,
+							["session"] = "6acf27a800018512d60ea397e0",
+							["time"] = 1791961103,
+							["type"] = "player_died",
+						}, -- [3]
+						{
+							["data"] = {
+								["level"] = 23,
+							},
+							["id"] = "6acf282d000539efcd04990a98",
+							["location"] = {
+								["mapID"] = 1413,
+								["quality"] = "exact",
+								["subzone"] = "Crossroads",
+								["x"] = 0.4403,
+								["y"] = 0.5913,
+								["zone"] = "The Barrens",
+							},
+							["seq"] = 4,
+							["serverTime"] = 1791961133,
+							["session"] = "6acf27a800018512d60ea397e0",
+							["time"] = 1791961133,
+							["type"] = "level_up",
+						}, -- [4]
+						{
+							["data"] = {
+								["achievementID"] = 6,
+								["icon"] = 236565,
+								["name"] = "Level 10",
+								["points"] = 10,
+							},
+							["id"] = "6acf282d0006ff3d8c0b5dcfc0",
+							["location"] = {
+								["mapID"] = 1413,
+								["quality"] = "exact",
+								["subzone"] = "Crossroads",
+								["x"] = 0.4403,
+								["y"] = 0.5913,
+								["zone"] = "The Barrens",
+							},
+							["seq"] = 5,
+							["serverTime"] = 1791961133,
+							["session"] = "6acf27a800018512d60ea397e0",
+							["time"] = 1791961133,
+							["type"] = "achievement_earned",
+						}, -- [5]
+						{
+							["data"] = {
+								["level"] = 22,
+							},
+							["id"] = "6ad087380002b2df060c0c9ee0",
+							["location"] = {
+								["mapID"] = 1413,
+								["quality"] = "exact",
+								["subzone"] = "Crossroads",
+								["x"] = 0.4403,
+								["y"] = 0.5913,
+								["zone"] = "The Barrens",
+							},
+							["seq"] = 6,
+							["serverTime"] = 1792051000,
+							["session"] = "6ad0873800018512d60ea397e0",
+							["time"] = 1792051000,
+							["type"] = "session_started",
+						}, -- [6]
+					},
+				},
+				["positions"] = {
+					["dropped"] = 0,
+					["nextSeq"] = 16,
+					["records"] = {
+						"1791961001,1413,0.4403,0.5913,1791961132,,", -- [1]
+						"1791961134,1413,0.4443,0.5883,1791961142,,", -- [2]
+						"1791961144,1413,0.4483,0.5853,1791961152,,", -- [3]
+						"1791961154,1413,0.4523,0.5823,1791961162,,", -- [4]
+						"1791961164,1413,0.4563,0.5793,1791961172,,", -- [5]
+						"1791961174,1413,0.4603,0.5763,1791961182,,", -- [6]
+						"1791961184,1413,0.4643,0.5733,1791961192,,", -- [7]
+						"1791961194,1413,0.4683,0.5703,1791961202,,", -- [8]
+						"1791961204,1413,0.4723,0.5673,1791961212,,", -- [9]
+						"1791961214,1413,0.4763,0.5643,1791961222,,", -- [10]
+						"1791961224,1413,0.4803,0.5613,1791961232,,", -- [11]
+						"1791961234,1413,0.4843,0.5583,1791961242,,", -- [12]
+						"1791961244,1413,0.4883,0.5553,1791961852,,", -- [13]
+						"1791962001,1413,0.4403,0.5913,1791962120,,", -- [14]
+						"1792051001,1413,0.4403,0.5913,1792051300,,", -- [15]
+					},
+				},
+				["screenshots"] = {
+					["dropped"] = 0,
+					["nextSeq"] = 2,
+					["records"] = {
+						{
+							["capturedAt"] = 1791961138,
+							["events"] = {
+								"6acf282d000539efcd04990a98", -- [1]
+								"6acf282d0006ff3d8c0b5dcfc0", -- [2]
+							},
+							["fileStamp"] = "101426_085858",
+							["id"] = "6acf28320007abdfac05ca49c0",
+							["requestedAt"] = 1791961133,
+							["seq"] = 1,
+							["status"] = "confirmed",
+							["trigger"] = "level",
+						}, -- [1]
+					},
+				},
+				["sessions"] = {
+					["dropped"] = 0,
+					["nextSeq"] = 3,
+					["records"] = {
+						{
+							["endLevel"] = 22,
+							["endReason"] = "logout",
+							["endedAt"] = 1791962120,
+							["id"] = "6acf27a800018512d60ea397e0",
+							["playedAt"] = 1791961010,
+							["playedLevel"] = 7574,
+							["playedTotal"] = 74113,
+							["reloads"] = 1,
+							["seq"] = 1,
+							["startLevel"] = 22,
+							["startedAt"] = 1791961000,
+						}, -- [1]
+						{
+							["endLevel"] = 22,
+							["endReason"] = "logout",
+							["endedAt"] = 1792051300,
+							["id"] = "6ad0873800018512d60ea397e0",
+							["playedAt"] = 1792051010,
+							["playedLevel"] = 7574,
+							["playedTotal"] = 74113,
+							["reloads"] = 0,
+							["seq"] = 2,
+							["startLevel"] = 22,
+							["startedAt"] = 1792051000,
+						}, -- [2]
+					},
+				},
+			},
+		},
+	},
+	["createdAt"] = 1791961000,
+	["diagnostics"] = {
+		["capabilities"] = {
+			["achievements"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961133,
+				["status"] = "confirmed",
+			},
+			["deaths"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961103,
+				["status"] = "confirmed",
+			},
+			["identity"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961000,
+				["status"] = "confirmed",
+			},
+			["level_up"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961133,
+				["status"] = "confirmed",
+			},
+			["played_time"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961010,
+				["status"] = "confirmed",
+			},
+			["positions"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961001,
+				["status"] = "confirmed",
+			},
+			["quests"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961073,
+				["status"] = "confirmed",
+			},
+			["screenshots"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961138,
+				["status"] = "confirmed",
+			},
+		},
+		["log"] = {
+			"2026-10-14 12:53:31 [info] capability confirmed: identity", -- [1]
+			"2026-10-14 12:53:31 [info] capability confirmed: positions", -- [2]
+			"2026-10-14 12:53:31 [info] capability confirmed: played_time", -- [3]
+			"2026-10-14 12:53:31 [info] capability confirmed: quests", -- [4]
+			"2026-10-14 12:53:31 [info] capability confirmed: deaths", -- [5]
+			"2026-10-14 12:53:31 [info] capability confirmed: level_up", -- [6]
+			"2026-10-14 12:53:31 [info] capability confirmed: achievements", -- [7]
+			"2026-10-14 12:53:31 [info] capability confirmed: screenshots", -- [8]
+		},
+	},
+	["maps"] = {
+		["1413"] = {
+			["build"] = "70374",
+			["continent"] = 1414,
+			["mapType"] = 3,
+			["maxX"] = 0.48,
+			["maxY"] = 0.78,
+			["minX"] = 0.4,
+			["minY"] = 0.7,
+			["name"] = "The Barrens",
+			["parent"] = 1414,
+		},
+		["1414"] = {
+			["build"] = "70374",
+			["mapType"] = 2,
+			["name"] = "Kalimdor",
+			["parent"] = 947,
+		},
+	},
+	["schemaVersion"] = 1,
+	["settings"] = {
+		["debug"] = false,
+		["language"] = "deDE",
+		["modules"] = {
+			["Character"] = {
+			},
+			["Positions"] = {
+				["enabled"] = true,
+				["interval"] = 2,
+				["rev"] = 2,
+			},
+			["Progress"] = {
+			},
+			["Screenshots"] = {
+				["bypass"] = true,
+				["capacity"] = 50,
+				["cooldown"] = 30,
+				["countdown"] = true,
+				["delay"] = 5,
+				["enabled"] = true,
+				["triggers"] = {
+					["achievement"] = true,
+					["death"] = false,
+					["level"] = true,
+					["quest"] = false,
+					["zone"] = true,
+				},
+			},
+			["Session"] = {
+				["autoPlayed"] = true,
+			},
+			["Travel"] = {
+				["dwellSeconds"] = 5,
+			},
+			["UI"] = {
+			},
+		},
+	},
+}

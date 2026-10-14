@@ -1,0 +1,7 @@
+{
+  "name": "forever-chronicle-addon-tests",
+  "private": true,
+  "description": "Runs the ForeverChronicle addon in a mocked WoW client (fengari Lua VM)",
+  "scripts": { "test": "node run.js" },
+  "dependencies": { "fengari": "^0.1.4" }
+}
