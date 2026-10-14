@@ -96,6 +96,7 @@ function CreateFrame(kind, name, parent, template)
   f.GetEffectiveScale = function() return 1 end
   f.GetLeft = function() return 0 end
   f.GetTop = function() return 0 end
+  f.GetCenter = function() return 0, 0 end
   f.SetScale = function(self, s) self.scale = s end
   f.CreateTexture = function() return newRegion() end
   f.GetChecked = function(self) return self.checked end
@@ -118,6 +119,7 @@ function MOCK.fire(event, ...)
 end
 
 UIParent = CreateFrame("Frame")
+Minimap = CreateFrame("Frame")
 ChatFrame1 = CreateFrame("Frame")
 ChatFrame1.AddMessage = function(_, m) table.insert(MOCK.chat, m) end
 MOCK.allEventsValid = true

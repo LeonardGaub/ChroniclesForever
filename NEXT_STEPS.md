@@ -55,6 +55,10 @@
     saved in `settings.overviewGraph`.
   - The screenshots stat tile was removed (addon and desktop). Storage bars are in 3 columns on the settings page.
   - The desktop app does not import the metrics stream yet (possible later: graphs over the full history).
+- **Addon v0.9.0: minimap button (user request).**
+  - Classic round button (`UI/MinimapButton.lua`). Left-click opens the window, right-click the settings; drag
+    to move it (the angle is saved). Option under Allgemein (on by default).
+  - The settings page is now scrollable (content height computed from the last storage bar).
 - **Desktop:** the icon overhaul was reverted at the user's request; text UI stays.
   - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
   - Open question for the user: real WoW icons for the desktop. Options: export from the local client with

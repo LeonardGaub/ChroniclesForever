@@ -115,6 +115,26 @@ if PHASE == 1 then
   SlashCmdList.FOREVERCHRONICLE("lang en")
   check(FC.L.TAB_OVERVIEW == "Overview", "language switched to English")
   check(#ForeverChronicleFrame.Tabs == 6 and ForeverChronicleFrame.Tabs[2].page.icon ~= nil, "icon tabs, one per page")
+
+  -- Minimap button: shown, clicks toggle the window / open settings, can be hidden, dragging saves the angle.
+  local mm = ForeverChronicleMinimapButton
+  check(mm and mm:IsShown(), "minimap button shown")
+  mm:GetScript("OnClick")(mm, "LeftButton")
+  check(not ForeverChronicleFrame:IsShown(), "left-click closes the window")
+  mm:GetScript("OnClick")(mm, "RightButton")
+  local settingsPage = FC.UI.pages[FC.UI.current]
+  check(ForeverChronicleFrame:IsShown() and settingsPage.id == "settings", "right-click opens the settings")
+  MOCK.cursorX, MOCK.cursorY = 0, 100
+  mm:GetScript("OnDragStart")(mm)
+  mm:GetScript("OnUpdate")(mm)
+  mm:GetScript("OnDragStop")(mm)
+  check(math.abs(FC.db.settings.modules.MinimapButton.angle - 90) < 1e-6, "dragging saves the angle")
+  FC.db.settings.modules.MinimapButton.show = false
+  FC:GetModule("MinimapButton"):Update()
+  check(not mm:IsShown(), "minimap button can be hidden")
+  FC.db.settings.modules.MinimapButton.show = true
+  FC:GetModule("MinimapButton"):Update()
+  FC.UI:SelectPage(1)
   local overview = FC.UI.pages[1]
   FC.UI:SelectPage(1)
   check(overview.name.text:find("Blind Bullseye", 1, true) ~= nil, "full name with last name: " .. tostring(overview.name.text))

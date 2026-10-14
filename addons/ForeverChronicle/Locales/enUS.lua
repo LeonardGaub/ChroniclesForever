@@ -132,6 +132,9 @@ FC:RegisterLocale("enUS", {
   OPT_AUTO_PLAYED = "Record played time at login",
   OPT_AUTO_PLAYED_TIP = "Asks the server for your played time once per login without printing it to chat.",
   OPT_DEBUG = "Diagnostic messages in chat",
+  OPT_MINIMAP = "Show minimap button",
+  OPT_MINIMAP_TIP = "A button on the edge of the minimap. Drag it to move it.",
+  MINIMAP_TIP = "Left-click: open/close the window\nRight-click: settings\nDrag: move",
   OPT_DEBUG_TIP = "Prints every diagnostic log entry to chat. Useful for troubleshooting.",
   HINT_COMMANDS = "/fc opens this window  \194\183  /fc help lists all commands",
 

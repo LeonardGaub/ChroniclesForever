@@ -132,6 +132,9 @@ FC:RegisterLocale("deDE", {
   OPT_AUTO_PLAYED = "Spielzeit beim Einloggen erfassen",
   OPT_AUTO_PLAYED_TIP = "Fragt einmal pro Login die Spielzeit beim Server ab, ohne sie im Chat auszugeben.",
   OPT_DEBUG = "Diagnosemeldungen im Chat",
+  OPT_MINIMAP = "Minimap-Symbol anzeigen",
+  OPT_MINIMAP_TIP = "Ein Symbol am Rand der Minimap. Zum Verschieben ziehen.",
+  MINIMAP_TIP = "Linksklick: Fenster öffnen/schließen\nRechtsklick: Einstellungen\nZiehen: verschieben",
   OPT_DEBUG_TIP = "Gibt jeden Eintrag des Diagnoseprotokolls im Chat aus. Hilfreich bei der Fehlersuche.",
   HINT_COMMANDS = "/fc öffnet dieses Fenster  \194\183  /fc help zeigt alle Befehle",
 

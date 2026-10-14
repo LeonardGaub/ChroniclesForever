@@ -7,7 +7,16 @@ local UI = FC.UI
 
 local page = { id = "settings", labelKey = "TAB_SETTINGS", icon = "Interface\\Icons\\INV_Misc_Gear_01", order = 80 }
 
-function page:Create(c)
+function page:Create(outer)
+  -- Scrollable, so modules can keep adding options without running out of room.
+  local scroll = CreateFrame("ScrollFrame", nil, outer, "UIPanelScrollFrameTemplate")
+  scroll:SetPoint("TOPLEFT", 0, -4)
+  scroll:SetPoint("BOTTOMRIGHT", -28, 4)
+  local c = CreateFrame("Frame", nil, scroll)
+  c:SetSize(770, 600)
+  scroll:SetScrollChild(c)
+  self.content = c
+
   self.controls = {}
   local anchor, offset = nil, 0
   for _, section in ipairs(FC.optionSections) do
@@ -56,14 +65,19 @@ end
 function page:Refresh()
   UI:SyncOptions(self.controls)
   local L = FC.L
+  local lowest
   for i, u in ipairs(FC.Storage:GetUsage()) do
-    local row = storageRow(self, self.container, i, u)
+    local row = storageRow(self, self.content, i, u)
+    lowest = row
     local ratio = u.cap > 0 and u.count / u.cap or 0
     row.label:SetText(L["STREAM_" .. u.name:upper()])
     row.bar:SetValue(ratio)
     if ratio >= 0.8 then row.bar:SetStatusBarColor(1, 0.5, 0) else row.bar:SetStatusBarColor(0.2, 0.6, 0.2) end
     row.bar.text:SetText(string.format("%s / %s", FC.Util.FormatNumber(u.count), FC.Util.FormatNumber(u.cap)))
   end
+  -- Scroll height = everything down to the last storage bar.
+  local top, bottom = self.content:GetTop(), lowest and lowest:GetBottom()
+  if top and bottom and top > bottom then self.content:SetHeight(top - bottom + 16) end
 end
 
 UI:RegisterPage(page)

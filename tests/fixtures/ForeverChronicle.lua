@@ -346,6 +346,10 @@ ForeverChronicleDB = {
 			},
 			["Metrics"] = {
 			},
+			["MinimapButton"] = {
+				["angle"] = 90.0,
+				["show"] = true,
+			},
 			["Positions"] = {
 				["enabled"] = true,
 				["interval"] = 2,
