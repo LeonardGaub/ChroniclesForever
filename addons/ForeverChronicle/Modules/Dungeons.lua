@@ -12,7 +12,8 @@
 -- Inside dungeons the client gives no map position (Phase 0: GetBestMapForUnit and UnitPosition return nil in
 -- Ragefire Chasm), so routes stop at the entrance. To find out what a dungeon map could show instead, the
 -- module probes once per instance and session what the client offers there and stores it account-wide in
--- FC.db.dungeonProbe[instanceID] (see docs/Dungeon_Maps.md). "/fj dungeon" prints the result.
+-- FC.db.dungeonProbe[instanceID] (see docs/Dungeon_Maps.md), including the sub-area names passed inside.
+-- "/fj dungeon" prints the result.
 
 local ADDON, FC = ...
 local Util = FC.Util
@@ -246,6 +247,8 @@ function Dungeons:Probe()
   end
   FC.db.dungeonProbe[tostring(instanceID)] = p
   FC.Diagnostics:Log("info", "dungeon probe: " .. self:Describe(p))
+  self.lastArea = nil
+  self:NoteArea()
 
   -- A position may only exist after moving away from the entrance.
   for _, delay in ipairs(PROBE_LATER) do
@@ -268,11 +271,27 @@ end
 
 function Dungeons:Describe(p)
   return string.format("%s (%s) map=%s via %s pos=%s art=%s floors=%s bosspins=%s journal=%s bosses=%s last=%s(%s) " ..
-    "finder=%s unitpos=%s facing=%s", tostring(p.name), tostring(p.kind), tostring(p.map), tostring(p.mapSource),
+    "finder=%s unitpos=%s facing=%s areas=%s", tostring(p.name), tostring(p.kind), tostring(p.map), tostring(p.mapSource),
     tostring(p.position or "none"), tostring(p.artTiles), tostring(p.floors), tostring(p.bossPins and #p.bossPins),
     tostring(p.journalID), tostring(p.journalBosses), tostring(p.lastBoss), tostring(p.lastEncounterID),
-    tostring(p.finderBosses), tostring(p.unitPosition), tostring(p.facing))
+    tostring(p.finderBosses), tostring(p.unitPosition), tostring(p.facing), tostring(p.areas and #p.areas or 0))
 end
+
+-- Sub-area names inside the instance ("time,name"), the coarsest "where in the dungeon" there is without a
+-- position. Recorded in the probe until it holds MAX_AREAS entries.
+local MAX_AREAS = 60
+function Dungeons:NoteArea()
+  local p = self:CurrentProbe()
+  if not p then return end
+  p.areas = p.areas or {}
+  local area = Util.SafeValue("string", GetSubZoneText)
+  if not area or area == "" then area = Util.SafeValue("string", GetMinimapZoneText) end
+  if not area or area == "" or area == self.lastArea or #p.areas >= MAX_AREAS then return end
+  self.lastArea = area
+  p.areas[#p.areas + 1] = time() .. "," .. area
+end
+Dungeons:RegisterEvent("ZONE_CHANGED", "NoteArea")
+Dungeons:RegisterEvent("ZONE_CHANGED_INDOORS", "NoteArea")
 
 local function probeSoon(self)
   if Util.SafeValues(IsInInstance) == true then FC:After(PROBE_DELAY, function() self:Probe() end) end

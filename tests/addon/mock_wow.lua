@@ -56,7 +56,7 @@ for e in ([[ADDON_LOADED PLAYER_LOGIN PLAYER_ENTERING_WORLD PLAYER_LOGOUT TIME_P
   LOADING_SCREEN_ENABLED LOADING_SCREEN_DISABLED SCREENSHOT_SUCCEEDED SCREENSHOT_FAILED
   PARTY_KILL PLAYER_XP_UPDATE PLAYER_TARGET_CHANGED UPDATE_MOUSEOVER_UNIT NAME_PLATE_UNIT_ADDED
   SKILL_LINES_CHANGED CHAT_MSG_SKILL TRADE_SKILL_SHOW TRADE_SKILL_LIST_UPDATE TRADE_SKILL_DATA_SOURCE_CHANGED
-  TRADE_SKILL_CLOSE NEW_RECIPE_LEARNED PLAYER_EQUIPMENT_CHANGED ENCOUNTER_START ENCOUNTER_END BOSS_KILL]]):gmatch("%S+") do
+  TRADE_SKILL_CLOSE NEW_RECIPE_LEARNED PLAYER_EQUIPMENT_CHANGED ENCOUNTER_START ENCOUNTER_END BOSS_KILL ZONE_CHANGED ZONE_CHANGED_INDOORS]]):gmatch("%S+") do
   VALID_EVENTS[e] = true
 end
 
@@ -171,7 +171,7 @@ function UnitLevel() return MOCK.level end
 function GetServerTime() return time() end
 function GetRealZoneText() return MOCK.zone or "The Barrens" end
 function UnitOnTaxi() return MOCK.taxi == true end
-function GetSubZoneText() if MOCK.instance then return "" end return MOCK.subzone or "Crossroads" end
+function GetSubZoneText() if MOCK.instance then return MOCK.instanceArea or "" end return MOCK.subzone or "Crossroads" end
 function IsInInstance() return MOCK.instance and true or false, MOCK.instance and "party" or "none" end
 function UnitPosition() if MOCK.instance then return nil, nil, nil, 389 end return -2382.5, -1838.6, 0, 1 end
 C_Map = {

@@ -764,6 +764,11 @@ if PHASE == 10 then
   check(probe and probe.map == 213 and probe.mapSource == "journal" and probe.position == nil and probe.artTiles == 12
     and probe.journalID == 226 and probe.journalBosses == 4 and probe.lastEncounterID == 1446 and #probe.bossPins == 2,
     "dungeon probe: map from the journal, no position, art, bosses (" .. FC:GetModule("Dungeons"):Describe(probe or {}) .. ")")
+  MOCK.instanceArea = "Molten Bridge"
+  MOCK.fire("ZONE_CHANGED_INDOORS")
+  MOCK.fire("ZONE_CHANGED")                                    -- same area again: not repeated
+  check(#probe.areas == 1 and probe.areas[1]:find(",Molten Bridge$"), "sub-area inside the dungeon noted")
+  MOCK.instanceArea = nil
   MOCK.fire("ENCOUNTER_START", 1443, "Oggleflint", 1, 5)
   MOCK.fire("ENCOUNTER_END", 1443, "Oggleflint", 1, 5, 1)
   MOCK.fire("BOSS_KILL", 1443, "Oggleflint")                   -- the same kill reported twice

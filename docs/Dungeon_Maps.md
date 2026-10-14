@@ -13,6 +13,16 @@ open questions, then one of the options below gets built.
   data, so the client's journal may not cover everything.
 - `EJ_GetInstanceInfo(journalInstanceID)` returns the dungeon's map ID (7th value) and instance ID (10th).
 
+## Probe results so far
+- **Ruins of Lordaeron (instance 2999, a new Forever dungeon), 2026-10-15:** no map at all (no
+  `GetBestMapForUnit`, no journal entry, no dungeon map of that name), no position, `UnitPosition` and
+  `GetPlayerFacing` restricted, `GetUnitSpeed` available, no dungeon finder data. No boss fight was seen.
+  Consequences: no path and no map art there; the last boss is unknown to the client, so "dungeon completed"
+  needs a built-in last-boss entry for this dungeon (learn its encounter ID from a full run).
+- **Ragefire Chasm (Phase 0):** no map ID, no position. Map art and journal not probed yet.
+- Still open: a Classic dungeon with the probe (map art, journal, explicit-map position), the encounter IDs of a
+  full run, and whether sub-area names exist inside dungeons (`areas`, added 2026-10-15).
+
 ## What the probe records (`FC.db.dungeonProbe[instanceID]`, `/fj dungeon`)
 Once per dungeon and session, a few seconds after entering:
 
@@ -27,6 +37,7 @@ Once per dungeon and session, a few seconds after entering:
 | `finderBosses` | The dungeon finder's boss count (killed/total), the fallback for the last boss. |
 | `unitPosition`, `facing` | Are `UnitPosition` and `GetPlayerFacing` restricted here as well? |
 | `encounters` | Encounter starts and kills with their IDs, to check the IDs match the journal. |
+| `areas` | Sub-area names passed inside (with time): a coarse "where in the dungeon" without a position. |
 
 ## Options, depending on the answers
 1. **A real path (only if `position` is set).** If the position works when the dungeon map is passed explicitly,
