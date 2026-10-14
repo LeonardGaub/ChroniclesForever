@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import time
 import zipfile
@@ -9,13 +10,25 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QGuiApplication
-from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton,
-                               QTableWidgetItem, QVBoxLayout)
+from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QInputDialog, QLabel, QMessageBox,
+                               QPushButton, QTableWidgetItem, QVBoxLayout)
 
 from ...i18n import format_datetime, tr
 from ...wow.map_art import available_art, import_map_art
 from .. import theme
 from ..widgets import Page, muted, table, value_label
+
+
+def backup_label(path: Path) -> str:
+    """'14.10.2026 15:30  ·  täglich' from chronicle-20261014-153000-daily.db."""
+    parts = path.stem.split("-", 3)
+    try:
+        when = format_datetime(int(time.mktime(time.strptime(parts[1] + parts[2], "%Y%m%d%H%M%S"))))
+    except (IndexError, ValueError):
+        return path.name
+    label = re.sub(r"-\d+$", "", parts[3]) if len(parts) > 3 else ""  # "manual-2": second in the same second
+    kind = tr("backup.kind.migration") if label.startswith("before-migration") else tr(f"backup.kind.{label}")
+    return f"{when}  ·  {kind if not kind.startswith('backup.kind.') else label}"
 
 
 class ImportPage(Page):
@@ -80,9 +93,12 @@ class ImportPage(Page):
         self.import_button.clicked.connect(self._import_jsonl)
         self.backup_button = QPushButton()
         self.backup_button.clicked.connect(self._backup_now)
+        self.restore_button = QPushButton()
+        self.restore_button.clicked.connect(self._restore)
         self.folder_button = QPushButton()
         self.folder_button.clicked.connect(self._open_backups)
-        for b in (self.export_button, self.import_button, self.backup_button, self.folder_button):
+        for b in (self.export_button, self.import_button, self.backup_button, self.restore_button,
+                  self.folder_button):
             buttons.addWidget(b)
         buttons.addStretch(1)
         bl.addLayout(buttons)
@@ -136,6 +152,7 @@ class ImportPage(Page):
         self.export_button.setText(tr("backup.export"))
         self.import_button.setText(tr("backup.import"))
         self.backup_button.setText(tr("backup.now"))
+        self.restore_button.setText(tr("backup.restore"))
         self.folder_button.setText(tr("backup.folder"))
         self.backup_hint.setText(tr("backup.hint"))
         backups = self.ctx.db.backups()
@@ -145,6 +162,7 @@ class ImportPage(Page):
         else:
             self.backup_label.setText(tr("backup.none"))
         self.backup_button.setEnabled(self.ctx.db.backup_dir is not None)
+        self.restore_button.setEnabled(bool(backups))
 
     def _fill_history(self) -> None:
         self.history.setHorizontalHeaderLabels([tr("import.col.when"), tr("import.col.source"),
@@ -256,6 +274,33 @@ class ImportPage(Page):
             return
         self.backup_message.setText(tr("backup.done", name=target.name) if target else "")
         self._refresh_backups()
+
+    def _restore(self) -> None:
+        backups = list(reversed(self.ctx.db.backups()))  # newest first
+        if not backups:
+            return
+        labels = [backup_label(p) for p in backups]
+        choice, ok = QInputDialog.getItem(self, tr("backup.restore_title"), tr("backup.restore_choose"), labels, 0,
+                                          False)
+        if not ok:
+            return
+        path = backups[labels.index(choice)]
+        if QMessageBox.question(self, tr("app.title"), tr("backup.restore_confirm", backup=choice)) \
+                != QMessageBox.StandardButton.Yes:
+            return
+        self.restore_selected(path)
+
+    def restore_selected(self, path: Path) -> None:
+        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            self.ctx.restore_backup(path)
+        except (OSError, sqlite3.Error, ValueError, RuntimeError) as exc:
+            self.backup_message.setText(tr("backup.restore_failed", message=str(exc)))
+            return
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+        self.backup_message.setText(tr("backup.restored", backup=backup_label(path)))
+        self.refresh()
 
     def _open_backups(self) -> None:
         folder = self.ctx.db.backup_dir

@@ -72,6 +72,12 @@ class AppContext(QObject):
             self.data_changed.emit()
         return result
 
+    def restore_backup(self, path: Path) -> Path | None:
+        """Replaces all data with a backup (the current state is backed up first)."""
+        before = self.db.restore(path)
+        self.data_changed.emit()
+        return before
+
     def match_screenshots(self) -> int:
         """Links screenshot records to files in the client's Screenshots folder."""
         client = self.client()

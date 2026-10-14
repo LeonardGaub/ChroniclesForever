@@ -107,6 +107,12 @@
     newest 5 are kept. The Import tab has a "Datensicherung" section: Exportieren, Export importieren,
     Jetzt sichern, Sicherungsordner öffnen.
   - Checked against a copy of the real database: 175 records round-trip; re-import changes nothing.
+- **Desktop v0.2.1: restore a backup (user request).** "Wiederherstellen …" on the Import tab: choose a backup
+  (newest first, with its time and kind), confirm, then all data is replaced (`Database.restore`, SQLite backup API
+  into the live connection). The current state is backed up first ("vor Wiederherstellen"), and the chosen file
+  is protected from the 5-copy rotation. Older backups are migrated afterwards. Backups from newer versions and
+  files that are not Forever Chronicle databases are refused. Backup file names are unique (counter when two
+  are made in the same second).
 - **Desktop:** the icon overhaul was reverted at the user's request; text UI stays.
   - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
   - Open question for the user: real WoW icons for the desktop. Options: export from the local client with
@@ -119,7 +125,7 @@
   - Map art: the user's 52 explored-zone maps were imported into `%APPDATA%\ForeverChronicle\maps\<uiMapID>.jpg`.
     The Import tab has "Kartenbilder importieren …". Coordinates were verified against real probe data
     (Orgrimmar/Cleft of Shadow, Kalimdor rectangle).
-- Tests: `tests/addon` (`npm test`: 14 queue tests and 11 phases) and `desktop` (`pytest`, 77 tests). All pass.
+- Tests: `tests/addon` (`npm test`: 14 queue tests and 11 phases) and `desktop` (`pytest`, 81 tests). All pass.
 - In-game confirmed by the user: window, import, Screenshots tab (v0.2.0). Not yet seen in game: v0.2.1 and v0.3.0 changes.
 
 ## Confirmed client facts

@@ -174,12 +174,25 @@ STRINGS: dict[str, dict[str, str]] = {
         "backup.status": "Letzte Sicherung: {when}  ·  {n} Sicherungen vorhanden (die neuesten 5 werden behalten)",
         "backup.none": "Noch keine Sicherung vorhanden.",
         "backup.hint": "Die Datenbank wird automatisch gesichert: einmal täglich beim Start, vor Updates der "
-                       "Datenbank und vor jedem Import einer Export-Datei. Der Export (JSONL) enthält alle Daten "
-                       "und eignet sich für den Umzug auf einen anderen PC; beim Import wird zusammengeführt.",
+                       "Datenbank, vor jedem Import einer Export-Datei und vor dem Wiederherstellen. Der Export "
+                       "(JSONL) enthält alle Daten und eignet sich für den Umzug auf einen anderen PC; beim Import "
+                       "wird zusammengeführt.",
         "backup.export": "Exportieren …",
         "backup.import": "Export importieren …",
         "backup.now": "Jetzt sichern",
         "backup.folder": "Sicherungsordner öffnen",
+        "backup.restore": "Wiederherstellen …",
+        "backup.restore_title": "Sicherung wiederherstellen",
+        "backup.restore_choose": "Welche Sicherung soll wiederhergestellt werden?",
+        "backup.restore_confirm": "Alle aktuellen Daten werden durch die Sicherung ersetzt:\n{backup}\n\n"
+                                  "Der aktuelle Stand wird vorher gesichert, du kannst also zurück. Fortfahren?",
+        "backup.restored": "Wiederhergestellt: {backup}. Der vorherige Stand wurde gesichert.",
+        "backup.restore_failed": "Wiederherstellen nicht möglich: {message}",
+        "backup.kind.daily": "täglich",
+        "backup.kind.manual": "manuell",
+        "backup.kind.before-jsonl-import": "vor Import",
+        "backup.kind.before-restore": "vor Wiederherstellen",
+        "backup.kind.migration": "vor Datenbank-Update",
         "backup.export_title": "Export speichern",
         "backup.import_title": "Export-Datei wählen",
         "backup.exported": "{records} Datensätze von {characters} Charakter(en) exportiert: {path}",
@@ -392,13 +405,25 @@ STRINGS: dict[str, dict[str, str]] = {
         "backup.group": "Backups",
         "backup.status": "Last backup: {when}  ·  {n} backups available (the newest 5 are kept)",
         "backup.none": "No backup yet.",
-        "backup.hint": "The database is backed up automatically: once a day at start, before database updates "
-                       "and before every import of an export file. The export (JSONL) contains all data and is "
-                       "meant for moving to another PC; importing it merges.",
+        "backup.hint": "The database is backed up automatically: once a day at start, before database updates, "
+                       "before every import of an export file and before a restore. The export (JSONL) contains "
+                       "all data and is meant for moving to another PC; importing it merges.",
         "backup.export": "Export …",
         "backup.import": "Import export …",
         "backup.now": "Back up now",
         "backup.folder": "Open backup folder",
+        "backup.restore": "Restore …",
+        "backup.restore_title": "Restore backup",
+        "backup.restore_choose": "Which backup should be restored?",
+        "backup.restore_confirm": "All current data will be replaced by the backup:\n{backup}\n\n"
+                                  "The current state is backed up first, so you can go back. Continue?",
+        "backup.restored": "Restored: {backup}. The previous state was backed up.",
+        "backup.restore_failed": "Restore not possible: {message}",
+        "backup.kind.daily": "daily",
+        "backup.kind.manual": "manual",
+        "backup.kind.before-jsonl-import": "before import",
+        "backup.kind.before-restore": "before restore",
+        "backup.kind.migration": "before database update",
         "backup.export_title": "Save export",
         "backup.import_title": "Choose export file",
         "backup.exported": "Exported {records} records of {characters} character(s): {path}",

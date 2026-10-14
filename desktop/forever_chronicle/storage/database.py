@@ -282,12 +282,17 @@ class Database:
             self.conn.rollback()
             raise
 
-    def backup(self, label: str) -> Path | None:
-        """Copy the database to the backup folder, keeping the newest KEEP_BACKUPS copies."""
+    def backup(self, label: str, protect: Path | None = None) -> Path | None:
+        """Copy the database to the backup folder, keeping the newest KEEP_BACKUPS copies (and `protect`)."""
         if not self.backup_dir:
             return None
         self.backup_dir.mkdir(parents=True, exist_ok=True)
-        target = self.backup_dir / f"{self.path.stem}-{time.strftime('%Y%m%d-%H%M%S')}-{label}.db"
+        stamp = time.strftime('%Y%m%d-%H%M%S')
+        target = self.backup_dir / f"{self.path.stem}-{stamp}-{label}.db"
+        n = 1
+        while target.exists():  # never overwrite a backup made in the same second (e.g. the one being restored)
+            n += 1
+            target = self.backup_dir / f"{self.path.stem}-{stamp}-{label}-{n}.db"
         dest = sqlite3.connect(target)
         try:
             self.conn.backup(dest)
@@ -295,8 +300,35 @@ class Database:
             dest.close()
         backups = sorted(self.backup_dir.glob(f"{self.path.stem}-*.db"))
         for old in backups[:-KEEP_BACKUPS]:
-            old.unlink(missing_ok=True)
+            if protect is None or old.resolve() != protect.resolve():
+                old.unlink(missing_ok=True)
         return target
+
+    def restore(self, source: Path) -> Path | None:
+        """Replaces the database contents with a backup. The current state is backed up first (the chosen
+        backup is never removed by that). Older backups are migrated to the current schema afterwards.
+        Returns the backup of the state before the restore. Raises ValueError for unusable files."""
+        try:
+            src = sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True)
+        except sqlite3.Error as exc:
+            raise ValueError(str(exc)) from exc
+        try:
+            try:
+                version = src.execute("PRAGMA user_version").fetchone()[0]
+                has_characters = src.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'characters'").fetchone()
+            except sqlite3.DatabaseError as exc:
+                raise ValueError(f"not a Forever Chronicle backup ({exc})") from exc
+            if not has_characters or version < 1:
+                raise ValueError("not a Forever Chronicle backup")
+            if version > SCHEMA_VERSION:
+                raise ValueError(f"backup schema {version} is newer than this app ({SCHEMA_VERSION})")
+            before = self.backup("before-restore", protect=source)
+            src.backup(self.conn)
+        finally:
+            src.close()
+        self._migrate(existed=True)
+        return before
 
     def backups(self) -> list[Path]:
         """Backup files, oldest first (the names start with a sortable timestamp)."""

@@ -65,6 +65,10 @@ def test_main_window_with_data(app, db, tmp_path, monkeypatch, addon_fixture):
     assert import_page.backup_box.title() == "Datensicherung" and import_page.backup_label.text()
     import_page._backup_now()
     assert import_page.backup_message.text().startswith("Gesichert: ") and "Letzte Sicherung" in import_page.backup_label.text()
+    assert import_page.restore_button.isEnabled()
+    import_page.restore_selected(db.backups()[-1])
+    assert import_page.backup_message.text().startswith("Wiederhergestellt: ") and "manuell" in import_page.backup_message.text()
+    assert window.characters.count() == 1
 
     i18n.set_language("en")
     assert window.tabs.tabText(0) == "Overview"

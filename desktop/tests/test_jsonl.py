@@ -153,3 +153,74 @@ def test_daily_backup(other_db):
     old = time.time() - 2 * 24 * 3600
     os.utime(first, (old, old))
     assert other_db.backup_if_older(24 * 3600, "daily") is not None   # older than a day: back up again
+
+
+def test_restore_backup(filled, tmp_path):
+    db = filled
+    before_counts = counts(db)
+    chosen = db.backup("manual")
+    with db.transaction():
+        db.conn.execute("DELETE FROM events")
+        db.conn.execute("UPDATE characters SET name = 'Changed'")
+    previous = db.restore(chosen)
+    assert counts(db) == before_counts and db.conn.execute("SELECT name FROM characters").fetchone()[0] == "Blind"
+    assert previous is not None and "before-restore" in previous.name
+    # The state before the restore can itself be restored.
+    db.restore(previous)
+    assert db.conn.execute("SELECT name FROM characters").fetchone()[0] == "Changed"
+
+
+def test_restore_keeps_the_chosen_backup_when_rotating(other_db):
+    paths = []
+    for i in range(KEEP_BACKUPS):
+        paths.append(other_db.backup(f"manual{i}"))
+        time.sleep(1.01 if i == 0 else 0)  # distinct timestamps: the first one is the oldest
+    oldest = other_db.backups()[0]
+    other_db.restore(oldest)
+    assert oldest.exists(), "the chosen backup must not be removed by the backup made before restoring"
+
+
+def test_restore_migrates_older_backups_and_refuses_bad_files(other_db, tmp_path):
+    import sqlite3
+    from forever_chronicle.storage.database import MIGRATIONS, SCHEMA_VERSION
+    old = tmp_path / "old.db"
+    conn = sqlite3.connect(old)
+    for script in MIGRATIONS[:4]:
+        conn.executescript(script)
+    conn.execute("PRAGMA user_version = 4")
+    conn.execute("INSERT INTO characters (character_id, natural_key, identity_quality, name, created_at) "
+                 "VALUES ('c1', 'Player-1', 'guid', 'Oldie', 1)")
+    conn.commit()
+    conn.close()
+    other_db.restore(old)
+    assert other_db.version == SCHEMA_VERSION
+    assert other_db.conn.execute("SELECT name FROM characters").fetchone()[0] == "Oldie"
+    assert other_db.conn.execute("SELECT COUNT(*) FROM recipes").fetchone()[0] == 0  # migrated tables exist
+
+    garbage = tmp_path / "garbage.db"
+    garbage.write_bytes(b"this is not a database at all" * 100)
+    newer = tmp_path / "newer.db"
+    c = sqlite3.connect(newer)
+    c.execute("CREATE TABLE characters (x)")
+    c.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
+    c.commit()
+    c.close()
+    empty = tmp_path / "empty.db"
+    sqlite3.connect(empty).close()
+    for bad, reason in ((garbage, "not a Forever Chronicle"), (newer, "newer"), (empty, "not a Forever Chronicle")):
+        with pytest.raises(ValueError, match=reason):
+            other_db.restore(bad)
+    assert other_db.conn.execute("SELECT name FROM characters").fetchone()[0] == "Oldie"  # untouched
+
+
+def test_backup_names_are_unique_and_labelled(other_db):
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from forever_chronicle.ui.pages.import_page import backup_label
+    a, b = other_db.backup("manual"), other_db.backup("manual")
+    assert a != b and a.exists() and b.exists()           # same second: the second one gets a counter
+    assert backup_label(b).endswith("·  manuell") and backup_label(a).endswith("·  manuell")
+    from pathlib import Path
+    assert backup_label(Path("chronicle-20261014-153000-before-migration-4-to-7.db")) == \
+        "14.10.2026 15:30  ·  vor Datenbank-Update"
+    assert backup_label(Path("weird.db")) == "weird.db"
