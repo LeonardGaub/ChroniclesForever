@@ -18,7 +18,7 @@ local Shots = FC:NewModule("Screenshots", { order = 50, defaults = {
   cooldown = 30,
   bypass = true,
   capacity = 50,
-  triggers = { level = true, achievement = true, zone = true, quest = false, death = false },
+  triggers = { level = true, achievement = true, rare = true, zone = true, quest = false, death = false },
 } })
 
 FC.Storage:DefineStream("screenshots", 2000, "Interface\\Icons\\INV_Misc_Spyglass_02")
@@ -48,6 +48,8 @@ end
 Shots:RegisterTrigger("manual", { priority = 1, maxAge = 30, alwaysBypass = true, always = true })
 Shots:RegisterTrigger("level", { eventType = "level_up", priority = 2, maxAge = 15, bypassable = true,
   identity = function(r) return "level:" .. tostring(r.data.level) end })
+Shots:RegisterTrigger("rare", { eventType = "rare_killed", priority = 3, maxAge = 20, bypassable = true,
+  identity = function(r) return "rare:" .. tostring(r.data.guid) end })
 Shots:RegisterTrigger("achievement", { eventType = "achievement_earned", priority = 3, maxAge = 15,
   bypassable = true, identity = function(r) return "achievement:" .. tostring(r.data.achievementID) end })
 Shots:RegisterTrigger("zone", { eventType = "zone_discovered", priority = 4, maxAge = 60,
@@ -260,15 +262,15 @@ local function settings() return Shots:GetSettings() end
 FC:RegisterOptionSection("screenshots", "SECTION_SHOT_TRIGGERS", 20, "Interface\\Icons\\INV_Misc_Spyglass_02")
 FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_ENABLED", order = 1,
   get = function() return settings().enabled end, set = function(v) settings().enabled = v end })
-for i, name in ipairs({ "level", "achievement", "zone", "quest", "death" }) do
+for i, name in ipairs({ "level", "achievement", "rare", "zone", "quest", "death" }) do
   FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_" .. name:upper(), order = 1 + i,
     get = function() return settings().triggers[name] end, set = function(v) settings().triggers[name] = v end })
 end
 FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_HIDE_UI",
-  tooltipKey = "OPT_SHOT_HIDE_UI_TIP", order = 7,
+  tooltipKey = "OPT_SHOT_HIDE_UI_TIP", order = 8,
   get = function() return settings().hideUI end, set = function(v) settings().hideUI = v end })
 FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_COUNTDOWN",
-  tooltipKey = "OPT_SHOT_COUNTDOWN_TIP", order = 8,
+  tooltipKey = "OPT_SHOT_COUNTDOWN_TIP", order = 9,
   get = function() return settings().countdown end, set = function(v) settings().countdown = v end })
 FC:RegisterOption({ section = "screenshots", column = 2, type = "choice", labelKey = "OPT_SHOT_DELAY", order = 9,
   choices = { { value = 0, text = "0 s" }, { value = 2, text = "2 s" }, { value = 5, text = "5 s" }, { value = 10, text = "10 s" } },
@@ -294,7 +296,7 @@ local function printStatus()
   local s = settings()
   FC:Print(string.format(L.SHOT_STATUS_LINE, onOff(s.enabled), Shots.queue:Count(), s.delay, s.cooldown, onOff(s.bypass)))
   local parts = {}
-  for _, name in ipairs({ "level", "achievement", "zone", "quest", "death" }) do
+  for _, name in ipairs({ "level", "achievement", "rare", "zone", "quest", "death" }) do
     parts[#parts + 1] = L["TRIGGER_" .. name:upper()] .. ": " .. onOff(s.triggers[name])
   end
   FC:Print("  " .. table.concat(parts, ", "))

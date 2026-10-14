@@ -71,3 +71,5 @@ register(EventType("player_died", "evt.player_died", "☠", "#ff4040", _died))
 register(EventType("zone_discovered", "evt.zone_discovered", "⚑", "#69ccf0",
                    lambda e: tr("evt.zone_discovered.text", zone=e.payload.get("zone") or e.zone_name or "?")))
 register(EventType("achievement_earned", "evt.achievement_earned", "★", "#ff8000", _achievement))
+register(EventType("rare_killed", "evt.rare_killed", "◆", "#c0c0c0",
+                   lambda e: tr("evt.rare_killed.text", name=e.payload.get("name") or "?")))

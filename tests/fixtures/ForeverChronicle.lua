@@ -342,6 +342,8 @@ ForeverChronicleDB = {
 			},
 			["Progress"] = {
 			},
+			["Rares"] = {
+			},
 			["Screenshots"] = {
 				["bypass"] = true,
 				["capacity"] = 50,
@@ -355,6 +357,7 @@ ForeverChronicleDB = {
 					["death"] = false,
 					["level"] = true,
 					["quest"] = false,
+					["rare"] = true,
 					["zone"] = true,
 				},
 			},

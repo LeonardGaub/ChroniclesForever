@@ -67,6 +67,7 @@ const oldSettings = interval =>
 runPhase(7, oldSettings(10), 0);
 runPhase(8, oldSettings(5), 0);
 runPhase(9, null, 0);
+runPhase(10, null, 0);
 
 const fixtures = path.join(__dirname, '..', 'fixtures');
 fs.mkdirSync(fixtures, { recursive: true });

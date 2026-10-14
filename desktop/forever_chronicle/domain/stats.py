@@ -106,6 +106,7 @@ def _counter(key: str) -> Callable[[Repository, str], Any]:
 
 register(Stat("kills", "stats.kills", 18, _counter("kills")))
 register(Stat("xp_earned", "stats.xp_earned", 19, _counter("xp_earned")))
+register(Stat("rares", "stats.rares", 20, lambda r, c: r.count_events(c, "rare_killed")))
 register(Stat("quests", "stats.quests", 21, lambda r, c: r.count_events(c, "quest_completed")))
 register(Stat("quests_per_hour", "stats.quests_per_hour", 22, _per_hour("quest_completed")))
 register(Stat("deaths", "stats.deaths", 23, lambda r, c: r.count_events(c, "player_died")))

@@ -54,7 +54,7 @@ local VALID_EVENTS = {}
 for e in ([[ADDON_LOADED PLAYER_LOGIN PLAYER_ENTERING_WORLD PLAYER_LOGOUT TIME_PLAYED_MSG PLAYER_LEVEL_UP
   QUEST_TURNED_IN PLAYER_DEAD ACHIEVEMENT_EARNED ZONE_CHANGED_NEW_AREA PLAYER_CONTROL_GAINED
   LOADING_SCREEN_ENABLED LOADING_SCREEN_DISABLED SCREENSHOT_SUCCEEDED SCREENSHOT_FAILED
-  PARTY_KILL PLAYER_XP_UPDATE]]):gmatch("%S+") do
+  PARTY_KILL PLAYER_XP_UPDATE PLAYER_TARGET_CHANGED UPDATE_MOUSEOVER_UNIT NAME_PLATE_UNIT_ADDED]]):gmatch("%S+") do
   VALID_EVENTS[e] = true
 end
 
@@ -143,8 +143,15 @@ C_MapExplorationInfo = {
 MOCK.level = 22
 function GetBuildInfo() return "1.60.1", "70374", "Oct 12 2026", 16001 end
 function GetLocale() return "enUS" end
-function UnitGUID(u) if u == "player" then return "Player-4619-0112A417" end return SECRET end
-function UnitName() return "Blind", "Bullseye" end
+MOCK.units = {}
+function UnitGUID(u)
+  if u == "player" then return "Player-4619-0112A417" end
+  if MOCK.units[u] then return MOCK.units[u].guid end
+  return SECRET
+end
+function UnitClassification(u) return MOCK.units[u] and MOCK.units[u].classification or "normal" end
+function UnitIsDead(u) return MOCK.units[u] and MOCK.units[u].dead or false end
+function UnitName(u) if MOCK.units[u] then return MOCK.units[u].name end return "Blind", "Bullseye" end
 function GetRealmName() return "Classic Beta PvP" end
 function GetNormalizedRealmName() return "ClassicBetaPvP" end
 function UnitClass() return "Hunter", "HUNTER", 3 end

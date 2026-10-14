@@ -40,6 +40,13 @@
   - Character model (PlayerModel, drag to rotate) with 19 gear slots like the Classic character window
     (quality borders, item tooltips).
   - Storage bars moved to Einstellungen (own section).
+- **Addon v0.7.0: rare kills (user request).**
+  - The `Rares` module remembers rares and rare elites seen as target, mouseover or nameplate, by GUID.
+    `PARTY_KILL` of one of them records a `rare_killed` event (name, NPC ID). If the GUIDs are secret, the dead
+    rare target is used instead.
+  - New stat "Seltene Gegner". New screenshot trigger "rare" (on by default, priority 3, skips the cooldown like
+    level/achievement; `/fcshot rare on|off`). The desktop shows the event and the stat.
+  - `PARTY_KILL` is still unverified in Forever.
 - **Desktop:** the icon overhaul was reverted at the user's request; text UI stays.
   - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
   - Open question for the user: real WoW icons for the desktop. Options: export from the local client with

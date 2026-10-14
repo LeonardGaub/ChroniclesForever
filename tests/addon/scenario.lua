@@ -436,4 +436,61 @@ if PHASE == 9 then
   check(errors == 0, "no errors logged")
 end
 
+if PHASE == 10 then
+  print("phase 10: rare enemies")
+  local FC = startClient(true, false)
+  local char = ForeverChronicleDB.characters["Player-4619-0112A417"]
+  local function rareEvents()
+    local out = {}
+    for _, r in ipairs(char.streams.events.records) do if r.type == "rare_killed" then out[#out + 1] = r end end
+    return out
+  end
+  local me = "Player-4619-0112A417"
+  MOCK.advance(2)
+
+  -- Rare as target, killed.
+  local rare = "Creature-0-4619-1-1-3398-00001A2B"
+  MOCK.units.target = { guid = rare, classification = "rareelite", name = "Gesharahan" }
+  MOCK.fire("PLAYER_TARGET_CHANGED")
+  MOCK.fire("PARTY_KILL", me, rare)
+  local events = rareEvents()
+  check(#events == 1 and events[1].data.name == "Gesharahan" and events[1].data.npcID == 3398,
+    "rare kill recorded with name and NPC ID")
+  check(char.stats.rares_killed == 1, "rare stat counted")
+  check(FC:DescribeEvent(events[1]) == "Seltenen Gegner besiegt: Gesharahan", "chronicle text")
+  MOCK.advance(6)
+  local shots = char.streams.screenshots.records
+  check(shots[#shots].trigger == "rare" and shots[#shots].status == "confirmed", "screenshot for the rare kill")
+
+  MOCK.fire("PARTY_KILL", me, rare)
+  check(#rareEvents() == 1, "a second kill report for the same rare is ignored")
+
+  -- Normal mob: no event.
+  MOCK.units.target = { guid = "Creature-0-4619-1-1-3035-00002222", classification = "normal", name = "Plainstrider" }
+  MOCK.fire("PLAYER_TARGET_CHANGED")
+  MOCK.fire("PARTY_KILL", me, "Creature-0-4619-1-1-3035-00002222")
+  check(#rareEvents() == 1, "normal mobs are not rare kills")
+
+  -- Rare only seen on a nameplate.
+  local rare2 = "Creature-0-4619-1-1-5865-00003333"
+  MOCK.units.nameplate3 = { guid = rare2, classification = "rare", name = "Dishu" }
+  MOCK.fire("NAME_PLATE_UNIT_ADDED", "nameplate3")
+  MOCK.fire("PARTY_KILL", me, rare2)
+  check(#rareEvents() == 2, "rare seen on a nameplate")
+
+  -- GUIDs hidden (secret): the dead rare target is used.
+  local rare3 = "Creature-0-4619-1-1-3470-00004444"
+  MOCK.units.target = { guid = rare3, classification = "rare", name = "Rathorian", dead = true }
+  MOCK.fire("PARTY_KILL", MOCK.SECRET, MOCK.SECRET)
+  check(#rareEvents() == 3 and rareEvents()[3].data.name == "Rathorian", "fallback when GUIDs are hidden")
+
+  -- Trigger can be switched off.
+  SlashCmdList.FOREVERCHRONICLESHOT("rare off")
+  check(FC:GetModule("Screenshots"):GetSettings().triggers.rare == false, "/fcshot rare off")
+
+  local errors = 0
+  for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
+  check(errors == 0, "no errors logged")
+end
+
 print("PHASE " .. PHASE .. " PASSED")

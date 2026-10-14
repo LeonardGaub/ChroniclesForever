@@ -181,7 +181,7 @@ FC:RegisterLocale("deDE", {
   SHOT_TEST_QUEUED = "Test-Screenshot angefordert.",
   SHOT_SET_OK = "Einstellung gespeichert.",
   SHOT_API_LINE = "Screenshot-API: %s  \194\183  SCREENSHOT_SUCCEEDED: %s  \194\183  SCREENSHOT_FAILED: %s",
-  SHOT_USAGE = "/fcshot status | api | test | on | off | level|achievement|zone|quest|death on|off | delay <s> | cooldown <s> | dwell <s> | bypass on|off",
+  SHOT_USAGE = "/fcshot status | api | test | on | off | level|achievement|rare|zone|quest|death on|off | delay <s> | cooldown <s> | dwell <s> | bypass on|off",
   CMD_SHOT = "Screenshot-Einstellungen (wie /fcshot)",
   SHOT_STATUS_API_CALLED = "aufgenommen",
   SHOT_STATUS_CONFIRMED = "gespeichert",
@@ -197,4 +197,9 @@ FC:RegisterLocale("deDE", {
   TRIGGER_ZONE = "Neues Gebiet",
   TRIGGER_QUEST = "Quest",
   TRIGGER_DEATH = "Tod",
+  TRIGGER_RARE = "Seltener Gegner",
+  OPT_SHOT_RARE = "Bei seltenen Gegnern",
+  EVT_RARE_KILLED = "Seltenen Gegner besiegt: %s",
+  STAT_RARES = "Seltene Gegner",
+  CAP_RARES = "Seltene Gegner",
 })
