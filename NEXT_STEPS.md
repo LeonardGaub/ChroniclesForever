@@ -148,6 +148,19 @@
     missing, and compare hashes without that file (the desktop app owns it in the game folder).
   - Tests: desktop `test_battlenet`, `test_friends_data` (writes `tests/fixtures/FriendsData.lua`); addon
     phase 12 loads that fixture.
+- **Package for friends (user request).** `tools/package_for_friend.py` builds `dist/ForeverChronicle-<version>.zip`
+  (about 28 MB; too big for Discord's free 10 MB limit, so share it via OneDrive, Google Drive or similar). It
+  contains the addon, the desktop app source, `Forever Chronicle starten.bat`, `LIES MICH.txt` and the 52 map images
+  from `%APPDATA%\ForeverChronicle\maps` (bundled as `desktop/forever_chronicle/maps/`, never in git; `map_art`
+  uses the user's own images first, then the bundled ones).
+  - The batch finds Python 3.11+ (py launcher, PATH or the per-user install folder), offers
+    `winget install Python.Python.3.12 --scope user`, and creates the venv in `%LOCALAPPDATA%\ForeverChronicle\venv`
+    (short path; a deep unzip folder hit the 260-character limit). It installs `PySide6-Essentials` once (the
+    app only uses QtCore, QtGui and QtWidgets), runs `python -m forever_chronicle.setup_addon` (finds the game via
+    the settings, Battle.net or the drive scan; asks for the folder otherwise; mirrors the addon and keeps
+    `Friends\FriendsData.lua`), then starts the app. `FC_SETUP_ONLY=1` skips the start (for testing).
+  - Not yet tested end to end on a clean PC (Python install and pip download). The Python parts are covered by
+    `tests/test_package.py`.
 - **Desktop:** the icon overhaul was reverted at the user's request; text UI stays.
   - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
   - Open question for the user: real WoW icons for the desktop. Options: export from the local client with
@@ -160,7 +173,7 @@
   - Map art: the user's 52 explored-zone maps were imported into `%APPDATA%\ForeverChronicle\maps\<uiMapID>.jpg`.
     The Import tab has "Kartenbilder importieren …". Coordinates were verified against real probe data
     (Orgrimmar/Cleft of Shadow, Kalimdor rectangle).
-- Tests: `tests/addon` (`npm test`: 14 queue tests and 12 phases) and `desktop` (`pytest`, 98 tests). All pass.
+- Tests: `tests/addon` (`npm test`: 14 queue tests and 12 phases) and `desktop` (`pytest`, 102 tests). All pass.
 - In-game confirmed by the user: window, import, Screenshots tab (v0.2.0). Not yet seen in game: v0.2.1 and v0.3.0 changes.
 
 ## Confirmed client facts

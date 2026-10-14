@@ -1,9 +1,12 @@
-"""Map artwork provided by the user (private use, not distributed).
+"""Map artwork provided by the user (private use; never in git).
 
 Artwork lives in ``<app home>/maps/<uiMapID>.jpg|png``. ``import_map_art`` copies the fully explored zone
 images from the user's archive (a .zip or a folder containing "Explored zones/<name>.jpg") into that folder,
 renamed by uiMapID. Only known image names are taken; nothing from the archive is executed or extracted
 under its own path.
+
+The package for friends (tools/package_for_friend.py) bundles the images as ``forever_chronicle/maps/`` next
+to the code. Lookups use the user's own folder first, then the bundled images.
 """
 
 from __future__ import annotations
@@ -23,23 +26,35 @@ def art_dir() -> Path:
     return app_home() / "maps"
 
 
+def bundled_dir() -> Path:
+    """Images shipped with the app (friend package); absent in the development checkout."""
+    return Path(__file__).resolve().parents[1] / "maps"
+
+
+def _folders(folder: Path | None) -> list[Path]:
+    return [folder] if folder is not None else [art_dir(), bundled_dir()]
+
+
 def find_art(map_id: int | None, folder: Path | None = None) -> Path | None:
     if map_id is None:
         return None
-    folder = folder or art_dir()
-    for ext in (".jpg", ".png", ".jpeg"):
-        path = folder / f"{map_id}{ext}"
-        if path.is_file():
-            return path
+    for base in _folders(folder):
+        for ext in (".jpg", ".png", ".jpeg"):
+            path = base / f"{map_id}{ext}"
+            if path.is_file():
+                return path
     return None
 
 
 def available_art(folder: Path | None = None) -> set[int]:
-    folder = folder or art_dir()
-    try:
-        return {int(p.stem) for p in folder.iterdir() if p.stem.isdigit() and p.suffix.lower() in IMAGE_EXTENSIONS}
-    except OSError:
-        return set()
+    found: set[int] = set()
+    for base in _folders(folder):
+        try:
+            found |= {int(p.stem) for p in base.iterdir()
+                      if p.stem.isdigit() and p.suffix.lower() in IMAGE_EXTENSIONS}
+        except OSError:
+            pass
+    return found
 
 
 def _looks_like_image(data: bytes) -> bool:
