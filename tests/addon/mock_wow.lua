@@ -7,7 +7,7 @@ MOCK = { now = 1000, timers = {}, chat = {}, eventFrames = {}, SECRET = SECRET, 
 function issecretvalue(v) return v == SECRET end
 function GetTime() return MOCK.now end
 function time() return MOCK.clock + math.floor(MOCK.now) end
-date = os.date
+function date(fmt, t) return os.date(fmt, t or time()) end -- mock clock, keeps fixtures deterministic
 unpack = table.unpack
 function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 tinsert = table.insert

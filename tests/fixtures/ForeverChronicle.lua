@@ -285,14 +285,14 @@ ForeverChronicleDB = {
 			},
 		},
 		["log"] = {
-			"2026-10-14 12:53:31 [info] capability confirmed: identity", -- [1]
-			"2026-10-14 12:53:31 [info] capability confirmed: positions", -- [2]
-			"2026-10-14 12:53:31 [info] capability confirmed: played_time", -- [3]
-			"2026-10-14 12:53:31 [info] capability confirmed: quests", -- [4]
-			"2026-10-14 12:53:31 [info] capability confirmed: deaths", -- [5]
-			"2026-10-14 12:53:31 [info] capability confirmed: level_up", -- [6]
-			"2026-10-14 12:53:31 [info] capability confirmed: achievements", -- [7]
-			"2026-10-14 12:53:31 [info] capability confirmed: screenshots", -- [8]
+			"2026-10-14 08:56:40 [info] capability confirmed: identity", -- [1]
+			"2026-10-14 08:56:41 [info] capability confirmed: positions", -- [2]
+			"2026-10-14 08:56:50 [info] capability confirmed: played_time", -- [3]
+			"2026-10-14 08:57:53 [info] capability confirmed: quests", -- [4]
+			"2026-10-14 08:58:23 [info] capability confirmed: deaths", -- [5]
+			"2026-10-14 08:58:53 [info] capability confirmed: level_up", -- [6]
+			"2026-10-14 08:58:53 [info] capability confirmed: achievements", -- [7]
+			"2026-10-14 08:58:58 [info] capability confirmed: screenshots", -- [8]
 		},
 	},
 	["maps"] = {
