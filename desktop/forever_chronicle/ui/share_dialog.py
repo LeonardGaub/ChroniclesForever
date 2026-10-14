@@ -1,5 +1,6 @@
 """Share dialog: pick my characters, the categories per character and the screenshots to share
-(docs/Sharing_Design.md). Nothing is pre-selected for screenshots; they can show chat."""
+(docs/Sharing_Design.md). Nothing is pre-selected for screenshots; they can show chat. A click on a picture
+selects it (gold frame), another click deselects it."""
 
 from __future__ import annotations
 
@@ -55,12 +56,14 @@ class ShareDialog(QDialog):
         self.shots_hint = muted(tr("share.screenshots_hint"))
         layout.addWidget(self.shots_hint)
         self.shots = QListWidget()
+        self.shots.setObjectName("Shots")
+        self.shots.setSelectionMode(QListWidget.SelectionMode.MultiSelection)  # click = select / deselect
         self.shots.setViewMode(QListView.ViewMode.IconMode)
         self.shots.setIconSize(THUMB)
         self.shots.setResizeMode(QListView.ResizeMode.Adjust)
         self.shots.setSpacing(6)
         self.shots.setMovement(QListView.Movement.Static)
-        self.shots.itemChanged.connect(lambda _item: self._update_summary())
+        self.shots.itemSelectionChanged.connect(self._update_summary)
         layout.addWidget(self.shots, 3)
 
         self.summary = QLabel()
@@ -100,8 +103,7 @@ class ShareDialog(QDialog):
         return out
 
     def picked_screenshots(self) -> set[tuple[str, str]]:
-        return {tuple(self.shots.item(i).data(ROLE)) for i in range(self.shots.count())
-                if self.shots.item(i).checkState() == Qt.CheckState.Checked}
+        return {tuple(item.data(ROLE)) for item in self.shots.selectedItems()}
 
     def _fill_screenshots(self) -> None:
         picked = self.picked_screenshots()
@@ -113,11 +115,9 @@ class ShareDialog(QDialog):
                 path = row["file_path"]
                 item = QListWidgetItem(self._thumb(path), format_datetime(row["captured_at"] or row["requested_at"]))
                 item.setData(ROLE, (cid, row["screenshot_id"]))
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                item.setCheckState(Qt.CheckState.Checked if (cid, row["screenshot_id"]) in picked
-                                   else Qt.CheckState.Unchecked)
                 item.setToolTip(Path(path).name)
                 self.shots.addItem(item)
+                item.setSelected((cid, row["screenshot_id"]) in picked)
         self.shots.blockSignals(False)
         self.shots.setEnabled(bool(with_shots))
         self.shots_hint.setText(tr("share.screenshots_hint") if with_shots else tr("share.screenshots_off"))

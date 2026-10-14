@@ -212,7 +212,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "share.cat.sessions": "Sitzungen und Spielzeiten",
         "share.cat.screenshots": "Ausgewählte Screenshots",
         "share.screenshots": "Screenshots",
-        "share.screenshots_hint": "Nur angehakte Bilder werden geteilt. Achte auf Chat und persönliche Infos im Bild.",
+        "share.screenshots_hint": "Klicke auf ein Bild, um es auszuwählen (gold umrandet); nochmal klicken hebt die "
+                                  "Auswahl auf. Achte auf Chat und persönliche Infos im Bild.",
         "share.screenshots_off": "Hake bei einem Charakter \"Ausgewählte Screenshots\" an, um Bilder auszuwählen.",
         "share.summary": "{characters} Charakter(e), {pictures} Screenshots ausgewählt",
         "backup.group": "Datensicherung",
@@ -489,7 +490,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "share.cat.sessions": "Sessions and play times",
         "share.cat.screenshots": "Selected screenshots",
         "share.screenshots": "Screenshots",
-        "share.screenshots_hint": "Only ticked pictures are shared. Watch out for chat and personal info in them.",
+        "share.screenshots_hint": "Click a picture to select it (gold frame); click again to deselect. Watch out for "
+                                  "chat and personal info in them.",
         "share.screenshots_off": "Tick \"Selected screenshots\" for a character to pick pictures.",
         "share.summary": "{characters} character(s), {pictures} screenshots selected",
         "backup.group": "Backups",

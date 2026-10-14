@@ -257,8 +257,20 @@ def test_ui_friends(alice, tmp_path, monkeypatch, addon_fixture):
     top.setCheckState(0, Qt.CheckState.Checked)
     assert dialog.selection() == {alice_char(alice): ALL}
     assert dialog.shots.count() >= 1 and not dialog.picked_screenshots()  # nothing pre-picked
-    dialog.shots.item(0).setCheckState(Qt.CheckState.Checked)
+    # A click on a picture selects it, another click deselects it (no separate checkbox).
+    from PySide6.QtTest import QTest
+    dialog.show()
+    item = dialog.shots.item(0)
+    assert item.data(Qt.ItemDataRole.CheckStateRole) is None   # no checkbox drawn
+    center = dialog.shots.visualItemRect(item).center()
+    QTest.mouseClick(dialog.shots.viewport(), Qt.MouseButton.LeftButton, pos=center)
     assert len(dialog.picked_screenshots()) == 1 and "1 Screenshots" in dialog.summary.text()
+    # Selection survives a change of the character list (the list is rebuilt).
+    dialog._tree_changed()
+    assert len(dialog.picked_screenshots()) == 1
+    QTest.mouseClick(dialog.shots.viewport(), Qt.MouseButton.LeftButton, pos=center)
+    assert not dialog.picked_screenshots() and "0 Screenshots" in dialog.summary.text()
+    dialog.close()
 
     friends_page = next(p for p in window.pages if p.title_key == "tab.friends")
     friends_page.refresh()

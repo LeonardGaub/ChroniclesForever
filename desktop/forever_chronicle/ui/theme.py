@@ -3,10 +3,13 @@ red Classic buttons and tabs at the bottom of the window like the in-game panels
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import QApplication
 
 GOLD = "#ffd100"
+ASSETS = (Path(__file__).resolve().parent / "assets").as_posix()
 TEXT = "#e8e2d0"
 MUTED = "#9d8f75"
 BG = "#0f0c09"
@@ -81,8 +84,20 @@ QLineEdit, QComboBox {{ background: {PANEL_ALT}; border: 1px solid {BORDER}; bor
 QLineEdit:focus, QComboBox:focus {{ border-color: {GOLD}; }}
 QComboBox QAbstractItemView {{ background: {PANEL}; selection-background-color: {SELECT}; border: 1px solid {BORDER}; }}
 
-QCheckBox::indicator {{ width: 14px; height: 14px; border: 1px solid {BORDER}; background: {PANEL_ALT}; }}
-QCheckBox::indicator:checked {{ background: {GOLD}; }}
+QCheckBox::indicator, QTreeView::indicator, QListView::indicator, QTableView::indicator {{
+    width: 15px; height: 15px; border: 1px solid #c9a24a; border-radius: 2px; background: #0b0907; }}
+QCheckBox::indicator:hover, QTreeView::indicator:hover, QListView::indicator:hover {{ border-color: {GOLD}; }}
+QCheckBox::indicator:checked, QTreeView::indicator:checked, QListView::indicator:checked,
+QTableView::indicator:checked {{ background: {GOLD}; border-color: {GOLD}; image: url("{ASSETS}/check.svg"); }}
+QCheckBox::indicator:indeterminate, QTreeView::indicator:indeterminate {{
+    background: #8a6d3b; border-color: {GOLD}; image: url("{ASSETS}/partial.svg"); }}
+QTreeView {{ background: {PANEL_ALT}; border: 1px solid {BORDER}; outline: 0; }}
+QTreeView::item {{ padding: 3px; }}
+QTreeView::item:selected {{ background: {SELECT}; color: #ffffff; }}
+
+QListWidget#Shots::item {{ border: 3px solid transparent; border-radius: 4px; margin: 3px; padding: 2px; }}
+QListWidget#Shots::item:hover {{ border-color: #6b5435; }}
+QListWidget#Shots::item:selected {{ border: 3px solid {GOLD}; background: {SELECT}; color: {GOLD}; }}
 
 QSlider::groove:horizontal {{ height: 6px; background: #241b12; border: 1px solid {BORDER}; border-radius: 3px; }}
 QSlider::sub-page:horizontal {{ background: #8a6d3b; border: 1px solid {BORDER}; border-radius: 3px; }}
