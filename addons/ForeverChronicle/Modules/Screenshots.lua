@@ -59,7 +59,6 @@ Shots:RegisterTrigger("quest", { eventType = "quest_completed", priority = 5, ma
 Shots:RegisterTrigger("death", { eventType = "player_died", priority = 6, maxAge = 30 })
 
 FC:RegisterCapability("screenshots", "CAP_SCREENSHOTS", function() return type(Screenshot) == "function" end)
-FC:RegisterStat("screenshots", { labelKey = "STAT_SCREENSHOTS", order = 30, icon = "Interface\\Icons\\INV_Misc_Spyglass_02" })
 
 -------------------------------------------------------------------------------
 -- Queue handling

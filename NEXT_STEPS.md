@@ -47,6 +47,14 @@
   - New stat "Seltene Gegner". New screenshot trigger "rare" (on by default, priority 3, skips the cooldown like
     level/achievement; `/fcshot rare on|off`). The desktop shows the event and the stat.
   - `PARTY_KILL` is still unverified in Forever.
+- **Addon v0.8.0: graphs under the character (user request).**
+  - The `Metrics` module writes the compact `metrics` stream (time,xp,kills,money,level), sampled every 60 s
+    and only when something changed.
+  - The graph registry `FC:RegisterGraph` provides XP / kills / quests / gold per hour over the last 12
+    played hours (taken from sessions). Bar graph widget in `UI/Graph.lua`; switch with the arrows; the choice is
+    saved in `settings.overviewGraph`.
+  - The screenshots stat tile was removed (addon and desktop). Storage bars are in 3 columns on the settings page.
+  - The desktop app does not import the metrics stream yet (possible later: graphs over the full history).
 - **Desktop:** the icon overhaul was reverted at the user's request; text UI stays.
   - Shows the full name. Kill/XP counters are imported (`character_stats`, migration 4) and replace "Stufenaufstiege".
   - Open question for the user: real WoW icons for the desktop. Options: export from the local client with

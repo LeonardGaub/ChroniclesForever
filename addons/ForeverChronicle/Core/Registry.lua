@@ -60,6 +60,21 @@ function FC:RegisterStat(key, def)
   table.sort(self.statDefs, function(a, b) return a.order < b.order end)
 end
 
+-------------------------------------------------------------------------------
+-- Graphs: shown under the character on the overview, switchable.
+--   def = { labelKey, order, color = { r, g, b }, values = function(hours) -> { number, ... },
+--           format = function(value) -> text }   -- hours: start times of the played hours shown
+-------------------------------------------------------------------------------
+
+FC.graphDefs = {}
+
+function FC:RegisterGraph(key, def)
+  def.key = key
+  def.order = def.order or 100
+  table.insert(self.graphDefs, def)
+  table.sort(self.graphDefs, function(a, b) return a.order < b.order end)
+end
+
 function FC:GetStatsInGroup(group)
   local out = {}
   for _, def in ipairs(self.statDefs) do

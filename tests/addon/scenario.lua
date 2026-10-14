@@ -122,7 +122,8 @@ if PHASE == 1 then
   for _, tile in ipairs(overview.tiles) do tileNames[#tileNames + 1] = tile.def.key end
   local names = table.concat(tileNames, ",")
   check(names:find("kills", 1, true) and names:find("xp_earned", 1, true) and not names:find("levels_gained", 1, true)
-    and not names:find("reload", 1, true), "tiles: kills and XP, no levels/reloads (" .. names .. ")")
+    and not names:find("reload", 1, true) and not names:find("screenshots", 1, true),
+    "tiles: kills and XP, no levels/reloads/screenshots (" .. names .. ")")
   local kills
   for _, tile in ipairs(overview.tiles) do if tile.def.key == "kills" then kills = tile end end
   check(kills.value.text == "2" and kills.name.text ~= nil, "tile shows name and value")
@@ -130,7 +131,7 @@ if PHASE == 1 then
   local settingsIndex
   for i, pg in ipairs(FC.UI.pages) do if pg.id == "settings" then settingsIndex = i end end
   FC.UI:SelectPage(settingsIndex)
-  check(#FC.UI.pages[settingsIndex].bars == 4, "storage bars on the settings page (" .. #FC.UI.pages[settingsIndex].bars .. ")")
+  check(#FC.UI.pages[settingsIndex].bars == 5, "storage bars on the settings page (" .. #FC.UI.pages[settingsIndex].bars .. ")")
   SlashCmdList.FOREVERCHRONICLE("lang de")
   SlashCmdList.FOREVERCHRONICLE("status")
   SlashCmdList.FOREVERCHRONICLE("help")
@@ -154,6 +155,24 @@ if PHASE == 1 then
   check(#lastFields == 7 and lastFields[2] == "1413" and lastFields[5] ~= "", "standing still extends the last point")
   check(ForeverChronicleDB.maps["1413"].continent == 1414 and ForeverChronicleDB.maps["1413"].minX == 0.4,
     "map geometry recorded")
+
+  -- Graphs: XP per played hour from the metrics stream, switchable.
+  local sum = 0
+  for _, v in pairs(FC.Metrics:HourlyDeltas("xp")) do sum = sum + v end
+  check(sum == 4200, "XP time series matches the earned XP (" .. sum .. ")")
+  local hours = FC.Metrics:PlayedHours(12)
+  check(#hours >= 1 and #hours <= 12, "played hours (" .. #hours .. ")")
+  FC.UI:SelectPage(1)
+  local ov = FC.UI.pages[1]
+  ov.graphVersion = nil
+  ov:RefreshGraph()
+  local shownBars = 0
+  for _, bar in ipairs(ov.graph.bars) do if bar:IsShown() then shownBars = shownBars + 1 end end
+  check(shownBars == #hours and ov.graphTitle.text == "Erfahrung pro Stunde", "XP graph drawn (" .. shownBars .. " bars)")
+  ov:StepGraph(1)
+  check(FC.db.settings.overviewGraph == "kills" and ov.graphTitle.text == "Getötete Gegner pro Stunde", "switch to kills graph")
+  ov:StepGraph(-2)
+  check(FC.db.settings.overviewGraph == "gold", "switching wraps around")
   local shots = ForeverChronicleDB.characters["Player-4619-0112A417"].streams.screenshots.records
   for _, r in ipairs(shots) do print("    shot", r.trigger, r.status, #r.events) end
   check(#shots == 1 and #MOCK.screenshots == 1, "level-up and achievement produced one screenshot")

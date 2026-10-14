@@ -179,6 +179,57 @@ function page:Create(c)
     UI:Tooltip(model, "MODEL_TITLE", "MODEL_TIP")
     self.model = model
   end
+
+  -- Graph under the character, switchable with the arrows (graphs come from FC:RegisterGraph).
+  local prev = UI:ArrowButton(c, "Prev", function() self:StepGraph(-1) end)
+  prev:SetPoint("TOPLEFT", panel, "BOTTOMLEFT", 0, -12)
+  local nextB = UI:ArrowButton(c, "Next", function() self:StepGraph(1) end)
+  nextB:SetPoint("TOPRIGHT", panel, "BOTTOMRIGHT", 0, -12)
+  self.graphTitle = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  self.graphTitle:SetPoint("LEFT", prev, "RIGHT", 4, 6)
+  self.graphTitle:SetPoint("RIGHT", nextB, "LEFT", -4, 6)
+  self.graphSubtitle = c:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  self.graphSubtitle:SetPoint("TOP", self.graphTitle, "BOTTOM", 0, -2)
+  self.graph = UI:BarGraph(c, panel:GetWidth(), 140)
+  self.graph.frame:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -8)
+end
+
+local GRAPH_HOURS = 12
+
+function page:StepGraph(step)
+  local defs = FC.graphDefs
+  if #defs == 0 then return end
+  local index = 1
+  for i, def in ipairs(defs) do if def.key == FC.db.settings.overviewGraph then index = i end end
+  index = (index - 1 + step) % #defs + 1
+  FC.db.settings.overviewGraph = defs[index].key
+  self.graphVersion = nil
+  self:RefreshGraph()
+end
+
+-- Recomputed only when new data arrived, the graph or the language changed.
+function page:RefreshGraph()
+  local defs = FC.graphDefs
+  if #defs == 0 then return end
+  local def = defs[1]
+  for _, d in ipairs(defs) do if d.key == FC.db.settings.overviewGraph then def = d end end
+  local version = table.concat({ def.key, FC:GetLanguage(), FC.Storage:GetStream("metrics").nextSeq,
+    FC.Storage:GetStream("events").nextSeq, FC.Storage:GetStream("sessions").nextSeq, date("%H") }, ":")
+  if version == self.graphVersion then return end
+  self.graphVersion = version
+
+  local hours = FC.Metrics:PlayedHours(GRAPH_HOURS)
+  local values = def.values(hours)
+  local labels = {}
+  for i, h in ipairs(hours) do labels[i] = date("%H", h) end
+  self.graphTitle:SetText(L[def.labelKey])
+  self.graphSubtitle:SetText(string.format(L.GRAPH_SUBTITLE, #hours))
+  local format = def.format or function(v) return Util.FormatNumber(v) end
+  self.graph:SetData(labels, values, def.color, format, function(i)
+    local h = hours[i]
+    return string.format(L.GRAPH_BAR_TITLE, date(L.GRAPH_DAY_FORMAT, h), date("%H", h), date("%H", h + 3600)),
+      format(values[i])
+  end, L.GRAPH_EMPTY)
 end
 
 function page:Refresh()
@@ -219,6 +270,8 @@ function page:Refresh()
     self.gearSignature = signature
     self.model:SetUnit("player")
   end
+
+  self:RefreshGraph()
 end
 
 UI:RegisterPage(page)

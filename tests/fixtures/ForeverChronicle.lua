@@ -167,6 +167,15 @@ ForeverChronicleDB = {
 						}, -- [6]
 					},
 				},
+				["metrics"] = {
+					["dropped"] = 0,
+					["nextSeq"] = 4,
+					["records"] = {
+						"1791961000,0,0,123456,22", -- [1]
+						"1791961180,4200,2,123456,23", -- [2]
+						"1791962000,4200,2,123456,22", -- [3]
+					},
+				},
 				["positions"] = {
 					["dropped"] = 0,
 					["nextSeq"] = 16,
@@ -335,6 +344,8 @@ ForeverChronicleDB = {
 		["modules"] = {
 			["Character"] = {
 			},
+			["Metrics"] = {
+			},
 			["Positions"] = {
 				["enabled"] = true,
 				["interval"] = 2,
@@ -370,5 +381,6 @@ ForeverChronicleDB = {
 			["UI"] = {
 			},
 		},
+		["overviewGraph"] = "gold",
 	},
 }
