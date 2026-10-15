@@ -52,7 +52,7 @@ local function updateProfessionButton(b, prof)
   b.bar:SetValue(maxRank > 0 and rank / maxRank or 0)
   local text = string.format("%d / %d", rank, maxRank)
   if (prof.modifier or 0) > 0 then text = string.format("%d (+%d) / %d", rank, prof.modifier, maxRank) end
-  b.bar.text:SetText(text .. "  \194\183  " .. Professions().RankName(maxRank))
+  b.bar.text:SetText(text .. UI.SEP .. Professions().RankName(maxRank))
 end
 
 -------------------------------------------------------------------------------
@@ -199,7 +199,7 @@ local function statusText(prof, shown)
   if not recipes then return L.RECIPES_NOT_CAPTURED, "bad" end
   local text = string.format(L.RECIPES_STATUS, L["RECIPES_" .. recipes.status:upper()], #recipes.list,
     Util.FormatTime(recipes.updatedAt))
-  if shown ~= #recipes.list then text = text .. "  \194\183  " .. string.format(L.RECIPES_SHOWN, shown) end
+  if shown ~= #recipes.list then text = text .. UI.SEP .. string.format(L.RECIPES_SHOWN, shown) end
   return text, STATUS_ICON[recipes.status] or "bad"
 end
 

@@ -1,13 +1,30 @@
 -- Journey Forever - Recorder
 -- Builds normalized event records (spec F-002) and appends them to the "events" stream.
 --
--- Record layout (schema 1):
+-- Record layout (unchanged since schema 1):
 --   { id, seq, type, time, serverTime, session, location = {...} | nil, data = {...} }
 
 local ADDON, FC = ...
 local Util = FC.Util
 
 FC.Storage:DefineStream("events", 10000, "Interface\\Icons\\INV_Misc_Book_09")
+
+-- The player's normalized position (0..1) on a map as plain numbers, or nil if the client gives none.
+function FC:PlayerMapPosition(mapID)
+  if not (mapID and C_Map) then return nil end
+  local pos = Util.SafeValue("table", C_Map.GetPlayerMapPosition, mapID, "player")
+  if not (pos and pos.GetXY) then return nil end
+  local x, y = Util.SafeValues(pos.GetXY, pos)
+  if type(x) == "number" and type(y) == "number" then return x, y end
+  return nil
+end
+
+-- The instance ID while inside an instance (where the client gives no map position, Phase 0), else nil.
+function FC:CurrentInstanceID()
+  if Util.SafeValues(IsInInstance) ~= true then return nil end
+  local instanceID = select(4, Util.SafeValues(UnitPosition, "player"))
+  return type(instanceID) == "number" and instanceID or nil
+end
 
 -- Current location. Inside instances only the zone and instance ID are available (Phase 0).
 function FC:GetLocation()
@@ -19,19 +36,11 @@ function FC:GetLocation()
   local mapID = C_Map and Util.SafeValue("number", C_Map.GetBestMapForUnit, "player")
   if mapID then
     loc.mapID = mapID
-    local pos = Util.SafeValue("table", C_Map.GetPlayerMapPosition, mapID, "player")
-    if pos and pos.GetXY then
-      local x, y = Util.SafeValues(pos.GetXY, pos)
-      if type(x) == "number" and type(y) == "number" then
-        loc.x, loc.y = Util.Round(x, 4), Util.Round(y, 4)
-      end
-    end
+    local x, y = self:PlayerMapPosition(mapID)
+    if x then loc.x, loc.y = Util.Round(x, 4), Util.Round(y, 4) end
   end
 
-  local inInstance = Util.SafeValues(IsInInstance)
-  if inInstance == true then
-    loc.instanceID = select(4, Util.SafeValues(UnitPosition, "player"))
-  end
+  loc.instanceID = self:CurrentInstanceID()
   loc.quality = (loc.x and "exact") or "zone_only"
   return loc
 end
@@ -52,14 +61,4 @@ function FC:Record(eventType, data, opts)
   self.Storage:Append("events", record)
   self:SendMessage("FC_EVENT_RECORDED", record)
   return record
-end
-
--- Newest first, at most `limit` records of an events stream (default: the played character's).
-function FC:GetRecentEvents(limit, stream)
-  local records = (stream or self.Storage:GetStream("events")).records
-  local out = {}
-  for i = #records, math.max(1, #records - (limit or 100) + 1), -1 do
-    out[#out + 1] = records[i]
-  end
-  return out
 end

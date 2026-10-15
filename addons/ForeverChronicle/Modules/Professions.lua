@@ -41,7 +41,7 @@ FC:RegisterCapability("recipes", "CAP_RECIPES", function()
     and type(api.GetBaseProfessionInfo) == "function" and FC.eventStatus.TRADE_SKILL_SHOW == "registered"
 end)
 
-FC:RegisterEventCategory("professions", { labelKey = "CAT_PROFESSIONS", icon = "Interface\\Icons\\Trade_BlackSmithing", order = 60 })
+FC:RegisterEventCategory("professions", { labelKey = "CAT_PROFESSIONS", icon = ICON, order = 60 })
 
 FC:RegisterEventType("profession_learned", {
   icon = ICON, category = "professions", highlight = "milestone",

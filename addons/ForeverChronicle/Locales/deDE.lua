@@ -14,20 +14,10 @@ FC:RegisterLocale("deDE", {
   TAB_CHRONICLE = "Chronik",
   TAB_SETTINGS = "Einstellungen",
   TAB_DIAGNOSTICS = "Diagnose",
-  SECTION_SESSION = "Sitzung",
-  SECTION_STATS = "Statistik seit Aufzeichnungsbeginn",
   SECTION_STORAGE = "Addon-Speicher",
-  SECTION_CAPABILITIES = "Funktionen in diesem Client",
-  SECTION_LOG = "Diagnoseprotokoll",
-  SECTION_SETTINGS = "Einstellungen",
 
   -- Übersicht
   CHAR_DETAILS = "Stufe %s %s %s",
-  FIELD_SESSION_TIME = "Aktuelle Sitzung",
-  FIELD_RELOADS = "Neu geladen",
-  FIELD_PLAYED = "Gespielt (Server)",
-  FIELD_PLAYED_LEVEL = "Auf dieser Stufe",
-  PLAYED_UNKNOWN = "noch nicht gemeldet",
   STREAM_EVENTS = "Ereignisse",
   STREAM_SESSIONS = "Sitzungen",
   STREAM_SCREENSHOTS = "Screenshots",
@@ -65,7 +55,6 @@ FC:RegisterLocale("deDE", {
   MODEL_TITLE = "Dein Charakter",
   MODEL_TIP = "Ziehen zum Drehen",
   STORAGE_DESC = "Wie viele Einträge das Addon behält. Gespeichert wird beim Ausloggen oder mit /reload; ist ein Speicher voll, werden die ältesten Einträge entfernt.",
-  STORAGE_TIP = "%d von %d Einträgen gespeichert.\nGespeichert beim Ausloggen oder mit /reload.",
   SHOT_TEST_TIP = "Nimmt einen Screenshot mit deiner aktuellen Verzögerung und Countdown auf.",
   OPT_SHOT_HIDE_UI = "Interface für Screenshots ausblenden",
   OPT_SHOT_HIDE_UI_TIP = "Aus: der Screenshot zeigt dein Interface.\nAlles: blendet das ganze Interface kurz vor dem Screenshot aus (wie Alt+Z); im Kampf alles außer den Namen über Figuren.\nAußer Popups: blendet alles aus außer dem Popup des Ereignisses, etwa dem Stufenaufstieg, und macht den Screenshot, sobald das Popup ganz zu sehen ist.",
@@ -99,12 +88,10 @@ FC:RegisterLocale("deDE", {
   OPT_POSITIONS = "Route aufzeichnen",
   OPT_POSITIONS_TIP = "Speichert deine Position in festen Abständen für die Routen-Wiedergabe auf der Karte. Stillstehen erzeugt keine neuen Punkte.",
   OPT_POSITION_INTERVAL = "Intervall",
-  HINT_SAVED = "Daten werden beim Ausloggen oder mit /reload gespeichert.",
   STORAGE_WARNING = "Speicher für %s ist zu %d%% voll. Wenn er voll ist, werden die ältesten Einträge entfernt.",
 
   -- Chronik
   CHRONICLE_EMPTY = "Noch nichts aufgezeichnet.",
-  CHRONICLE_COUNT = "%d Einträge gespeichert (die neuesten %d werden angezeigt)",
   CHRONICLE_ONLY_SHOTS = "Nur mit Screenshot",
   CHRONICLE_ONLY_SHOTS_TIP = "Zeigt nur Einträge mit Screenshot und Test-Screenshots.",
   CHRONICLE_SHOT_LINE = "Screenshot: %s",
@@ -119,7 +106,6 @@ FC:RegisterLocale("deDE", {
   -- Statistik
   STAT_SESSIONS = "Sitzungen",
   STAT_PLAYED_TOTAL = "Gesamte Spielzeit",
-  STAT_LEVELS = "Stufenaufstiege",
   STAT_QUESTS = "Abgeschlossene Quests",
   STAT_DEATHS = "Tode",
   STAT_ACHIEVEMENTS = "Erfolge",
@@ -150,7 +136,6 @@ FC:RegisterLocale("deDE", {
   OPT_MINIMAP_TIP = "Ein Symbol am Rand der Minimap. Zum Verschieben ziehen.",
   MINIMAP_TIP = "Linksklick: Fenster öffnen/schließen\nRechtsklick: Einstellungen\nZiehen: verschieben",
   OPT_DEBUG_TIP = "Gibt jeden Eintrag des Diagnoseprotokolls im Chat aus. Hilfreich bei der Fehlersuche.",
-  HINT_COMMANDS = "/fj öffnet dieses Fenster  \194\183  /fj help zeigt alle Befehle",
 
   -- Befehle
   CMD_HELP_HEADER = "Befehle:",
@@ -176,10 +161,8 @@ FC:RegisterLocale("deDE", {
 
   -- Screenshots
   CAP_SCREENSHOTS = "Screenshots",
-  STAT_SCREENSHOTS = "Screenshots",
   SECTION_SHOT_TRIGGERS = "Screenshots",
   SECTION_GENERAL = "Allgemein",
-  SECTION_RECENT_SHOTS = "Letzte Screenshots",
   OPT_SHOT_LEVEL = "Bei Stufenaufstieg",
   OPT_SHOT_ACHIEVEMENT = "Bei Erfolgen",
   OPT_SHOT_ZONE = "Beim ersten Besuch eines Gebiets",
@@ -194,7 +177,6 @@ FC:RegisterLocale("deDE", {
   OPT_SHOT_COUNTDOWN_TIP = "Zeigt die Zeit bis zum nächsten Screenshot. Er wird vor der Aufnahme ausgeblendet. Mit Umschalt + Ziehen verschieben.",
   COUNTDOWN_TEXT = "Screenshot in %d s",
   COUNTDOWN_WAITING = "Screenshot wartet (Flug)",
-  SHOT_SETTINGS_HINT = "Optionen: Reiter Einstellungen",
   SHOT_STATUS_LINE = "Screenshots: %d wartend  \194\183  Verzögerung %d s  \194\183  Abklingzeit %d s  \194\183  ohne Abklingzeit: %s",
   SHOT_ON = "an",
   SHOT_OFF = "aus",

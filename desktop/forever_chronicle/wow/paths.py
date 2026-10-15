@@ -33,10 +33,6 @@ class SavedVariablesFile:
     account: str    # account folder name, e.g. "131324136#1"
     path: Path
 
-    @property
-    def backup_path(self) -> Path:
-        return self.path.with_name(self.path.name + ".bak")
-
 
 def read_flavor(client_dir: Path) -> str | None:
     """Product flavor from ``.flavor.info`` (second line), or None."""

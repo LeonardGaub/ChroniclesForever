@@ -90,20 +90,16 @@ end
 -- Geometry
 -------------------------------------------------------------------------------
 
-local function mapInfo(mapID)
-  return FC:MapInfo(mapID)
-end
-
 -- Normalized position of a point on the view map, or nil if it is not on that map.
 -- Zone points can be shown on their continent, and continent points on a zone that contains them.
 function Route.Project(p, view)
   if not p.mapID or not p.x then return nil end
   if p.mapID == view then return p.x, p.y end
-  local info = mapInfo(p.mapID)
+  local info = FC:MapInfo(p.mapID)
   if info and info.continent == view and info.minX then
     return info.minX + p.x * (info.maxX - info.minX), info.minY + p.y * (info.maxY - info.minY)
   end
-  local zone = mapInfo(view)
+  local zone = FC:MapInfo(view)
   if zone and zone.continent == p.mapID and zone.minX and zone.maxX > zone.minX and zone.maxY > zone.minY then
     local x, y = (p.x - zone.minX) / (zone.maxX - zone.minX), (p.y - zone.minY) / (zone.maxY - zone.minY)
     if x >= 0 and x <= 1 and y >= 0 and y <= 1 then return x, y end
@@ -185,7 +181,7 @@ function Route.Views(points)
     end
   end
   for _, z in ipairs(zones) do
-    local info = mapInfo(z)
+    local info = FC:MapInfo(z)
     local c = info and info.minX and info.continent
     if c and not seen[c] then
       seen[c] = true
@@ -204,12 +200,10 @@ Route.TELEPORT_SPEED = 0.004       -- continent widths per second
 Route.TELEPORT_DISTANCE = 0.01     -- shorter steps never count as a teleport
 Route.UNKNOWN_ZONE_SCALE = 0.1     -- assumed size of a zone without continent geometry (new Forever zones)
 
-local CONTINENT_TYPE = 2 -- Enum.UIMapType.Continent
-
 -- Size of one map unit in continent widths: 1 on a continent, the zone's width on it, else the assumption.
 local function continentScale(mapID)
-  local info = mapInfo(mapID)
-  if info and info.mapType == CONTINENT_TYPE then return 1 end
+  local info = FC:MapInfo(mapID)
+  if info and info.mapType == FC.Util.MapType.Continent then return 1 end
   if info and info.minX and info.maxX > info.minX then return info.maxX - info.minX end
   return Route.UNKNOWN_ZONE_SCALE
 end
@@ -257,8 +251,8 @@ end
 -- Removes samples that a replay would show at nearly the same place anyway: on a straight line between their
 -- neighbours, passed at an even pace. Kept records are returned unchanged (same strings, never moved);
 -- line ends, dwell points, teleports and instance points are kept.
--- "pending" is the newest sample; "skipped" are the samples between the last kept one and it, all close
--- to the line between those two.
+-- "anchor" is the last kept sample; "skipped" are the dropped samples since then, all close to the line from
+-- the anchor to the current sample.
 function Route.Thin(records)
   local kept, pts = {}, {}
   for _, text in ipairs(records) do
@@ -293,6 +287,10 @@ function Route.Thin(records)
   if last and last ~= anchor then kept[#kept + 1] = last.text end
   return kept
 end
+
+-------------------------------------------------------------------------------
+-- Segments
+-------------------------------------------------------------------------------
 
 -- Segments on the view map within [startTime, endTime]: list of { taxi, points = { {x, y, time}, ... } }.
 function Route.Segments(points, view, startTime, endTime)
@@ -347,11 +345,6 @@ function Route.PointAt(points, t)
   return best
 end
 
-function Route.NextTimeAfter(points, t)
-  local p = points[lastAtOrBefore(points, t) + 1]
-  return p and p.time or nil
-end
-
 -- Where a replay shows the player at time t: like PointAt, but between two points joined by a route line the
 -- marker moves along that line instead of jumping from sample to sample. The line itself only connects
 -- recorded points, so the marker never leaves the drawn route (and thinned stretches replay as before).
@@ -359,9 +352,8 @@ function Route.Glide(points, t)
   local i = lastAtOrBefore(points, t)
   local a, b = points[i], points[i + 1]
   if a and b and a.x and b.x and t > a.endTime and t < b.time and Route.Connected(a, b) then
-    local f = (t - a.endTime) / (b.time - a.endTime)
-    return { time = t, endTime = t, mapID = a.mapID, x = a.x + (b.x - a.x) * f, y = a.y + (b.y - a.y) * f,
-      taxi = a.taxi }
+    local x, y = glideAt(a, b, t)
+    return { time = t, endTime = t, mapID = a.mapID, x = x, y = y, taxi = a.taxi }
   end
   return Route.PointAt(points, t)
 end

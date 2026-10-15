@@ -27,10 +27,10 @@ README = """Journey Forever {version}
    - Das Addon wird automatisch in deinen WoW-Forever-Ordner kopiert (gefunden ueber Battle.net).
    - Danach startet die Desktop-App. Spaeter einfach immer ueber diese Datei starten: sie aktualisiert
      auch das Addon, wenn du eine neue Version bekommst.
-3. Im Spiel /reload eingeben (oder das Spiel neu starten). Das Fenster oeffnest du mit /fc oder dem
+3. Im Spiel /reload eingeben (oder das Spiel neu starten). Das Fenster oeffnest du mit /fj oder dem
    Minimap-Knopf.
 
-Freunde: Das Teilen mit Freunden laeuft ueber den gemeinsamen Cloud-Ordner (dort tools\Einrichten.bat
+Freunde: Das Teilen mit Freunden laeuft ueber den gemeinsamen Cloud-Ordner (dort tools\\Einrichten.bat
 einmal starten). Im Spiel waehlst du oben im Fenster aus, wessen Charakter du sehen willst.
 
 Die Kartenbilder fuer die Karte in der Desktop-App sind schon dabei.

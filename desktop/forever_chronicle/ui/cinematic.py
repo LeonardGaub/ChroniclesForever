@@ -999,10 +999,6 @@ class CinematicWindow(QWidget):
         self.sound.play("screenshot")
         self.controls.raise_()
 
-    @property
-    def photo_age(self) -> float:
-        return self.photo.age
-
     def _hide_photo(self) -> None:
         if self.photo_on:
             self.ramp = 0.0                 # get back to speed gently

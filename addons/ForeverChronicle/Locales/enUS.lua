@@ -14,20 +14,10 @@ FC:RegisterLocale("enUS", {
   TAB_CHRONICLE = "Chronicle",
   TAB_SETTINGS = "Settings",
   TAB_DIAGNOSTICS = "Diagnostics",
-  SECTION_SESSION = "Session",
-  SECTION_STATS = "Statistics since tracking began",
   SECTION_STORAGE = "Addon storage",
-  SECTION_CAPABILITIES = "Features in this client",
-  SECTION_LOG = "Diagnostic log",
-  SECTION_SETTINGS = "Settings",
 
   -- Overview
   CHAR_DETAILS = "Level %s %s %s",
-  FIELD_SESSION_TIME = "Current session",
-  FIELD_RELOADS = "Reloads",
-  FIELD_PLAYED = "Played (server)",
-  FIELD_PLAYED_LEVEL = "Played this level",
-  PLAYED_UNKNOWN = "not reported yet",
   STREAM_EVENTS = "Events",
   STREAM_SESSIONS = "Sessions",
   STREAM_SCREENSHOTS = "Screenshots",
@@ -65,7 +55,6 @@ FC:RegisterLocale("enUS", {
   MODEL_TITLE = "Your character",
   MODEL_TIP = "Drag to rotate",
   STORAGE_DESC = "How many entries the addon keeps. Data is saved on logout or with /reload; when a storage is full, the oldest entries are dropped.",
-  STORAGE_TIP = "%d of %d entries stored.\nSaved on logout or /reload.",
   SHOT_TEST_TIP = "Takes a screenshot with your current delay and countdown.",
   OPT_SHOT_HIDE_UI = "Hide interface for screenshots",
   OPT_SHOT_HIDE_UI_TIP = "Off: the screenshot shows your interface.\nAll: hides the whole interface just before the screenshot (like Alt+Z); in combat everything except the names above characters.\nKeep popups: hides everything except the event's popup, such as the level-up banner, and takes the screenshot as soon as the popup is fully shown.",
@@ -99,12 +88,10 @@ FC:RegisterLocale("enUS", {
   OPT_POSITIONS = "Record route",
   OPT_POSITIONS_TIP = "Saves your position at a fixed interval for the route replay on the map. Standing still adds no new points.",
   OPT_POSITION_INTERVAL = "Interval",
-  HINT_SAVED = "Data is saved on logout or /reload.",
   STORAGE_WARNING = "Storage for %s is %d%% full. When it is full, the oldest entries are dropped.",
 
   -- Chronicle
   CHRONICLE_EMPTY = "Nothing recorded yet.",
-  CHRONICLE_COUNT = "%d entries stored (showing the newest %d)",
   CHRONICLE_ONLY_SHOTS = "Only with screenshot",
   CHRONICLE_ONLY_SHOTS_TIP = "Shows only entries that have a screenshot, and test screenshots.",
   CHRONICLE_SHOT_LINE = "Screenshot: %s",
@@ -119,7 +106,6 @@ FC:RegisterLocale("enUS", {
   -- Stats
   STAT_SESSIONS = "Sessions",
   STAT_PLAYED_TOTAL = "Total played",
-  STAT_LEVELS = "Levels gained",
   STAT_QUESTS = "Quests completed",
   STAT_DEATHS = "Deaths",
   STAT_ACHIEVEMENTS = "Achievements",
@@ -150,7 +136,6 @@ FC:RegisterLocale("enUS", {
   OPT_MINIMAP_TIP = "A button on the edge of the minimap. Drag it to move it.",
   MINIMAP_TIP = "Left-click: open/close the window\nRight-click: settings\nDrag: move",
   OPT_DEBUG_TIP = "Prints every diagnostic log entry to chat. Useful for troubleshooting.",
-  HINT_COMMANDS = "/fj opens this window  \194\183  /fj help lists all commands",
 
   -- Commands
   CMD_HELP_HEADER = "Commands:",
@@ -176,10 +161,8 @@ FC:RegisterLocale("enUS", {
 
   -- Screenshots
   CAP_SCREENSHOTS = "Screenshots",
-  STAT_SCREENSHOTS = "Screenshots",
   SECTION_SHOT_TRIGGERS = "Screenshots",
   SECTION_GENERAL = "General",
-  SECTION_RECENT_SHOTS = "Latest screenshots",
   OPT_SHOT_LEVEL = "On level-up",
   OPT_SHOT_ACHIEVEMENT = "On achievements",
   OPT_SHOT_ZONE = "On first visit to a zone",
@@ -194,7 +177,6 @@ FC:RegisterLocale("enUS", {
   OPT_SHOT_COUNTDOWN_TIP = "Shows the time until the next screenshot. It is hidden before the screenshot is taken. Shift-drag to move it.",
   COUNTDOWN_TEXT = "Screenshot in %d s",
   COUNTDOWN_WAITING = "Screenshot waiting (flight)",
-  SHOT_SETTINGS_HINT = "Options: Settings tab",
   SHOT_STATUS_LINE = "Screenshots: %d waiting  \194\183  delay %d s  \194\183  cooldown %d s  \194\183  skip cooldown: %s",
   SHOT_ON = "on",
   SHOT_OFF = "off",

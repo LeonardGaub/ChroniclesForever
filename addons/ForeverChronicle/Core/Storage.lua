@@ -329,17 +329,23 @@ local function trim(stream, cap, name, def)
   FC.Diagnostics:Log("warn", string.format("stream %s: %d old records dropped (cap %d)", name, excess, cap))
 end
 
--- Appends a record (table) and assigns its seq. Returns the record.
-function Storage:Append(name, record)
+-- Adds a value at the end of a stream and advances nextSeq; withSeq also stores the seq in the record.
+-- Trims in batches (once the stream is 10 % over its cap) and warns when it is nearly full.
+local function append(self, name, value, withSeq)
   local def = self.streams[name]
   assert(def, "unknown stream " .. tostring(name))
   local stream = self:GetStream(name)
-  record.seq = stream.nextSeq
-  stream.nextSeq = stream.nextSeq + 1
+  if withSeq then value.seq = stream.nextSeq end
   local records = stream.records
-  records[#records + 1] = record
+  records[#records + 1] = value
+  stream.nextSeq = stream.nextSeq + 1
   if #records > def.cap * 1.1 then trim(stream, def.cap, name, def) end
   self:WarnIfNearlyFull(name, #records, def.cap)
+end
+
+-- Appends a record (table) and assigns its seq. Returns the record.
+function Storage:Append(name, record)
+  append(self, name, record, true)
   return record
 end
 
@@ -356,14 +362,7 @@ end
 -- the record at index i has seq = nextSeq - #records + i - 1 (records are only appended and trimmed
 -- from the front). The desktop importer derives it the same way.
 function Storage:AppendRaw(name, value)
-  local def = self.streams[name]
-  assert(def, "unknown stream " .. tostring(name))
-  local stream = self:GetStream(name)
-  local records = stream.records
-  records[#records + 1] = value
-  stream.nextSeq = stream.nextSeq + 1
-  if #records > def.cap * 1.1 then trim(stream, def.cap, name, def) end
-  self:WarnIfNearlyFull(name, #records, def.cap)
+  append(self, name, value)
 end
 
 -- Replaces the newest record of a compact stream (e.g. to extend a stationary position sample).

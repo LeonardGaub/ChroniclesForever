@@ -70,10 +70,6 @@ local function lastSession()
   return records[#records]
 end
 
-function Session:GetCurrent()
-  return self.current
-end
-
 -- Server-reported played time, advanced by the time since it was reported (live while playing).
 function Session:GetPlayedTotal()
   local s = self.current

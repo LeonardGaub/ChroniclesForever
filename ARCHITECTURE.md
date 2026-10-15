@@ -1,12 +1,15 @@
 # Journey Forever – Architecture
 
 ```
-addons/ForeverChronicle/      in-game addon (Lua, Interface 16001)
-desktop/                      desktop app (Python 3.12 + PySide6 + SQLite)
-tests/addon/                  addon tests in a mocked WoW client (Node + fengari)
-tests/fixtures/               SavedVariables written by the addon tests, used by desktop tests
-docs/                         spec tools, Phase 0 report
-probe-results/                raw Phase 0 data written by the real client (also used by a parser test)
+addons/ForeverChronicle/        in-game addon (Lua, Interface 16001), the CurseForge upload
+addons/ForeverChronicle_Share/  private friends companion (sharing through a cloud folder)
+desktop/                        desktop app (Python 3.12 + PySide6 + SQLite)
+sync/                           cloud sync script for the friend group (PowerShell)
+tools/                          packaging (CurseForge, friends' zip, cloud folder) and sound generation
+tests/addon/                    addon tests in a mocked WoW client (Node + fengari)
+tests/fixtures/                 SavedVariables written by the addon tests, used by desktop tests
+docs/                           designs, spec tools, Phase 0 report, CurseForge texts
+probe-results/                  raw Phase 0 data written by the real client (also used by a parser test)
 ```
 
 ## Data flow
@@ -36,7 +39,7 @@ Other addons add characters with `FC:RegisterViewSource` (entries, map/instance/
 companion addon `ForeverChronicle_Share` (not part of the CurseForge upload) does this for friends: their
 characters come from its `Friends/FriendsData.lua` (`ForeverChronicleFriends`), which the sync script
 (`sync/ForeverSync.ps1`) writes from the friends' `ForeverChronicle_Share.lua` files. The game writes those files
-from `Modules/Share.lua` into the data-only addon `ForeverChronicle_Share`, in the addon's own record shape. Each
+from the companion's `Share.lua` (SavedVariables `ForeverChronicleShareDB`), in the addon's own record shape. Each
 friend is loaded on its own in an empty environment after a strict plain-data check.
 
 ### Backups and transfer (F-011)
@@ -49,14 +52,15 @@ character carry the character's natural key, not the local UUID. `Database.backu
 
 | Layer | Files | Role |
 |---|---|---|
-| Core | `Core/*.lua` | namespace, module registry, event dispatch, storage, diagnostics, registries, `/fj` |
-| Modules | `Modules/*.lua` | one file per feature: Character, Session, Progress |
-| UI | `UI/*.lua` | Blizzard templates (ButtonFrameTemplate, PanelTabButtonTemplate); one file per page |
+| Core | `Core/*.lua` | namespace, module registry, event dispatch, storage, diagnostics, registries, view (which character is shown), route rules, `/fj` |
+| Modules | `Modules/*.lua` | one file per feature: Character, Session, Travel, Positions, Progress, Rares, Dungeons, Professions, Gear, Metrics, Screenshots (+ the pure ScreenshotQueue) |
+| UI | `UI/*.lua` | Blizzard templates (ButtonFrameTemplate) with icon tabs on the right edge; shared widgets in `UI/Widgets.lua`; one file per page in `UI/Pages/` |
 | Locales | `Locales/*.lua` | `deDE` (default) and `enUS` (fallback) |
 
 Rules:
 - All game API calls go through `FC.Util.SafeValue` / `SafeValues` / `Plain`. These guard against
-  secret values (Midnight rules) and errors.
+  secret values (Midnight rules) and errors. Shared readers: `FC:PlayerMapPosition(mapID)`,
+  `FC:CurrentInstanceID()`, `FC:GetLocation()` (Core/Recorder.lua), `Util.ClientBuild()`, `Util.MapType`.
 - Handlers run in `FC:SafeCall`. An error is logged and does not break other modules.
 - Modules never talk to each other directly. They use `FC:SendMessage` / `module:RegisterMessage`.
 
@@ -107,7 +111,8 @@ skill line, read with the Mainline `GetProfessions`/`GetProfessionInfo` at login
 `CHAT_MSG_SKILL` and via `/fj professions`. Recipes are only readable while a profession window is open. They are
 captured from the unfiltered `C_TradeSkillUI.GetAllRecipeIDs` list (at most once per 5 s). Linked, guild and NPC
 professions and skill lines the character does not have are skipped. Recipes use the compact format
-`recipeID,categoryID,icon,name`, and categories use `id,parentID,name`. Status `complete` means every recipe info
+`recipeID,categoryID,icon,quality,name` (recipe list format 2; format 1 had no quality), and categories use
+`id,parentID,name`. Status `complete` means every recipe info
 was readable. A `partial` capture never removes recipes, and the desktop app follows the same rule (`replace_recipes`).
 Events: `profession_learned` and `profession_rank` come from the snapshot diff after a baseline, so professions
 known at install are not reported; `recipe_learned` comes from `NEW_RECIPE_LEARNED`.
@@ -132,8 +137,10 @@ images also live in git in `forever_chronicle/maps/` and are used when the user 
 normalized to, which was verified against real Phase 0 coordinates.
 
 ### Adding an in-game page
-Create `UI/Pages/MyPage.lua` with `FC.UI:RegisterPage({ id, labelKey, order, Create = fn, Refresh = fn })` and add
-it to the TOC. Build labels with `FC.UI:Label` / `Header` / `Button`, so they follow language changes.
+Create `UI/Pages/MyPage.lua` with `FC.UI:RegisterPage({ id, labelKey, icon, order, Create = fn, Refresh = fn })` and
+add it to the TOC. Build labels with `FC.UI:Label` / `Header` / `Button`, so they follow language changes, and reuse
+the widgets in `UI/Widgets.lua` (icon buttons, toggles, lists, tooltips, `UI:SelectionBorder`). Read character data
+through the view helpers (see above). `UI:ShowPage(id)` opens the window on a page.
 
 ### Changing the saved data format
 Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `Core/Storage.lua`. Then raise
@@ -145,9 +152,9 @@ Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `
 |---|---|
 | `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`) |
 | `importing/` | SavedVariables → SQLite, validation, gaps, `.bak` fallback |
-| `storage/` | `database.py` (schema migrations + backups), `repository.py` (all SQL) |
-| `domain/` | registries: `event_types.py` (how events are shown), `stats.py` (overview statistics) |
-| `ui/` | `theme.py` (Classic look), `main_window.py`, `pages/` (one file per tab), `sound.py` (clicks, alerts, music) |
+| `storage/` | `database.py` (schema migrations + backups), `repository.py` (all SQL), `jsonl.py` (export/import) |
+| `domain/` | pure logic, no Qt: registries `event_types.py` (how events are shown) and `stats.py` (overview statistics); `route.py`, `route_colors.py`, `maps.py` (the map); `cinematic.py` (what a replay announces) |
+| `ui/` | `theme.py` (Classic look), `widgets.py` (page base class), `main_window.py`, `pages/` (one file per tab), `screenshots.py` (thumbnails, viewer), `cinematic.py` + `cinematic_fx.py` (cinematic mode), `sound.py` (clicks, alerts, music) |
 | `i18n.py` | German (default) / English strings |
 
 ### Sound

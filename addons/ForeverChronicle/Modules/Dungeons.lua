@@ -21,7 +21,6 @@ local L = FC.L
 
 local Dungeons = FC:NewModule("Dungeons", { order = 32 })
 
-local DUNGEON_MAP_TYPE = 4  -- Enum.UIMapType.Dungeon
 local AZEROTH = 947
 local DEDUPE_SECONDS = 15   -- ENCOUNTER_END and BOSS_KILL report the same kill
 local PROBE_DELAY = 3
@@ -180,21 +179,17 @@ local function findDungeonMap(instanceID, instanceName)
   local journal = Dungeons:Journal(instanceID)
   if journal and journal.mapID then return journal.mapID, "journal" end
   if not (C_Map and C_Map.GetMapChildrenInfo and instanceName) then return nil end
-  local children = Util.SafeValue("table", C_Map.GetMapChildrenInfo, AZEROTH, DUNGEON_MAP_TYPE, true)
+  local children = Util.SafeValue("table", C_Map.GetMapChildrenInfo, AZEROTH, Util.MapType.Dungeon, true)
   for _, info in ipairs(children or {}) do
     if Util.Plain(info.name) == instanceName then return Util.Plain(info.mapID), "name" end
   end
   return nil
 end
 
+-- "x,y" of the player on a map, or nil.
 local function playerPositionOn(mapID)
-  if not mapID then return nil end
-  local pos = Util.SafeValue("table", C_Map.GetPlayerMapPosition, mapID, "player")
-  local x, y
-  if pos and pos.GetXY then x, y = Util.SafeValues(pos.GetXY, pos) end
-  if type(x) == "number" and type(y) == "number" and (x > 0 or y > 0) then
-    return string.format("%.4f,%.4f", x, y)
-  end
+  local x, y = FC:PlayerMapPosition(mapID)
+  if x and (x > 0 or y > 0) then return string.format("%.4f,%.4f", x, y) end
   return nil
 end
 
@@ -209,7 +204,7 @@ function Dungeons:Probe()
   self.probed[instanceID] = true
   FC.db.dungeonProbe = FC.db.dungeonProbe or {}
   local p = { time = time(), name = name, kind = kind, difficultyID = difficultyID, lfgID = lfgID,
-    build = tostring(select(2, GetBuildInfo())), encounters = {} }
+    build = Util.ClientBuild(), encounters = {} }
 
   p.bestMap = Util.SafeValue("number", C_Map.GetBestMapForUnit, "player")
   local ux, uy = Util.SafeValues(UnitPosition, "player")

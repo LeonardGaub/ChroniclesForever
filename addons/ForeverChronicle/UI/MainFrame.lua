@@ -111,6 +111,17 @@ function UI:SelectPage(index)
   self:RefreshCurrent()
 end
 
+-- Opens the window (if closed) on the page with this id. Returns the page.
+function UI:ShowPage(id)
+  for i, page in ipairs(self.pages) do
+    if page.id == id then
+      if not (self.frame and self.frame:IsShown()) then self:Toggle() end
+      if self.frame then self:SelectPage(i) end
+      return page
+    end
+  end
+end
+
 function UI:RefreshCurrent()
   local page = self.pages[self.current or 1]
   if page and page.Refresh and self.frame and self.frame:IsShown() then

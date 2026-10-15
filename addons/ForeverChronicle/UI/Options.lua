@@ -1,7 +1,7 @@
 -- Journey Forever - option controls
--- Builds check boxes, choice rows, text fields and buttons (type "button", def.onClick) from the option
--- registry, one section at a time;
--- type "custom" lets a module build its own control (def.create).
+-- Builds the settings controls from the option registry (FC:RegisterOption), one section at a time:
+--   toggle: check box; choice: one button per choice; text: text field; button: runs def.onClick;
+--   custom: a module's own control (def.create).
 -- Options choose their section with def.section (default "general") and their column with def.column.
 
 local ADDON, FC = ...
@@ -9,30 +9,12 @@ local L = FC.L
 local UI = FC.UI
 
 local COLUMN_X = { 0, 270 }
-local GOLD = { 1, 0.82, 0 }
 
 local function createToggle(c, def)
   local cb = UI:CheckBox(c, def.labelKey, def.tooltipKey, function(checked) FC:SetOptionValue(def, checked) end)
   cb.Sync = function(self) self:SetChecked(FC:GetOptionValue(def) and true or false) end
   cb.height = 28
   return cb
-end
-
--- Gold border around the selected choice, plus the button's own highlight glow.
-function UI:SelectionBorder(button)
-  local ok, border = pcall(CreateFrame, "Frame", nil, button, "BackdropTemplate")
-  if not ok or not border.SetBackdrop then return nil end
-  border:SetPoint("TOPLEFT", -4, 4)
-  border:SetPoint("BOTTOMRIGHT", 4, -4)
-  border:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12 })
-  border:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], 1)
-  border:Hide()
-  return border
-end
-
-function UI:SetSelected(button, selected)
-  if button.selection then button.selection:SetShown(selected) end
-  if selected then button:LockHighlight() else button:UnlockHighlight() end
 end
 
 -- A label above one button per choice.

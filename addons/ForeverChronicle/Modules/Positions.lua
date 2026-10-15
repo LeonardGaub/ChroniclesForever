@@ -27,34 +27,26 @@ FC.Storage:DefineStream("positions", 100000, "Interface\\Icons\\INV_Boots_05", {
 FC.Storage:DefineStream("routeArchive", 500, "Interface\\Icons\\INV_Misc_Map02")
 
 local MOVE_THRESHOLD = 0.002 -- 0.2 % of the map size
-local CONTINENT_TYPE = 2     -- Enum.UIMapType.Continent
 
 FC:RegisterCapability("positions", "CAP_POSITIONS", function()
   return C_Map ~= nil and type(C_Map.GetPlayerMapPosition) == "function"
 end)
 
-local ENTRY_SECONDS = 60     -- an outdoor sample at most this old before entering counts as the entrance
-
 -------------------------------------------------------------------------------
 -- Map geometry (account-wide: FC.db.maps, FC.db.instances)
 -------------------------------------------------------------------------------
-
-local function buildNumber()
-  local _, build = GetBuildInfo()
-  return tostring(build)
-end
 
 function Positions:RecordMap(mapID)
   FC.db.maps = FC.db.maps or {}
   local key = tostring(mapID)
   local known = FC.db.maps[key]
-  if known and known.build == buildNumber() and known.entrancesChecked then return end
-  local continentType = (Enum and Enum.UIMapType and Enum.UIMapType.Continent) or CONTINENT_TYPE
+  if known and known.build == Util.ClientBuild() and known.entrancesChecked then return end
+  local continentType = Util.MapType.Continent
 
   local info = Util.SafeValue("table", C_Map.GetMapInfo, mapID)
   if not info then return end
   local entry = { name = Util.Plain(info.name), mapType = Util.Plain(info.mapType),
-    parent = Util.Plain(info.parentMapID), build = buildNumber() }
+    parent = Util.Plain(info.parentMapID), build = Util.ClientBuild() }
 
   -- Walk up to the continent and store this map's rectangle on it.
   local id = entry.parent
@@ -119,10 +111,11 @@ function Positions:RecordEntrances(mapID, entry)
 end
 
 -- The player just entered an instance: the previous outdoor sample is its entrance, unless the player was
--- teleported in by the dungeon finder or the sample is too old. Journal entrances are kept.
+-- teleported in by the dungeon finder or the sample is older than Route.ENTRY_SECONDS (the same rule the
+-- route uses to derive entrances). Journal entrances are kept.
 function Positions:LearnEntrance(instanceID, prev, now)
   if not (prev and prev.mapID and prev.x) or prev.taxi or prev.instanceID then return end
-  if now - (prev.untilTime or prev.time) > ENTRY_SECONDS then return end
+  if now - (prev.untilTime or prev.time) > FC.Route.ENTRY_SECONDS then return end
   if IsPartyLFG and Util.SafeValues(IsPartyLFG) == true then return end
   local key = tostring(instanceID)
   local known = entrances()[key]
@@ -167,23 +160,14 @@ function Positions:Sample()
   local now = time()
   local s = { time = now }
   s.mapID = C_Map and Util.SafeValue("number", C_Map.GetBestMapForUnit, "player")
-  if s.mapID then
-    local pos = Util.SafeValue("table", C_Map.GetPlayerMapPosition, s.mapID, "player")
-    if pos and pos.GetXY then
-      local x, y = Util.SafeValues(pos.GetXY, pos)
-      if type(x) == "number" and type(y) == "number" and (x > 0 or y > 0) then
-        s.x, s.y = Util.Round(x, 4), Util.Round(y, 4)
-      end
-    end
-  end
+  local x, y = FC:PlayerMapPosition(s.mapID)
+  if x and (x > 0 or y > 0) then s.x, s.y = Util.Round(x, 4), Util.Round(y, 4) end
   if not s.x and Util.SafeValues(IsInInstance) == true then
     s.mapID = nil
-    s.instanceID = select(4, Util.SafeValues(UnitPosition, "player"))
-    if type(s.instanceID) == "number" then
+    s.instanceID = FC:CurrentInstanceID()
+    if s.instanceID then
       FC.db.instances = FC.db.instances or {}
       FC.db.instances[tostring(s.instanceID)] = Util.SafeValue("string", GetRealZoneText)
-    else
-      s.instanceID = nil
     end
   end
   if not s.x and not s.instanceID then return end -- nothing reliable to record

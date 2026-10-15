@@ -167,7 +167,7 @@ end
 
 FC:RegisterGraph("xp", { labelKey = "GRAPH_XP", order = 10, color = { 0.58, 0.2, 0.85 }, relative = true,
   series = function(since) return Metrics:FieldSeries("xp", since) end,
-  format = function(v) return FC.Util.FormatNumber(v) end })
+  format = function(v) return Util.FormatNumber(v) end })
 FC:RegisterGraph("kills", { labelKey = "GRAPH_KILLS", order = 20, color = { 0.85, 0.2, 0.2 }, relative = true,
   series = function(since) return Metrics:FieldSeries("kills", since) end })
 FC:RegisterGraph("quests", { labelKey = "GRAPH_QUESTS", order = 30, color = { 1, 0.82, 0 }, relative = true,

@@ -43,18 +43,6 @@ function UI:Header(parent, key, icon)
   return fs
 end
 
--- Label/value pair laid out in a row: returns the value FontString.
-function UI:Field(parent, key, anchor, x, y, labelWidth)
-  local label = self:Label(parent, key, "GameFontNormalSmall")
-  label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", x or 0, y or -6)
-  label:SetWidth(labelWidth or 150)
-  local value = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  value:SetJustifyH("LEFT")
-  value:SetPoint("LEFT", label, "RIGHT", 6, 0)
-  value.label = label
-  return value
-end
-
 -- Relabel `region` (FontString or Button) with locale string `key` on language change.
 function UI:Track(region, key)
   localized[#localized + 1] = { region = region, key = key }
@@ -62,6 +50,16 @@ end
 
 function UI:Relocalize()
   for _, entry in ipairs(localized) do entry.region:SetText((entry.prefix or "") .. L[entry.key]) end
+end
+
+-- Separator between the parts of a line of text: "  ·  ".
+UI.SEP = "  \194\183  "
+
+-- Character name with the last name (title suffix) if it has one, e.g. "Blind Bullseye".
+function UI:FullName(info)
+  local name = info.name or "?"
+  if info.nameSuffix and info.nameSuffix ~= "" then name = name .. " " .. info.nameSuffix end
+  return name
 end
 
 function UI:ClassColored(text, classFile)
@@ -104,6 +102,24 @@ function UI:CheckBox(parent, key, tooltipKey, onClick)
     cb:SetScript("OnLeave", GameTooltip_Hide)
   end
   return cb
+end
+
+-- Gold border around a selected button (choices, toggles, tabs). nil where the client has no backdrops.
+function UI:SelectionBorder(button)
+  local ok, border = pcall(CreateFrame, "Frame", nil, button, "BackdropTemplate")
+  if not ok or not border.SetBackdrop then return nil end
+  border:SetPoint("TOPLEFT", -4, 4)
+  border:SetPoint("BOTTOMRIGHT", 4, -4)
+  border:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12 })
+  border:SetBackdropBorderColor(1, 0.82, 0, 1)
+  border:Hide()
+  return border
+end
+
+-- Shows the gold border (button.selection) and keeps the button's highlight glow on while selected.
+function UI:SetSelected(button, selected)
+  if button.selection then button.selection:SetShown(selected) end
+  if selected then button:LockHighlight() else button:UnlockHighlight() end
 end
 
 -- Classic status bar with text, e.g. storage usage.
@@ -204,33 +220,6 @@ function UI:ArrowButton(parent, dir, onClick)
   b:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
   b:SetScript("OnClick", onClick)
   return b
-end
-
--- Stat tile: icon and value; the name is shown in the tooltip. title: locale key; line: optional extra text.
-function UI:Tile(parent, icon, title, width)
-  local t = CreateFrame("Frame", nil, parent)
-  t:SetSize(width or 160, 40)
-  local bg = t:CreateTexture(nil, "BACKGROUND")
-  bg:SetSize(36, 36)
-  bg:SetPoint("LEFT")
-  bg:SetColorTexture(0, 0, 0, 0.7)
-  t.icon = t:CreateTexture(nil, "ARTWORK")
-  t.icon:SetPoint("TOPLEFT", bg, 2, -2)
-  t.icon:SetPoint("BOTTOMRIGHT", bg, -2, 2)
-  t.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-  self:SetIcon(t.icon, icon)
-  t.value = t:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-  t.value:SetPoint("LEFT", bg, "RIGHT", 8, 0)
-  t.value:SetPoint("RIGHT", t, "RIGHT", -2, 0)
-  t.value:SetJustifyH("LEFT")
-  t.value:SetWordWrap(false)
-  t:EnableMouse(true)
-  self:Tooltip(t, title, function(owner) return owner.extra end)
-  function t:SetValue(text, extra)
-    self.value:SetText(text)
-    self.extra = extra
-  end
-  return t
 end
 
 -------------------------------------------------------------------------------
@@ -410,8 +399,9 @@ function UI:MaskCircle(parent, tex)
 end
 
 -------------------------------------------------------------------------------
--- Pages: registered by UI/Pages/*.lua, shown as bottom tabs in registration order.
---   page = { id, labelKey, order, Create = function(page, container), Refresh = function(page) }
+-- Pages: registered by UI/Pages/*.lua, shown as icon tabs on the window's right edge, sorted by order.
+--   page = { id, labelKey, icon, order, Create = function(page, container), Refresh = function(page),
+--            OnViewChanged = function(page) (optional: another character is shown) }
 -------------------------------------------------------------------------------
 
 function UI:RegisterPage(page)

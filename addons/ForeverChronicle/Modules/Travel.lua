@@ -2,7 +2,7 @@
 -- Known zones per character and "zone discovered" events (first visit since tracking began).
 -- A zone counts as discovered after the player has stayed in it for the dwell time, not on a taxi
 -- and not during a loading screen. The zone the character is in at the very first run is known
--- without an event. Position sampling and the route stream follow in a later step.
+-- without an event. Position sampling (the route) is Modules/Positions.lua.
 
 local ADDON, FC = ...
 local Util = FC.Util
@@ -27,11 +27,10 @@ FC:RegisterStat("zones_discovered", { labelKey = "STAT_ZONES", order = 25, icon 
 -- Zone identity
 -------------------------------------------------------------------------------
 
-local ZONE_TYPE = 3 -- Enum.UIMapType.Zone; micro maps (caves, building floors) roll up to it
-
 -- Returns key, info for the current zone. Keys: "map:<id>", "instance:<id>" or "zone:<name>".
+-- Micro maps (caves, building floors) roll up to their zone.
 function Travel:CurrentZone()
-  local zoneType = (Enum and Enum.UIMapType and Enum.UIMapType.Zone) or ZONE_TYPE
+  local zoneType = Util.MapType.Zone
   local zone = Util.SafeValue("string", GetRealZoneText)
   local mapID = C_Map and Util.SafeValue("number", C_Map.GetBestMapForUnit, "player")
   if mapID and C_Map.GetMapInfo then
@@ -46,12 +45,9 @@ function Travel:CurrentZone()
   if mapID then
     return "map:" .. mapID, { mapID = mapID, zone = zone }
   end
-  local inInstance = Util.SafeValues(IsInInstance)
-  if inInstance == true then
-    local instanceID = select(4, Util.SafeValues(UnitPosition, "player"))
-    if type(instanceID) == "number" then
-      return "instance:" .. instanceID, { instanceID = instanceID, zone = zone }
-    end
+  local instanceID = FC:CurrentInstanceID()
+  if instanceID then
+    return "instance:" .. instanceID, { instanceID = instanceID, zone = zone }
   end
   if zone and zone ~= "" then return "zone:" .. zone, { zone = zone } end
   return nil

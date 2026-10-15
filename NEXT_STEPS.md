@@ -1,6 +1,66 @@
 # Journey Forever – Session Handoff
 
-## Latest: map route work, addon 0.15.0 (2026-10-14, not committed yet)
+Start here. "Current state" and "Open items" are kept up to date; "History" keeps the notes as they were written
+at the time (older entries may describe things that changed later). Architecture and extension guide:
+`ARCHITECTURE.md`. Player-facing addon changes for the next upload: `CHANGELOG.md`.
+
+## Current state (2026-10-15)
+- Main addon `addons/ForeverChronicle` 0.15.0, not uploaded yet (last CurseForge build 0.14.1; the changes are
+  collected under "Unreleased" in `CHANGELOG.md`). Companion `addons/ForeverChronicle_Share` 0.14.1, distributed
+  through the cloud folder. Release both together: since 0.15.0 the saved data is packed (see History).
+- Addon window tabs: Übersicht, Chronik (screenshots shown with their entries), Karte, Berufe, Einstellungen,
+  Diagnose. Slash commands `/fj` and `/fjshot`.
+- Desktop app tabs: Übersicht, Chronik, Karte (with the cinematic mode), Berufe, Import, Einstellungen (sound),
+  Diagnose. Start it with `desktop/Forever Chronicle.bat`; friends use `Journey Forever starten.bat` from the
+  package built by `tools/package_for_friend.py`. The user is moving away from the desktop app: fixes and features
+  go into the addon, except features that need the screenshot files (cinematic replay).
+- Sharing with friends: the companion addon plus the cloud sync `sync/ForeverSync.ps1` (docs/Sharing_Design.md).
+  The desktop share feature was removed.
+- Tests: `tests/addon` (`npm test`: queue tests and phases 1-14, writes the fixtures) first, then `desktop`
+  (`pytest`, 105 tests). All pass.
+
+## Open items
+1. Dungeon maps: after the user's next dungeon, read `FC.db.dungeonProbe` from the saved file and decide the
+   dungeon map per `docs/Dungeon_Maps.md` (real path if a position exists, boss-run view otherwise). Check there
+   that the journal's encounter IDs match ENCOUNTER_END (probe field `encounters`).
+2. Friends' routes on the map: designed in `docs/Friends_Map_Design.md`, not built.
+3. Spec v1.4: the updates listed below are not written yet.
+4. The friends' package is not yet tested end to end on a clean PC (Python install and pip download).
+5. Gear: test whether `SetCustomRace` / `TryOn` work in Forever, for a dressed model of other characters.
+6. Open question for the user: real WoW icons for the desktop (wow.export from the local client, or the Wowhead
+   icon CDN).
+7. Short in-game checks for the user: open each profession window once and look at the Berufe tab.
+
+## Confirmed client facts
+- Install: `C:\Program Files (x86)\World of Warcraft\_classic_beta_\` (`WowB.exe`, client 1.60.1). TOC Interface 16001.
+- SavedVariables: `WTF\Account\131324136#1\SavedVariables\` plus `.lua.bak`.
+
+## Decisions made
+- WoW Forever = Blizzard Classic+ on the Mainline API with Midnight addon rules.
+- Published on CurseForge as "Journey Forever" (main addon only); the companion stays private. Internal names
+  keep "ForeverChronicle" (folders, SavedVariables, paths) so existing data survives. The user provides map
+  artwork for the desktop app (done).
+- UI: German default and switchable. Classic look: Blizzard templates in game, Classic theme on desktop.
+- Modular architecture: new stats arrive as new addon modules and desktop registry entries (see ARCHITECTURE.md).
+- Screenshots: shared delay after the event (user request, default 5 s), on-screen countdown (not chat: chat would be in
+  the screenshot), cooldown bypass for level/achievement, and the test screenshot follows the delay.
+- After every addon change: copy to the game folder and hash-verify. Mirror the main addon completely; in the
+  companion keep `Friends\FriendsData.lua` (the sync script writes it).
+- Saved files must stay below ~262k distinct constants: pack large data (`Core/Storage.lua`, "Packing").
+- The user prefers short in-game test sessions.
+
+## Spec updates still to write (v1.4)
+- F-003: the per-type delays were replaced by one shared delay. Max age counts from when a request becomes due.
+  Countdown indicator; the test screenshot uses the delay.
+- F-005: playback speed base (1× = 60 s of play per second). Position format and implicit seq.
+  Map art location and naming.
+- F-009: settings sections; screenshots are shown with their Chronicle entries (no Screenshots tab).
+- F-008: recipe/profession events were added to the chronicle (the spec said snapshots only). The compact recipe
+  format and `snapshots` area.
+
+## History
+
+### Map route work, addon 0.15.0 and dungeons (2026-10-14/15)
 - Slash command `/fj` (was `/fc`), `/fjshot` (was `/fcshot`).
 - Map page: the route is painted up to the shown moment, with a "last 15 minutes" toggle (fading trail), colours
   by level / session / one colour plus a legend, a timeline slider (zone bands, event ticks, breaks collapsed),
@@ -30,7 +90,7 @@
   Check there that the journal's encounter IDs match ENCOUNTER_END (probe field `encounters`).
 - The desktop cinematic mode has a timeline bar (mouse-activated), speeds, and slows down before screenshots.
 
-## Current state (2026-10-14)
+### Version notes up to 0.14 (2026-10-14)
 - Spec: `ForeverChronicle_Feature_Spec_v1.3.docx`. Architecture and extension guide: `ARCHITECTURE.md`.
   Phase 0 results: `docs/Phase0_Compatibility_Report.md`.
 - **Addon v0.3.1** (`addons/ForeverChronicle/`), installed and hash-verified in
@@ -246,31 +306,3 @@
     (Orgrimmar/Cleft of Shadow, Kalimdor rectangle).
 - Tests: `tests/addon` (`npm test`: 14 queue tests and 13 phases) and `desktop` (`pytest`, 93 tests). All pass.
 - In-game confirmed by the user: window, import, Screenshots tab (v0.2.0). Not yet seen in game: v0.2.1 and v0.3.0 changes.
-
-## Confirmed client facts
-- Install: `C:\Program Files (x86)\World of Warcraft\_classic_beta_\` (`WowB.exe`, client 1.60.1). TOC Interface 16001.
-- SavedVariables: `WTF\Account\131324136#1\SavedVariables\` plus `.lua.bak`.
-
-## Decisions made
-- WoW Forever = Blizzard Classic+ on the Mainline API with Midnight addon rules.
-- Private use. The user provides map artwork (done).
-- UI: German default and switchable. Classic look: Blizzard templates in game, Classic theme on desktop.
-- Modular architecture: new stats arrive as new addon modules and desktop registry entries (see ARCHITECTURE.md).
-- Screenshots: shared delay after the event (user request, default 5 s), on-screen countdown (not chat: chat would be in
-  the screenshot), cooldown bypass for level/achievement, and the test screenshot follows the delay.
-- After every addon change: copy to the game folder and hash-verify (keep `Friends\FriendsData.lua` there; the desktop app writes it).
-- The user prefers short in-game test sessions.
-
-## Spec updates still to write (v1.4)
-- F-003: the per-type delays were replaced by one shared delay. Max age counts from when a request becomes due.
-  Countdown indicator; the test screenshot uses the delay.
-- F-005: playback speed base (1× = 60 s of play per second). Position format and implicit seq.
-  Map art location and naming.
-- F-009: settings sections; the Screenshots tab shows only the list.
-- F-008: recipe/profession events were added to the chronicle (the spec said snapshots only). The compact recipe
-  format and `snapshots` area.
-
-## Next steps
-1. User: quick check: `/reload`, walk a bit, `/reload`, then open the desktop Karte tab.
-2. User: open each profession window once in game and check the Berufe tab (in game and desktop).
-3. QA and packaging.

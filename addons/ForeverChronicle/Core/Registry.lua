@@ -3,6 +3,12 @@
 
 local ADDON, FC = ...
 
+-- Registries keep their entries sorted by `order` (lower first).
+local function insertByOrder(list, def)
+  table.insert(list, def)
+  table.sort(list, function(a, b) return a.order < b.order end)
+end
+
 -------------------------------------------------------------------------------
 -- Event types: how a recorded event is shown in the in-game chronicle.
 --   def = { labelKey, icon, format = function(record) -> text, order,
@@ -23,8 +29,7 @@ end
 
 function FC:RegisterEventCategory(key, def)
   def.key, def.order = key, def.order or 100
-  table.insert(self.eventCategories, def)
-  table.sort(self.eventCategories, function(a, b) return a.order < b.order end)
+  insertByOrder(self.eventCategories, def)
 end
 
 -- Category key of a recorded event (nil for types without one; those are always shown).
@@ -63,8 +68,7 @@ FC.statGroups = {}
 
 -- Groups are shown as sections on the overview: heading (labelKey) and a short description (descKey).
 function FC:RegisterStatGroup(key, labelKey, descKey, order)
-  table.insert(self.statGroups, { key = key, labelKey = labelKey, descKey = descKey, order = order or 100 })
-  table.sort(self.statGroups, function(a, b) return a.order < b.order end)
+  insertByOrder(self.statGroups, { key = key, labelKey = labelKey, descKey = descKey, order = order or 100 })
 end
 
 FC:RegisterStatGroup("session", "STATGROUP_SESSION", "STATGROUP_SESSION_DESC", 10)
@@ -76,24 +80,7 @@ function FC:RegisterStat(key, def)
   def.key = key
   def.order = def.order or 100
   def.group = def.group or "progress"
-  table.insert(self.statDefs, def)
-  table.sort(self.statDefs, function(a, b) return a.order < b.order end)
-end
-
--------------------------------------------------------------------------------
--- Graphs: line graphs under the character on the overview, switchable; they show the last 2 hours of played time.
---   def = { labelKey, order, color = { r, g, b }, series = function(since) -> { { time, value }, ... } (ascending),
---           relative = true (show the change since the window start), step = true (changes at exact times),
---           format = function(value) -> text }
--------------------------------------------------------------------------------
-
-FC.graphDefs = {}
-
-function FC:RegisterGraph(key, def)
-  def.key = key
-  def.order = def.order or 100
-  table.insert(self.graphDefs, def)
-  table.sort(self.graphDefs, function(a, b) return a.order < b.order end)
+  insertByOrder(self.statDefs, def)
 end
 
 function FC:GetStatsInGroup(group)
@@ -137,26 +124,40 @@ function FC:FormatStat(def, value)
 end
 
 -------------------------------------------------------------------------------
+-- Graphs: line graphs under the character on the overview, switchable; they show the last 2 hours of played time.
+--   def = { labelKey, order, color = { r, g, b }, series = function(since) -> { { time, value }, ... } (ascending),
+--           relative = true (show the change since the window start), step = true (changes at exact times),
+--           format = function(value) -> text }
+-------------------------------------------------------------------------------
+
+FC.graphDefs = {}
+
+function FC:RegisterGraph(key, def)
+  def.key = key
+  def.order = def.order or 100
+  insertByOrder(self.graphDefs, def)
+end
+
+-------------------------------------------------------------------------------
 -- Options: settings shown on the settings tab, grouped in sections.
---   def = { section, module, key, type = "toggle" | "choice", labelKey, tooltipKey, column = 1 | 2,
---           choices = { { value, labelKey | text } }, order, get, set, onChange = function(value) }
+--   def = { section, module, key, type = "toggle" | "choice" | "text" | "button" | "custom", labelKey, tooltipKey,
+--           column = 1 | 2, choices = { { value, labelKey | text } }, order, get, set, onChange = function(value) }
 -- section defaults to "general". Modules add their own sections with FC:RegisterOptionSection.
+-- The controls for each type are built in UI/Options.lua.
 -------------------------------------------------------------------------------
 
 FC.optionDefs = {}
 FC.optionSections = {}
 
 function FC:RegisterOptionSection(key, labelKey, order, icon)
-  table.insert(self.optionSections, { key = key, labelKey = labelKey, order = order or 100, icon = icon })
-  table.sort(self.optionSections, function(a, b) return a.order < b.order end)
+  insertByOrder(self.optionSections, { key = key, labelKey = labelKey, order = order or 100, icon = icon })
 end
 
 FC:RegisterOptionSection("general", "SECTION_GENERAL", 1, "Interface\\Icons\\INV_Misc_Gear_01")
 
 function FC:RegisterOption(def)
   def.order = def.order or 100
-  table.insert(self.optionDefs, def)
-  table.sort(self.optionDefs, function(a, b) return a.order < b.order end)
+  insertByOrder(self.optionDefs, def)
 end
 
 function FC:GetOptionValue(def)

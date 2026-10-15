@@ -44,16 +44,11 @@ function FC:RegisterCapability(key, labelKey, probe)
   Diagnostics.capabilities[key] = { key = key, labelKey = labelKey, probe = probe, order = order }
 end
 
-local function buildKey()
-  local _, build = GetBuildInfo()
-  return tostring(build)
-end
-
 -- Marks a capability as observed working. Called by modules the first time real data arrives.
 function FC:ConfirmCapability(key)
   local stored = self.db.diagnostics.capabilities[key]
-  if stored and stored.status == "confirmed" and stored.build == buildKey() then return end
-  self.db.diagnostics.capabilities[key] = { status = "confirmed", confirmedAt = time(), build = buildKey() }
+  if stored and stored.status == "confirmed" and stored.build == FC.Util.ClientBuild() then return end
+  self.db.diagnostics.capabilities[key] = { status = "confirmed", confirmedAt = time(), build = FC.Util.ClientBuild() }
   Diagnostics:Log("info", "capability confirmed: " .. key)
 end
 

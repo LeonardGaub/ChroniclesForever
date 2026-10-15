@@ -95,6 +95,13 @@ end
 
 local function shotTime(rec) return rec.capturedAt or rec.requestedAt or 0 end
 
+-- Name of a screenshot trigger ("Level-up", ...). FC.L returns the key itself for unknown triggers.
+local function triggerLabel(trigger)
+  local key = "TRIGGER_" .. tostring(trigger):upper()
+  local text = L[key]
+  return text ~= key and text or L.TRIGGER_MANUAL
+end
+
 local function createRow(row)
   -- Milestones and deaths: a colour wash from the left and a thin stripe.
   row.accent = row:CreateTexture(nil, "BACKGROUND", nil, 1)
@@ -219,8 +226,7 @@ local function updateRow(row, item)
     where = record.location and (record.location.subzone or record.location.zone)
     when = record.time
   else
-    local trigger = L["TRIGGER_" .. tostring(item.shot.trigger):upper()]
-    text, icon, when = trigger or L.TRIGGER_MANUAL, SHOT_ICON, shotTime(item.shot)
+    text, icon, when = triggerLabel(item.shot.trigger), SHOT_ICON, shotTime(item.shot)
   end
   local kind = item.highlight
   local big = kind == "milestone"
@@ -249,7 +255,7 @@ local function updateRow(row, item)
   row.text:SetText(text)
   row.text:Show()
   local whenText = date(L.TIME_FORMAT, when or 0)
-  row.sub:SetText(where and (whenText .. "  \194\183  " .. where) or whenText)
+  row.sub:SetText(where and (whenText .. UI.SEP .. where) or whenText)
   row.sub:Show()
   row.time, row.title, row.shotRecord = when, text, item.shot
 
@@ -330,7 +336,7 @@ local function buildItems(hidden, onlyShots, search)
   -- Loose screenshots inside the shown time range (all of them if the list is not full).
   local oldest = #items >= MAX_ROWS and items[#items].time or -math.huge
   for _, rec in ipairs(loose) do
-    local label = L["TRIGGER_" .. tostring(rec.trigger):upper()] or L.TRIGGER_MANUAL
+    local label = triggerLabel(rec.trigger)
     if shotTime(rec) >= oldest and (not onlyShots or TAKEN[rec.status]) and matches(query, label) then
       items[#items + 1] = { shot = rec, time = shotTime(rec) }
     end
@@ -498,6 +504,14 @@ function page:UpdateFoldLabel()
   self.foldLabel:SetText(hidden > 0 and string.format(L.CHRONICLE_FILTERS_HIDDEN, hidden) or L.CHRONICLE_FILTERS)
 end
 
+-- Darker, aged edges of the parchment: side -> gradient orientation and its alpha at the start and the end
+-- (bottom/left to top/right).
+local VIGNETTE = {
+  LEFT = { "HORIZONTAL", 0.35, 0 }, RIGHT = { "HORIZONTAL", 0, 0.35 },
+  BOTTOM = { "VERTICAL", 0.35, 0 }, TOP = { "VERTICAL", 0, 0.35 },
+}
+local VIGNETTE_COLOR = { 0.3, 0.18, 0.05 }
+
 -- Parchment candidates, the first one the client has is used.
 local PARCHMENT = {
   { file = "Interface\\AchievementFrame\\UI-Achievement-Parchment-Horizontal" },
@@ -516,24 +530,21 @@ function page:ApplyStyle()
         insets = { left = 4, right = 4, top = 4, bottom = 4 } })
       paper:SetBackdropBorderColor(0.42, 0.29, 0.15, 1)
     end
-    -- Darker, aged edges.
     for _, v in ipairs(self.vignette) do
+      local orientation, from, to = unpack(VIGNETTE[v.side])
+      local r, g, b = unpack(VIGNETTE_COLOR)
       v:ClearAllPoints()
-      local horizontal = v.side == "LEFT" or v.side == "RIGHT"
       v:SetPoint(v.side, self.parchment, v.side)
-      if horizontal then
+      if orientation == "HORIZONTAL" then
         v:SetPoint("TOP", self.parchment, "TOP")
         v:SetPoint("BOTTOM", self.parchment, "BOTTOM")
         v:SetWidth(36)
-        if v.side == "LEFT" then UI:Gradient(v, "HORIZONTAL", 0.3, 0.18, 0.05, 0.35, 0.3, 0.18, 0.05, 0)
-        else UI:Gradient(v, "HORIZONTAL", 0.3, 0.18, 0.05, 0, 0.3, 0.18, 0.05, 0.35) end
       else
         v:SetPoint("LEFT", self.parchment, "LEFT")
         v:SetPoint("RIGHT", self.parchment, "RIGHT")
         v:SetHeight(28)
-        if v.side == "BOTTOM" then UI:Gradient(v, "VERTICAL", 0.3, 0.18, 0.05, 0.35, 0.3, 0.18, 0.05, 0)
-        else UI:Gradient(v, "VERTICAL", 0.3, 0.18, 0.05, 0, 0.3, 0.18, 0.05, 0.35) end
       end
+      UI:Gradient(v, orientation, r, g, b, from, r, g, b, to)
       v:Show()
     end
     self.parchment:Show()

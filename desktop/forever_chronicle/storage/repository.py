@@ -380,10 +380,6 @@ class Repository:
                                 (character_id, event_id)).fetchone()
         return EventRow.from_row(row) if row else None
 
-    def count_screenshots(self, character_id: str) -> int:
-        return self.conn.execute("""SELECT COUNT(*) FROM screenshots WHERE character_id = ?
-                                    AND status IN ('api_called', 'confirmed')""", (character_id,)).fetchone()[0]
-
     # -- positions and maps -------------------------------------------------------
 
     def upsert_position(self, character_id: str, p: "PositionPoint") -> None:

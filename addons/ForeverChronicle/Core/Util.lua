@@ -1,5 +1,5 @@
 -- Journey Forever - Util
--- Small helpers without game state: secret-value guards, safe calls, IDs, table helpers.
+-- Small helpers without game state: secret-value guards, safe calls, IDs, client constants, table helpers.
 
 local ADDON, FC = ...
 FC.Util = {}
@@ -59,6 +59,24 @@ function Util.NewId()
   idCounter = idCounter + 1
   return string.format("%08x%04x%07x%07x", time(), idCounter % 0x10000,
     math.random(0, 0xFFFFFFF), math.random(0, 0xFFFFFFF))
+end
+
+-------------------------------------------------------------------------------
+-- Client
+-------------------------------------------------------------------------------
+
+-- Enum.UIMapType values, with the Mainline numbers where the enum is missing.
+local mapTypes = (Enum and Enum.UIMapType) or {}
+Util.MapType = {
+  Continent = mapTypes.Continent or 2,
+  Zone = mapTypes.Zone or 3,           -- micro maps (caves, building floors) have higher numbers
+  Dungeon = mapTypes.Dungeon or 4,
+}
+
+-- The client's build number as a string (e.g. "70338"). Data recorded per build compares against it.
+function Util.ClientBuild()
+  local _, build = GetBuildInfo()
+  return tostring(build)
 end
 
 -------------------------------------------------------------------------------

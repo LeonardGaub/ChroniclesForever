@@ -134,13 +134,6 @@ function Canvas:VisibleRect()
   return -self.offX / z, -self.offY / z, (self.width - self.offX) / z, (self.height - self.offY) / z
 end
 
--- Centers the view on a map position (0..1) at the given zoom (kept inside the map).
-function Canvas:CenterOn(x, y, zoom)
-  zoom = math.max(1, math.min(MAX_ZOOM, zoom or self.zoom))
-  local px, py = self:ToPixels(x, y)
-  self:SetView(zoom, self.width / 2 - px * zoom, self.height / 2 - py * zoom)
-end
-
 function Canvas:ZoomAtCursor(factor)
   local cx, cy = self:CursorPosition()
   local newZoom = math.max(1, math.min(MAX_ZOOM, self.zoom * factor))
@@ -161,7 +154,7 @@ end
 local function hideAll(list) for _, r in ipairs(list) do r:Hide() end end
 
 -- Returns true if the client provided art for this map.
-function Canvas:SetMap(mapID, fallbackName)
+function Canvas:SetMap(mapID)
   if mapID ~= self.mapID then self:ResetZoom() end
   self.mapID = mapID
   hideAll(self.tiles)
@@ -171,7 +164,7 @@ function Canvas:SetMap(mapID, fallbackName)
   local textures = layer and C_Map.GetMapArtLayerTextures
     and Util.SafeValue("table", C_Map.GetMapArtLayerTextures, mapID, 1)
   local info = Util.SafeValue("table", C_Map.GetMapInfo, mapID)
-  self.name:SetText(info and Util.Plain(info.name) or fallbackName or "")
+  self.name:SetText(info and Util.Plain(info.name) or "")
 
   if not (layer and textures and #textures > 0) then
     self.name:Show()
@@ -199,6 +192,17 @@ function Canvas:SetMap(mapID, fallbackName)
   return true
 end
 
+-- Size of tile `index` of `count` along one side of an overlay that is `total` pixels long: the pixels it
+-- covers and the size of its file (files are powers of two, at least 16; only the last tile is partial).
+local function overlayTileSize(index, count, total)
+  if index < count then return TILE, TILE end
+  local pixels = total % TILE
+  if pixels == 0 then pixels = TILE end
+  local file = 16
+  while file < pixels do file = file * 2 end
+  return pixels, file
+end
+
 -- Explored-area overlays, laid out like the world map does it.
 function Canvas:DrawExplored(mapID)
   if not (C_MapExplorationInfo and C_MapExplorationInfo.GetExploredMapTextures) then return end
@@ -210,21 +214,9 @@ function Canvas:DrawExplored(mapID)
       local wide = math.ceil(info.textureWidth / TILE)
       local tall = math.ceil(info.textureHeight / TILE)
       for j = 1, tall do
-        local pixelH, fileH = TILE, TILE
-        if j == tall then
-          pixelH = info.textureHeight % TILE
-          if pixelH == 0 then pixelH = TILE end
-          fileH = 16
-          while fileH < pixelH do fileH = fileH * 2 end
-        end
+        local pixelH, fileH = overlayTileSize(j, tall, info.textureHeight)
         for k = 1, wide do
-          local pixelW, fileW = TILE, TILE
-          if k == wide then
-            pixelW = info.textureWidth % TILE
-            if pixelW == 0 then pixelW = TILE end
-            fileW = 16
-            while fileW < pixelW do fileW = fileW * 2 end
-          end
+          local pixelW, fileW = overlayTileSize(k, wide, info.textureWidth)
           n = n + 1
           local tex = self.overlays[n] or self.art:CreateTexture(nil, "BACKGROUND", nil, -6)
           self.overlays[n] = tex

@@ -43,6 +43,9 @@ local POPUP_FRAMES = { "EventToastManagerFrame", "LevelUpDisplay", "BossBanner",
 Shots.triggers = {}
 Shots.triggerByEvent = {}
 
+-- The triggers players can switch on and off, in the order of the settings and /fjshot.
+local TRIGGER_OPTIONS = { "level", "achievement", "rare", "dungeon", "zone", "quest", "death" }
+
 function Shots:RegisterTrigger(name, def)
   def.name = name
   self.triggers[name] = def
@@ -416,7 +419,7 @@ end
 local function settings() return Shots:GetSettings() end
 
 FC:RegisterOptionSection("screenshots", "SECTION_SHOT_TRIGGERS", 20, "Interface\\Icons\\INV_Misc_Spyglass_02")
-for i, name in ipairs({ "level", "achievement", "rare", "dungeon", "zone", "quest", "death" }) do
+for i, name in ipairs(TRIGGER_OPTIONS) do
   FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_" .. name:upper(), order = 1 + i,
     tooltipKey = name == "dungeon" and "OPT_SHOT_DUNGEON_TIP" or nil,
     get = function() return settings().triggers[name] end, set = function(v) settings().triggers[name] = v end })
@@ -462,7 +465,7 @@ local function printStatus()
   local s = settings()
   FC:Print(string.format(L.SHOT_STATUS_LINE, Shots.queue:Count(), s.delay, s.cooldown, onOff(s.bypass)))
   local parts = {}
-  for _, name in ipairs({ "level", "achievement", "rare", "dungeon", "zone", "quest", "death" }) do
+  for _, name in ipairs(TRIGGER_OPTIONS) do
     parts[#parts + 1] = L["TRIGGER_" .. name:upper()] .. ": " .. onOff(s.triggers[name])
   end
   FC:Print("  " .. table.concat(parts, ", "))

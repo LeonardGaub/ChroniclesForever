@@ -256,7 +256,20 @@ end
 -------------------------------------------------------------------------------
 
 function page:Create(c)
-  -- Character header
+  self:CreateHeader(c)
+  self:CreateStatGroups(c)
+  self:CreateGearPanel(c)
+  self:CreateGraph(c)
+
+  -- Other characters (alts, friends): their saved gear, but no live model, XP, gold or graph.
+  self.otherNote = UI:Label(c, "VIEW_LIVE_ONLY", "GameFontDisable")
+  self.otherNote:SetPoint("LEFT", self.modelBg, "LEFT", 12, 0)
+  self.otherNote:SetPoint("RIGHT", self.modelBg, "RIGHT", -12, 0)
+  self.otherNote:SetJustifyH("CENTER")
+end
+
+-- Name, level line, XP bar and gold (top left).
+function page:CreateHeader(c)
   self.name = c:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
   self.name:SetPoint("TOPLEFT", 16, -14)
   self.details = c:CreateFontString(nil, "OVERLAY", "GameFontDisable")
@@ -268,8 +281,10 @@ function page:Create(c)
   UI:Tooltip(self.xp, "XP_BAR", function() return self.xpTip end)
   self.money = c:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   self.money:SetPoint("TOPLEFT", self.xp, "BOTTOMLEFT", 0, -8)
+end
 
-  -- Stat groups
+-- The stat groups under the header: heading, description and a grid of tiles each.
+function page:CreateStatGroups(c)
   local anchor, y = self.money, -16
   self.tiles = {}
   for _, group in ipairs(FC.statGroups) do
@@ -289,8 +304,10 @@ function page:Create(c)
       anchor, y = desc, -6 - rows * (TILE_H + 4) - 10
     end
   end
+end
 
-  -- Character model with gear (right side)
+-- Character model with the gear slots around it and the race background (right side).
+function page:CreateGearPanel(c)
   local panel = CreateFrame("Frame", nil, c)
   self.gearPanel = panel
   panel:SetPoint("TOPRIGHT", -16, -16)
@@ -345,8 +362,11 @@ function page:Create(c)
     UI:Tooltip(model, "MODEL_TITLE", "MODEL_TIP")
     self.model = model
   end
+end
 
-  -- Graph under the character, switchable with the arrows (graphs come from FC:RegisterGraph).
+-- Graph under the character, switchable with the arrows (graphs come from FC:RegisterGraph).
+function page:CreateGraph(c)
+  local panel = self.gearPanel
   local prev = UI:ArrowButton(c, "Prev", function() self:StepGraph(-1) end)
   prev:SetPoint("TOPLEFT", panel, "BOTTOMLEFT", 0, -12)
   local nextB = UI:ArrowButton(c, "Next", function() self:StepGraph(1) end)
@@ -360,12 +380,6 @@ function page:Create(c)
   self.graph.frame:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -8)
   self.liveParts = { prev, nextB, self.graphTitle, self.graphSubtitle, self.graph.frame }
   if self.model then self.liveParts[#self.liveParts + 1] = self.model end
-
-  -- Other characters (alts, friends): their saved gear, but no live model, XP, gold or graph.
-  self.otherNote = UI:Label(c, "VIEW_LIVE_ONLY", "GameFontDisable")
-  self.otherNote:SetPoint("LEFT", self.modelBg, "LEFT", 12, 0)
-  self.otherNote:SetPoint("RIGHT", self.modelBg, "RIGHT", -12, 0)
-  self.otherNote:SetJustifyH("CENTER")
 end
 
 local GRAPH_SECONDS = 2 * 3600   -- the graph shows the last 2 hours of played time
@@ -414,7 +428,7 @@ function page:RefreshGraph()
   local subtitle = string.format(L.GRAPH_SUBTITLE, Util.FormatDuration(length))
   if #points >= 2 then
     local change = points[#points].value - points[1].value
-    subtitle = subtitle .. "  \194\183  " .. (change > 0 and "+" or "") .. format(change)
+    subtitle = subtitle .. UI.SEP .. (change > 0 and "+" or "") .. format(change)
   end
   self.graphSubtitle:SetText(subtitle)
   self.graph:SetData(points, length, { key = def.key .. ":" .. tostring(FC:ViewKey()),
@@ -424,30 +438,32 @@ function page:RefreshGraph()
     end })
 end
 
+function page:RefreshTiles()
+  for _, tile in ipairs(self.tiles) do
+    local value = FC:GetStatValue(tile.def)
+    tile.value:SetText(value ~= nil and FC:FormatStat(tile.def, value) or "-")
+  end
+end
+
 function page:Refresh()
   local played = FC:IsViewingPlayed()
   local info = FC:ViewChar().info
-  local fullName = info.name or "?"
-  if info.nameSuffix and info.nameSuffix ~= "" then fullName = fullName .. " " .. info.nameSuffix end
-  self.name:SetText(UI:ClassColored(fullName, info.classFile))
+  self.name:SetText(UI:ClassColored(UI:FullName(info), info.classFile))
   self.details:SetText(string.format(L.CHAR_DETAILS, info.level or "?", info.raceName or "", info.className or "")
-    .. "  \194\183  " .. (info.realm or ""))
+    .. UI.SEP .. (info.realm or ""))
 
   setRaceBackground(self, info.raceFile)
   for _, part in ipairs(self.liveParts) do part:SetShown(played) end
   self.otherNote:SetShown(not played)
   if not played then
     local owner = FC:ViewOwner()
-    if owner then self.details:SetText(self.details:GetText() .. "  \194\183  " .. string.format(L.VIEW_FRIEND_OF, owner)) end
+    if owner then self.details:SetText(self.details:GetText() .. UI.SEP .. string.format(L.VIEW_FRIEND_OF, owner)) end
     self.xp:Hide()
     self.money:SetText(info.lastSeenAt and string.format(L.VIEW_LAST_SEEN, Util.FormatTime(info.lastSeenAt)) or "")
     local gear = FC:GetModule("Gear"):BySlot(FC:ViewChar())
     for _, slot in ipairs(self.slots) do updateSlotFromSnapshot(slot, slot.slotID and gear[slot.slotID]) end
     self.gearSignature = nil -- the played character's model is refreshed when shown again
-    for _, tile in ipairs(self.tiles) do
-      local value = FC:GetStatValue(tile.def)
-      tile.value:SetText(value ~= nil and FC:FormatStat(tile.def, value) or "-")
-    end
+    self:RefreshTiles()
     return
   end
 
@@ -465,11 +481,7 @@ function page:Refresh()
   end
   local money = Util.SafeValue("number", GetMoney)
   self.money:SetText(money and GetCoinTextureString and GetCoinTextureString(money) or "")
-
-  for _, tile in ipairs(self.tiles) do
-    local value = FC:GetStatValue(tile.def)
-    tile.value:SetText(value ~= nil and FC:FormatStat(tile.def, value) or "-")
-  end
+  self:RefreshTiles()
 
   -- Gear; the model is refreshed when the equipment changed.
   local signature = {}

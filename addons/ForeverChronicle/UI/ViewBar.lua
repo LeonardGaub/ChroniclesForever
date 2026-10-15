@@ -1,8 +1,9 @@
 -- Journey Forever - character chooser around the window (docs/Sharing_Design.md, phase 2)
 -- A wide dropdown bar across the top of the window shows whose character the window shows; it opens a
 -- scrollable list of all characters: mine (this account; the played one first) and, grouped by owner, the
--- characters other addons add (FC:RegisterViewSource, e.g. friends). Choosing one makes every tab show that character (FC:SetView) and
--- the portrait in the corner shows it (live portrait for the played character, class emblem otherwise).
+-- characters other addons add (FC:RegisterViewSource, e.g. friends). Choosing one makes every tab show that
+-- character (FC:SetView) and the portrait in the corner shows it (live portrait for the played character,
+-- class emblem otherwise).
 -- For any other character the bar says so ("nur lesen") and offers a button back to my own.
 
 local ADDON, FC = ...
@@ -14,12 +15,6 @@ local ROW_HEIGHT = 36
 local BAR_HEIGHT = 32
 local LIST_H = 440
 local CLASS_ICONS = "Interface\\TargetingFrame\\UI-Classes-Circles"
-
-local function fullName(info)
-  local name = info.name or "?"
-  if info.nameSuffix and info.nameSuffix ~= "" then name = name .. " " .. info.nameSuffix end
-  return name
-end
 
 -- Class emblem on a texture; false if the class is unknown.
 function UI:SetClassIcon(tex, classFile)
@@ -139,9 +134,9 @@ local function updateRow(row, item)
   if e then
     local info = e.char.info
     UI:SetClassIcon(row.icon, info.classFile)
-    row.name:SetText(UI:ClassColored(fullName(info), info.classFile) .. (e.played and ("  |cff999999(" .. L.VIEW_PLAYED .. ")|r") or ""))
+    row.name:SetText(UI:ClassColored(UI:FullName(info), info.classFile) .. (e.played and ("  |cff999999(" .. L.VIEW_PLAYED .. ")|r") or ""))
     local sub = string.format(L.VIEW_ROW, tostring(info.level or "?"), info.realm or "")
-    if info.lastSeenAt and not e.played then sub = sub .. "  \194\183  " .. Util.FormatTime(info.lastSeenAt) end
+    if info.lastSeenAt and not e.played then sub = sub .. UI.SEP .. Util.FormatTime(info.lastSeenAt) end
     row.sub:SetText(sub)
   end
 end
@@ -219,12 +214,12 @@ function UI:UpdateViewBar()
   local info = char.info
   local played = FC:IsViewingPlayed()
   local owner = FC:ViewOwner()
-  bar.name:SetText(UI:ClassColored(fullName(info), info.classFile))
+  bar.name:SetText(UI:ClassColored(UI:FullName(info), info.classFile))
   local sub = string.format(L.VIEW_ROW, tostring(info.level or "?"), info.realm or "")
   if owner then
-    sub = sub .. "  \194\183  " .. string.format(L.VIEW_FRIEND_OF, owner) .. "  |cff999999(" .. L.VIEW_READONLY .. ")|r"
+    sub = sub .. UI.SEP .. string.format(L.VIEW_FRIEND_OF, owner) .. "  |cff999999(" .. L.VIEW_READONLY .. ")|r"
   elseif not played then
-    sub = sub .. "  \194\183  " .. L.VIEW_OTHER_OWN .. "  |cff999999(" .. L.VIEW_READONLY .. ")|r"
+    sub = sub .. UI.SEP .. L.VIEW_OTHER_OWN .. "  |cff999999(" .. L.VIEW_READONLY .. ")|r"
   end
   bar.sub:SetText(sub)
   self.viewBack:SetText(L.VIEW_BACK)

@@ -43,12 +43,7 @@ function Button:Create()
 
   b:SetScript("OnClick", function(_, mouse)
     if mouse == "RightButton" then
-      for i, p in ipairs(UI.pages) do
-        if p.id == "settings" then
-          if not (UI.frame and UI.frame:IsShown()) then UI:Toggle() end
-          UI:SelectPage(i)
-        end
-      end
+      UI:ShowPage("settings")
     else
       UI:Toggle()
     end

@@ -11,6 +11,7 @@
 local ADDON, FC = ...
 local L = FC.L
 local UI = FC.UI
+local Util = FC.Util
 local Route = FC.Route
 
 local page = { id = "map", labelKey = "TAB_MAP", icon = "Interface\\Icons\\INV_Misc_Map_01", order = 25 }
@@ -215,8 +216,16 @@ end
 function page:Create(c)
   self.points, self.views, self.viewIndex, self.sessionIndex = {}, {}, 1, 0
   self.speedIndex, self.live, self.playing = 1, true, false
+  self:CreateTopRow(c)
+  self:CreateCanvas(c)
+  self:CreateControlBar(c)
+  c:SetScript("OnUpdate", function(_, elapsed) self:OnUpdate(elapsed) end)
+  self:SyncSpeed()
+  self:SyncPlay()
+end
 
-  -- Top row: map, session, icon toggles, help
+-- Top row: map and session cyclers, colour mode, trail, route and event toggles, help.
+function page:CreateTopRow(c)
   self.mapSel = cycler(c, 190, function(step) self:StepMap(step) end)
   self.mapSel.prev:SetPoint("TOPLEFT", 14, -8)
   self.sessionSel = cycler(c, 220, function(step) self:StepSession(step) end)
@@ -254,8 +263,10 @@ function page:Create(c)
       if GameTooltip:IsOwned(btn) then btn:GetScript("OnEnter")(btn) end
     end)
   self.colorButton:SetPoint("RIGHT", self.trailToggle, "LEFT", -6, 0)
+end
 
-  -- Map
+-- The map with a thin frame and a notice box in its top-left corner (no art, dungeon, elsewhere).
+function page:CreateCanvas(c)
   self.canvas = UI.MapCanvas.New(c, CANVAS_W, CANVAS_H)
   self.canvas.frame:SetPoint("TOP", 0, -42)
   local border = c:CreateTexture(nil, "BORDER")
@@ -272,8 +283,10 @@ function page:Create(c)
   self.notice = noticeFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   self.notice:SetPoint("TOPLEFT", 8, -6)
   self.noticeFrame = noticeFrame
+end
 
-  -- Bottom bar: previous event, play/pause, next event | speeds | timeline | time | live
+-- Bottom bar: previous event, play/pause, next event | speeds | timeline | time | live
+function page:CreateControlBar(c)
   local bar = CreateFrame("Frame", nil, c, "BackdropTemplate")
   bar:SetPoint("TOPLEFT", self.canvas.frame, "BOTTOMLEFT", -1, -5)
   bar:SetPoint("TOPRIGHT", self.canvas.frame, "BOTTOMRIGHT", 1, -5)
@@ -305,7 +318,6 @@ function page:Create(c)
     self.speedButtons[i] = b
     prev = b
   end
-  self.live = true
   self.liveButton = liveButton(bar, function()
     self.live, self.playing = true, false
     self.sessionIndex = 0
@@ -340,10 +352,6 @@ function page:Create(c)
     local tick = self:HoveredTick()
     if tick then self:JumpTo(tick.time) end
   end)
-
-  c:SetScript("OnUpdate", function(_, elapsed) self:OnUpdate(elapsed) end)
-  self:SyncSpeed()
-  self:SyncPlay()
 end
 
 -------------------------------------------------------------------------------
@@ -415,7 +423,7 @@ function page:Legend(segments)
     local key = order[i]
     local r, g, b = paletteColor(key)
     local text = mode == "level" and string.format(L.MAP_LEVEL, key)
-      or FC.Util.FormatTime(self.sessionStarts[key] and self.sessionStarts[key][1] or 0)
+      or Util.FormatTime(self.sessionStarts[key] and self.sessionStarts[key][1] or 0)
     items[#items + 1] = { r, g, b, text }
   end
   return items
@@ -426,7 +434,7 @@ end
 -------------------------------------------------------------------------------
 
 local function sessionLabel(s)
-  return string.format(L.MAP_SESSION, FC.Util.FormatTime(s.startedAt), FC.Util.FormatDuration(s.endedAt - s.startedAt))
+  return string.format(L.MAP_SESSION, Util.FormatTime(s.startedAt), Util.FormatDuration(s.endedAt - s.startedAt))
 end
 
 -- Called when the page is shown and once per second while it is visible.
@@ -440,7 +448,7 @@ function page:Refresh()
   self.sessionSel.label:SetText(self.sessionIndex == 0 and L.MAP_ALL_SESSIONS or sessionLabel(self.sessions[self.sessionIndex]))
 
   if #self.points == 0 then
-    local here = C_Map and FC.Util.SafeValue("number", C_Map.GetBestMapForUnit, "player")
+    local here = C_Map and Util.SafeValue("number", C_Map.GetBestMapForUnit, "player")
     if here then self.canvas:SetMap(here) end
     self.canvas:DrawRoute({})
     self.canvas:SetPins({})
@@ -502,7 +510,7 @@ function page:Redraw()
         if x then
           local text, icon = FC:DescribeEvent(r)
           local def = FC.eventTypes[r.type]
-          pins[#pins + 1] = { x = x, y = y, icon = icon, title = text, text = FC.Util.FormatTime(r.time), time = r.time,
+          pins[#pins + 1] = { x = x, y = y, icon = icon, title = text, text = Util.FormatTime(r.time), time = r.time,
             kind = def and def.highlight, pinIcon = def and def.pinIcon }
         end
       end
@@ -610,7 +618,7 @@ function page:UpdateHover()
   local owner, title, line
   local tick = self:HoveredTick()
   if tick then
-    owner, title, line = self.tickBar, (FC:DescribeEvent(tick.record)), FC.Util.FormatTime(tick.time)
+    owner, title, line = self.tickBar, (FC:DescribeEvent(tick.record)), Util.FormatTime(tick.time)
   elseif self.timeline and self.slider.IsMouseOver and self.slider:IsMouseOver() then
     local inner = (self.timelineWidth or 0) - 2 * TRACK_INSET
     if inner > 0 then
@@ -806,13 +814,7 @@ end
 
 UI:RegisterPage(page)
 
+-- Opens the map on the given moment (e.g. clicked in the Chronicle).
 function UI:FocusMap(t)
-  for i, p in ipairs(self.pages) do
-    if p == page then
-      if not (self.frame and self.frame:IsShown()) then self:Toggle() end
-      self:SelectPage(i)
-      page:FocusTime(t)
-      return
-    end
-  end
+  if self:ShowPage(page.id) and self.frame then page:FocusTime(t) end
 end
