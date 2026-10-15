@@ -71,6 +71,8 @@ then turn "Unreleased" into the uploaded version and date.
   new format and leave it untouched, so going back to an older version cannot overwrite your data.
 - Map: a hearthstone or portal no longer draws a route line across the whole map. The route now breaks at
   every teleport, including on routes recorded with earlier versions and on friends' routes.
+- Map: the route legend now lists every level (or session) the drawn route passes through. Before, it only
+  showed the levels at the start and end of each route line, so levels gained along the way were missing.
 
 ## 0.14.1 – 2026-10-14
 

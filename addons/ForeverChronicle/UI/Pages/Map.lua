@@ -409,12 +409,20 @@ function page:Legend(segments)
   local mode = self:ColorMode()
   if mode == "plain" then return nil end
   local used, order = {}, {}
+  local function add(t)
+    local key = mode == "level" and self:LevelAt(t) or self:SessionAt(t)
+    if not used[key] then used[key] = true; order[#order + 1] = key end
+  end
+  -- Every level or session a segment passes through, not only those at its ends.
+  local changes = mode == "level" and self.levels or self.sessionStarts
   for _, seg in ipairs(segments) do
-    if not seg.taxi then
-      for _, pt in ipairs({ seg.points[1], seg.points[#seg.points] }) do
-        local key = mode == "level" and self:LevelAt(pt[3]) or self:SessionAt(pt[3])
-        if not used[key] then used[key] = true; order[#order + 1] = key end
+    if not seg.taxi and seg.points[1] then
+      local t0, t1 = seg.points[1][3], seg.points[#seg.points][3]
+      add(t0)
+      for _, change in ipairs(changes) do
+        if change[1] > t0 and change[1] <= t1 then add(change[1]) end
       end
+      add(t1)
     end
   end
   table.sort(order)

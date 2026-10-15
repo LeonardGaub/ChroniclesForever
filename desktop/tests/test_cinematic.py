@@ -201,6 +201,12 @@ def test_route_colors_match_the_addon():
     assert RouteColors("plain", levels, []).at(150) == hex_color(ROUTE) == "#ffd100"
     assert RouteColors("bogus", levels, []).mode == "level"
 
+    from types import SimpleNamespace
+    seg = SimpleNamespace(taxi=False, points=[(50, 0, 0), (120, 0, 0), (250, 0, 0)])
+    assert [label for _, label in by_level.legend([seg])] == [tr("cine.level", level=n) for n in (4, 5, 6)], \
+        "the legend lists levels reached inside a segment, not only at its ends"
+    assert len(by_session.legend([seg])) == 2
+
     route = Route([P(0, map_id=1), P(10, map_id=1), P(20, map_id=2),
                    PositionPoint(30, None, None, None, None, 48, False), P(40, map_id=1)])
     runs = route.zone_runs(0, 40)

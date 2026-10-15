@@ -73,11 +73,13 @@ class RouteColors:
         """(colour, label) for the levels or sessions the drawn segments touch (newest LEGEND_ROWS)."""
         if self.mode == "plain":
             return []
+        # Every level or session a segment passes through, not only those at its ends.
+        changes = self.levels.times if self.mode == "level" else self.session_starts
         keys = set()
         for seg in segments:
             if not seg.taxi and seg.points:
-                for t, _, _ in (seg.points[0], seg.points[-1]):
-                    keys.add(self.key_at(t))
+                t0, t1 = seg.points[0][0], seg.points[-1][0]
+                keys.update(self.key_at(t) for t in (t0, *(c for c in changes if t0 < c <= t1), t1))
         items = []
         for key in sorted(keys)[-LEGEND_ROWS:]:
             if self.mode == "level":
