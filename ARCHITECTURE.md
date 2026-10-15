@@ -126,7 +126,8 @@ shown on the smallest known zone that contains them (`Route.ZoneFor` / `Route.vi
 
 Desktop: `domain/route.py` handles projection, segments and time lookup (pure, tested).
 `domain/maps.py` holds the Classic uiMapID table: art name and German/English names.
-`wow/map_art.py` imports the user's artwork into `%APPDATA%\ForeverChronicle\maps\<uiMapID>.jpg`.
+`wow/map_art.py` imports the user's artwork into `%APPDATA%\ForeverChronicle\maps\<uiMapID>.jpg`; the 52 zone
+images also live in git in `forever_chronicle/maps/` and are used when the user has none of their own.
 `ui/pages/map_page.py` is the map tab. All art uses the 1002×668 world-map canvas that game coordinates are
 normalized to, which was verified against real Phase 0 coordinates.
 

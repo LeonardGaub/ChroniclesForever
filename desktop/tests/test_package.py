@@ -21,20 +21,18 @@ def load_packager():
 
 
 def test_package_contents(tmp_path):
-    home = tmp_path / "home"
-    (home / "maps").mkdir(parents=True)
-    (home / "maps" / "1413.jpg").write_bytes(b"\xff\xd8\xff barrens")
-    (home / "maps" / "notes.txt").write_text("not a map")
-    dest = load_packager().build(tmp_path / "friend.zip", home)
-    names = set(zipfile.ZipFile(dest).namelist())
+    dest = load_packager().build(tmp_path / "friend.zip")
+    zf = zipfile.ZipFile(dest)
+    names = set(zf.namelist())
     top = "ForeverChronicle/"
     assert top + "Journey Forever starten.bat" in names and top + "LIES MICH.txt" in names
     assert top + "addons/ForeverChronicle/ForeverChronicle.toc" in names
     assert not [n for n in names if "ForeverChronicle_Share" in n or "Friends/" in n]  # friends parts: cloud only
     assert top + "desktop/forever_chronicle/app.py" in names and top + "desktop/pyproject.toml" in names
-    assert top + "desktop/forever_chronicle/maps/1413.jpg" in names
-    assert not [n for n in names if "notes.txt" in n or "/tests/" in n or ".venv" in n or "__pycache__" in n]
-    bat = zipfile.ZipFile(dest).read(top + "Journey Forever starten.bat")
+    assert top + "desktop/forever_chronicle/maps/1413.jpg" in names                 # map images from the repo
+    assert zf.getinfo(top + "desktop/forever_chronicle/maps/1413.jpg").compress_type == zipfile.ZIP_STORED
+    assert not [n for n in names if "/tests/" in n or ".venv" in n or "__pycache__" in n]
+    bat = zf.read(top + "Journey Forever starten.bat")
     assert b"\r\n" in bat and b"\n" not in bat.replace(b"\r\n", b"")          # Windows line endings
 
 

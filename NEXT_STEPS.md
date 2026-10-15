@@ -222,8 +222,8 @@
 - **Package for friends (user request).** `tools/package_for_friend.py` builds `dist/ForeverChronicle-<version>.zip`
   (about 28 MB; too big for Discord's free 10 MB limit, so share it via OneDrive, Google Drive or similar). It
   contains the addon, the desktop app source, `Journey Forever starten.bat`, `LIES MICH.txt` and the 52 map images
-  from `%APPDATA%\ForeverChronicle\maps` (bundled as `desktop/forever_chronicle/maps/`, never in git; `map_art`
-  uses the user's own images first, then the bundled ones).
+  in `desktop/forever_chronicle/maps/` (in git since 2026-10-15, about 29 MB; `map_art` uses the user's own
+  images in `%APPDATA%\ForeverChronicle\maps` first, then the bundled ones).
   - The batch finds Python 3.11+ (py launcher, PATH or the per-user install folder), offers
     `winget install Python.Python.3.12 --scope user`, and creates the venv in `%LOCALAPPDATA%\ForeverChronicle\venv`
     (short path; a deep unzip folder hit the 260-character limit). It installs `PySide6-Essentials` once (the

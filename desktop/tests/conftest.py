@@ -10,6 +10,13 @@ ADDON_FIXTURE = REPO / "tests" / "fixtures" / "ForeverChronicle.lua"   # written
 PROBE_SV = REPO / "probe-results" / "ForeverChronicle_Probe_SavedVariables_2026-10-14.lua"  # real client file
 
 
+@pytest.fixture(autouse=True)
+def no_bundled_maps(tmp_path, monkeypatch):
+    """Tests choose their own map art; the images bundled in git would make every map look imported."""
+    from forever_chronicle.wow import map_art
+    monkeypatch.setattr(map_art, "bundled_dir", lambda: tmp_path / "no-bundled-maps")
+
+
 @pytest.fixture
 def addon_fixture() -> Path:
     if not ADDON_FIXTURE.exists():

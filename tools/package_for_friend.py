@@ -1,13 +1,12 @@
 """Builds dist/ForeverChronicle-<version>.zip for a friend: the addon, the desktop app (source, no venv),
-"Journey Forever starten.bat", which sets everything up on the friend's PC, and the map images from this
-PC's app folder (%APPDATA%\\ForeverChronicle\\maps), bundled as desktop/forever_chronicle/maps/.
+"Journey Forever starten.bat", which sets everything up on the friend's PC, and the map images in
+desktop/forever_chronicle/maps/ (kept in git).
 
     desktop\\.venv\\Scripts\\python tools\\package_for_friend.py
 """
 
 from __future__ import annotations
 
-import os
 import re
 import sys
 import zipfile
@@ -55,27 +54,14 @@ def files() -> list[tuple[Path, str]]:
     return out
 
 
-def map_images(home: Path | None = None) -> list[Path]:
-    """The imported map images of this PC (<app home>/maps/<uiMapID>.jpg|png)."""
-    if home is None:
-        override = os.environ.get("FOREVER_CHRONICLE_HOME")
-        home = Path(override) if override else Path(os.environ.get("APPDATA") or Path.home()) / "ForeverChronicle"
-    folder = home / "maps"
-    if not folder.is_dir():
-        return []
-    return sorted(p for p in folder.iterdir()
-                  if p.is_file() and p.stem.isdigit() and p.suffix.lower() in IMAGE_EXTENSIONS)
-
-
-def build(dest: Path | None = None, home: Path | None = None) -> Path:
+def build(dest: Path | None = None) -> Path:
     v = version()
     dest = dest or ROOT / "dist" / f"ForeverChronicle-{v}.zip"
     dest.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
         for src, name in files():
-            zf.write(src, f"{TOP}/{name}")
-        for image in map_images(home):   # already compressed: store
-            zf.write(image, f"{TOP}/desktop/forever_chronicle/maps/{image.name}", compress_type=zipfile.ZIP_STORED)
+            image = src.suffix.lower() in IMAGE_EXTENSIONS   # already compressed: store
+            zf.write(src, f"{TOP}/{name}", compress_type=zipfile.ZIP_STORED if image else None)
         zf.writestr(f"{TOP}/LIES MICH.txt", README.format(version=v).replace("\n", "\r\n"))
     return dest
 
@@ -87,4 +73,4 @@ if __name__ == "__main__":
     maps = sum(1 for n in names if "/forever_chronicle/maps/" in n)
     print(f"{path}  ({len(names)} files, {maps} map images, {path.stat().st_size // (1024 * 1024)} MB)")
     if not maps:
-        print("Hinweis: keine Kartenbilder gefunden (erst in der App unter Import einlesen).")
+        print("Hinweis: keine Kartenbilder in desktop/forever_chronicle/maps/ gefunden.")

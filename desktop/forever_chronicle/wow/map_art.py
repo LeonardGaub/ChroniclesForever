@@ -1,12 +1,13 @@
-"""Map artwork provided by the user (private use; never in git).
+"""Map artwork (private use).
 
 Artwork lives in ``<app home>/maps/<uiMapID>.jpg|png``. ``import_map_art`` copies the fully explored zone
 images from the user's archive (a .zip or a folder containing "Explored zones/<name>.jpg") into that folder,
 renamed by uiMapID. Only known image names are taken; nothing from the archive is executed or extracted
 under its own path.
 
-The package for friends (tools/package_for_friend.py) bundles the images as ``forever_chronicle/maps/`` next
-to the code. Lookups use the user's own folder first, then the bundled images.
+The 52 explored-zone images also ship with the code in ``forever_chronicle/maps/`` (kept in the private repo and
+in the friend package, tools/package_for_friend.py). Lookups use the user's own folder first, then the bundled
+images.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ def art_dir() -> Path:
 
 
 def bundled_dir() -> Path:
-    """Images shipped with the app (friend package); absent in the development checkout."""
+    """Images shipped with the app (in git and in the friend package)."""
     return Path(__file__).resolve().parents[1] / "maps"
 
 
