@@ -23,6 +23,13 @@ class AppConfig:
     client_dir: str | None = None
     auto_import: bool = True
     last_character: str | None = None
+    # Sound (ui/sound.py): volumes in percent; music_path is an own music file or folder, None the built-in theme.
+    click_sounds: bool = True
+    event_sounds: bool = True
+    music: bool = True
+    effects_volume: int = 70
+    music_volume: int = 50
+    music_path: str | None = None
     extra: dict = field(default_factory=dict)
 
     @property

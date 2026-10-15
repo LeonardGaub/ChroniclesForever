@@ -1,5 +1,6 @@
 -- Journey Forever - option controls
--- Builds check boxes, choice rows and text fields from the option registry, one section at a time;
+-- Builds check boxes, choice rows, text fields and buttons (type "button", def.onClick) from the option
+-- registry, one section at a time;
 -- type "custom" lets a module build its own control (def.create).
 -- Options choose their section with def.section (default "general") and their column with def.column.
 
@@ -44,7 +45,7 @@ local function createChoice(c, def)
   local prev
   for i, choice in ipairs(def.choices) do
     local b = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    b:SetSize(choice.labelKey and 100 or 52, 22)
+    b:SetSize(def.buttonWidth or (choice.labelKey and 100 or 52), 22)
     if choice.labelKey then
       b:SetText(L[choice.labelKey])
       UI:Track(b, choice.labelKey)
@@ -58,6 +59,7 @@ local function createChoice(c, def)
     if prev then b:SetPoint("LEFT", prev, "RIGHT", 6, 0) else b:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 2, -6) end
     b.value = choice.value
     b.selection = UI:SelectionBorder(b)
+    if def.tooltipKey then UI:Tooltip(b, def.labelKey, def.tooltipKey) end
     row.buttons[i] = b
     prev = b
   end
@@ -97,6 +99,19 @@ local function createText(c, def)
   return row
 end
 
+-- A button that runs def.onClick (an action, no stored value).
+local function createButton(c, def)
+  local row = CreateFrame("Frame", nil, c)
+  row:SetSize(250, 30)
+  local b = UI:Button(row, def.labelKey, def.buttonWidth or 160, function() def.onClick() end)
+  b:SetPoint("TOPLEFT", 4, -2)
+  if def.tooltipKey then UI:Tooltip(b, def.labelKey, def.tooltipKey) end
+  row.button = b
+  row.Sync = function() end
+  row.height = 34
+  return row
+end
+
 -- Creates controls for all options of a section below `top`. Returns the controls; controls.bottom is
 -- the lowest y offset used (relative to top), for placing what follows.
 function UI:BuildOptions(c, section, top, topOffset)
@@ -111,6 +126,8 @@ function UI:BuildOptions(c, section, top, topOffset)
         control = createChoice(c, def)
       elseif def.type == "text" then
         control = createText(c, def)
+      elseif def.type == "button" then
+        control = createButton(c, def)
       elseif def.type == "custom" then
         control = def.create(c, def)   -- a module's own control: needs :Sync() and .height
       end

@@ -6,7 +6,7 @@ A personal adventure history for **World of Warcraft: Forever** (Blizzard's Clas
   achievements, discovered zones, routes, professions and recipes, and automatic screenshots. It has its own window (`/fj`) with
   Übersicht, Chronik, Karte (route replay on the game's map), Berufe, Screenshots, Einstellungen and Diagnose tabs.
 - **Desktop app** (`desktop/`, Python 3.12 + PySide6): imports the addon's SavedVariables into SQLite and keeps
-  the full history. It shows statistics, the chronicle, the route map on your own map art, professions and recipes, and the screenshot gallery.
+  the full history. It shows statistics, the chronicle, the route map on your own map art, professions and recipes; screenshots appear right in the chronicle with the entry that triggered them.
 
 German UI by default, English switchable.
 

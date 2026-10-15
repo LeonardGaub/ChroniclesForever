@@ -173,6 +173,7 @@ function UI:IconButton(parent, size, icon, title, line, onClick)
   local bg = b:CreateTexture(nil, "BACKGROUND")
   bg:SetAllPoints()
   bg:SetColorTexture(0, 0, 0, 0.7)
+  b.bg = bg
   b.icon = b:CreateTexture(nil, "ARTWORK")
   b.icon:SetPoint("TOPLEFT", 2, -2)
   b.icon:SetPoint("BOTTOMRIGHT", -2, 2)
@@ -236,6 +237,8 @@ end
 -- Scrolling list with recycled rows
 --   createRow(rowFrame)            builds the row's regions once
 --   updateRow(rowFrame, item, i)   fills them for an item
+-- rowHeight: a number (striped rows) or function(item) -> height (rows of different heights, no stripes).
+-- Each row keeps its offset from the top in row.y.
 -------------------------------------------------------------------------------
 
 function UI:List(parent, rowHeight, createRow, updateRow)
@@ -246,16 +249,16 @@ function UI:List(parent, rowHeight, createRow, updateRow)
   scroll:SetScript("OnSizeChanged", function(_, w) content:SetWidth(w) end)
 
   local list = { scroll = scroll, content = content, rows = {} }
+  local fixed = type(rowHeight) == "number"
 
   function list:SetItems(items)
+    local y = 0
     for i, item in ipairs(items) do
       local row = self.rows[i]
       if not row then
         row = CreateFrame("Frame", nil, content)
-        row:SetHeight(rowHeight)
-        row:SetPoint("TOPLEFT", 0, -(i - 1) * rowHeight)
         row:SetPoint("RIGHT", content, "RIGHT")
-        if i % 2 == 0 then
+        if fixed and i % 2 == 0 then
           local stripe = row:CreateTexture(nil, "BACKGROUND")
           stripe:SetAllPoints()
           stripe:SetColorTexture(1, 1, 1, 0.03)
@@ -263,14 +266,147 @@ function UI:List(parent, rowHeight, createRow, updateRow)
         createRow(row)
         self.rows[i] = row
       end
+      local h = fixed and rowHeight or rowHeight(item)
+      row.y = y
+      row:SetHeight(h)
+      row:SetPoint("TOPLEFT", 0, -y)
       updateRow(row, item, i)
       row:Show()
+      y = y + h
     end
     for i = #items + 1, #self.rows do self.rows[i]:Hide() end
-    content:SetHeight(math.max(1, #items * rowHeight))
+    content:SetHeight(math.max(1, y))
   end
 
   return list
+end
+
+-------------------------------------------------------------------------------
+-- Animations
+-- UI:Tween(key, duration, delay, step, done) calls step(p) with p eased from 0 to 1 over `duration` seconds,
+-- after `delay`. key is any table (usually the animated frame): a new tween on the same key replaces the
+-- running one. With the "animations" option off, step(1) runs at once.
+-------------------------------------------------------------------------------
+
+local tweens, driver = {}, nil
+
+local function easeOut(p) return 1 - (1 - p) ^ 3 end
+
+function UI:AnimationsOn()
+  local s = FC.db and FC.db.settings.modules.UI
+  return not (s and s.animations == false)
+end
+
+function UI:Tween(key, duration, delay, step, done)
+  if not self:AnimationsOn() then
+    tweens[key] = nil
+    step(1)
+    if done then done() end
+    return
+  end
+  tweens[key] = { t = -(delay or 0), d = math.max(duration or 0.2, 0.01), step = step, done = done }
+  step(0)
+  if not driver then
+    driver = CreateFrame("Frame")
+    driver:SetScript("OnUpdate", function(f, dt)
+      local finished
+      for k, tw in pairs(tweens) do
+        tw.t = tw.t + dt
+        if tw.t >= 0 then
+          local p = math.min(1, tw.t / tw.d)
+          tw.step(easeOut(p))
+          if p >= 1 then
+            tweens[k] = nil
+            if tw.done then finished = finished or {}; finished[#finished + 1] = tw.done end
+          end
+        end
+      end
+      for _, fn in ipairs(finished or {}) do fn() end
+      if next(tweens) == nil then f:Hide() end
+    end)
+  end
+  driver:Show()
+end
+
+-- Ends the tween on key; with finish, it jumps to its end state first.
+function UI:StopTween(key, finish)
+  local tw = tweens[key]
+  if not tw then return end
+  tweens[key] = nil
+  if finish then
+    tw.step(1)
+    if tw.done then tw.done() end
+  end
+end
+
+-- Fades a frame in from transparent.
+function UI:FadeIn(frame, duration, delay)
+  self:Tween(frame, duration or 0.15, delay, function(p) frame:SetAlpha(p) end)
+end
+
+-------------------------------------------------------------------------------
+-- Art with fallbacks: the client may not ship every Classic or Retail texture.
+-------------------------------------------------------------------------------
+
+UI.CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+UI.WHITE = "Interface\\Buttons\\WHITE8X8"
+
+function UI:HasAtlas(name)
+  return name and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) ~= nil or false
+end
+
+-- candidates: list of { atlas = name } or { file = path, coords = { l, r, t, b } }. Uses the first one the
+-- client has and returns its index, or nil if none loaded.
+function UI:SetTextureFirst(tex, candidates)
+  for i, c in ipairs(candidates) do
+    if c.atlas then
+      if self:HasAtlas(c.atlas) and tex.SetAtlas then
+        tex:SetAtlas(c.atlas)
+        return i
+      end
+    elseif c.file and tex:SetTexture(c.file) ~= false then
+      if c.coords then tex:SetTexCoord(unpack(c.coords)) else tex:SetTexCoord(0, 1, 0, 1) end
+      return i
+    end
+  end
+end
+
+-- Vertical or horizontal colour gradient (r, g, b, a from the bottom/left to the top/right).
+function UI:Gradient(tex, orientation, r1, g1, b1, a1, r2, g2, b2, a2)
+  tex:SetTexture(self.WHITE)
+  if CreateColor and tex.SetGradient then
+    local ok = pcall(tex.SetGradient, tex, orientation, CreateColor(r1, g1, b1, a1), CreateColor(r2, g2, b2, a2))
+    if ok then return end
+  end
+  if tex.SetGradientAlpha then
+    local ok = pcall(tex.SetGradientAlpha, tex, orientation, r1, g1, b1, a1, r2, g2, b2, a2)
+    if ok then return end
+  end
+  tex:SetColorTexture((r1 + r2) / 2, (g1 + g2) / 2, (b1 + b2) / 2, (a1 + a2) / 2)
+end
+
+-- Font object by name, if the client has it; otherwise the fallback.
+function UI:Font(name, fallback)
+  return (name and _G[name]) and name or fallback
+end
+
+-- A filled circle texture (dots, pins, rings).
+function UI:Circle(parent, layer, sublevel, size)
+  local t = parent:CreateTexture(nil, layer or "ARTWORK", nil, sublevel)
+  if t:SetTexture(self.CIRCLE) == false then t:SetTexture(self.WHITE) end
+  if size then t:SetSize(size, size) end
+  return t
+end
+
+-- Clips a texture to a circle (no-op where the client has no mask textures).
+function UI:MaskCircle(parent, tex)
+  if not parent.CreateMaskTexture then return end
+  local mask = parent:CreateMaskTexture()
+  if not mask then return end
+  mask:SetTexture(self.CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+  mask:SetAllPoints(tex)
+  tex:AddMaskTexture(mask)
+  return mask
 end
 
 -------------------------------------------------------------------------------

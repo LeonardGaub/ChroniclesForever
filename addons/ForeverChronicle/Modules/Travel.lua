@@ -14,8 +14,10 @@ FC:RegisterCapability("zones", "CAP_ZONES", function()
   return FC.eventStatus.ZONE_CHANGED_NEW_AREA == "registered" and type(GetRealZoneText) == "function"
 end)
 
+FC:RegisterEventCategory("exploration", { labelKey = "CAT_EXPLORATION", icon = "Interface\\Icons\\INV_Misc_Map_01", order = 30 })
+
 FC:RegisterEventType("zone_discovered", {
-  icon = "Interface\\Icons\\INV_Misc_Map_01",
+  icon = "Interface\\Icons\\INV_Misc_Map_01", category = "exploration",
   format = function(r) return string.format(L.EVT_ZONE_DISCOVERED, r.data.zone or "?") end,
 })
 

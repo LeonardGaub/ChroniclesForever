@@ -89,7 +89,7 @@ def test_not_found_is_retried_later(db, data, tmp_path):
     assert match_screenshots(repo, tmp_path) == 1
 
 
-def test_gallery_and_timeline_show_screenshot(db, data, tmp_path, monkeypatch):
+def test_chronicle_shows_screenshots_inline(db, data, tmp_path, monkeypatch):
     from forever_chronicle.app_context import AppContext
     from forever_chronicle.config import AppConfig
     from forever_chronicle.ui.main_window import MainWindow
@@ -107,16 +107,37 @@ def test_gallery_and_timeline_show_screenshot(db, data, tmp_path, monkeypatch):
     assert ctx.match_screenshots() == 1
     window = MainWindow(ctx)
 
-    gallery = next(p for p in window.pages if p.title_key == "tab.gallery")
-    window.tabs.setCurrentWidget(gallery)
-    assert gallery.grid.count() == 1
-    assert gallery.grid.item(0).text().startswith("Stufe 23 erreicht (+1)")
-    gallery._load_batch()
-    assert gallery._cache, "thumbnail loaded"
-
+    assert not any(p.title_key == "tab.gallery" for p in window.pages), "no separate screenshots tab"
     timeline = next(p for p in window.pages if p.title_key == "tab.timeline")
     window.tabs.setCurrentWidget(timeline)
-    marked = [timeline.table.item(r, 1).text() for r in range(timeline.table.rowCount())
-              if "\U0001F4F7" in timeline.table.item(r, 1).text()]
-    assert len(marked) == 2  # level-up and achievement share the screenshot
+    table = timeline.table
+    with_shot = [r for r in range(table.rowCount()) if table.item(r, 3) is not None]
+    texts = [table.item(r, 1).text() for r in with_shot]
+    assert len(with_shot) == 2  # level-up and achievement share the screenshot
+    assert any("Stufe 23 erreicht" in t for t in texts)
+    assert timeline.count.text().endswith("2 Screenshots")
+    timeline.thumbnails.load_batch()
+    assert timeline.thumbnails.cache, "thumbnail loaded"
+    assert not table.item(with_shot[0], 3).icon().isNull()
+
+    viewer = timeline.open_screenshot(with_shot[0])
+    assert viewer is not None and not viewer._pixmap.isNull()
+    assert "Stufe 23 erreicht" in viewer.caption.text() or "Erfolg" in viewer.caption.text()
+    assert viewer.position.text() == "1 von 2"
+    viewer.step(1)
+    assert viewer.position.text() == "2 von 2" and not viewer.next_button.isEnabled()
+    viewer.close()
+    assert timeline.open_screenshot(next(r for r in range(table.rowCount()) if r not in with_shot)) is None
+
+    # Filter: only entries with a screenshot. A test screenshot (no entry) is an entry of its own.
+    timeline.type_filter.setCurrentIndex(timeline.type_filter.findData("__screenshots__"))
+    assert table.rowCount() == 2
+    db.conn.execute("""INSERT INTO screenshots (character_id, screenshot_id, seq, trigger_type, status, requested_at,
+                       captured_at, file_stamp) SELECT character_id, 'test-1', seq + 1, 'manual', 'confirmed',
+                       captured_at + 60, captured_at + 60, NULL FROM screenshots""")
+    timeline.refresh()
+    assert table.rowCount() == 3 and table.item(0, 1).text().endswith("Test-Screenshot")
+    assert table.item(0, 3).toolTip().startswith("Keine Datei")  # no file: placeholder
+    timeline.type_filter.setCurrentIndex(0)
+    assert any(table.item(r, 1).text().endswith("Test-Screenshot") for r in range(table.rowCount()))
     window.close()

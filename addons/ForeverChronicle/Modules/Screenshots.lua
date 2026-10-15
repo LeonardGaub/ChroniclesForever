@@ -11,9 +11,8 @@ local Util = FC.Util
 local L = FC.L
 
 local Shots = FC:NewModule("Screenshots", { order = 50, defaults = {
-  enabled = true,
   countdown = true,   -- on-screen countdown; hidden before the capture
-  hideUI = false,     -- hide the whole interface for the screenshot (not possible in combat)
+  hideUI = "off",     -- hide the interface for the screenshot: "off", "all", "popups" (all but event popups)
   delay = 5,          -- seconds between the event and the screenshot (all automatic triggers)
   cooldown = 30,
   bypass = true,
@@ -28,6 +27,12 @@ local CONFIRM_TIMEOUT = 5
 local HIDE_BEFORE_CAPTURE = 0.15    -- seconds between hiding the countdown and taking the screenshot
 local HIDE_UI_BEFORE_CAPTURE = 0.25 -- same, when the whole interface is hidden
 local UI_RESTORE_TIMEOUT = 1.5      -- the interface is shown again at the latest after this time
+local POPUP_SETTLE = 1.0            -- "popups": the screenshot waits this long after the popup appeared
+local POPUP_WAIT = 3                -- "popups": how long to look for a popup after the event
+local SNAPSHOT_EVERY = 1            -- "popups": seconds between snapshots of the visible interface
+-- Frames that show an event's popup (level-up banner, toasts). Others are found as frames that appeared
+-- right after the event.
+local POPUP_FRAMES = { "EventToastManagerFrame", "LevelUpDisplay", "BossBanner", "ObjectiveTrackerTopBannerFrame" }
 
 -------------------------------------------------------------------------------
 -- Triggers: which recorded event types request a screenshot. Other modules can add their own.
@@ -68,14 +73,20 @@ FC:RegisterCapability("screenshots", "CAP_SCREENSHOTS", function() return type(S
 
 function Shots:OnInitialize()
   local s = self:GetSettings()
+  s.enabled = nil -- no main switch any more (0.15.0): each ticked trigger takes screenshots
+  if s.hideUI == true then s.hideUI = "all" elseif s.hideUI ~= "all" and s.hideUI ~= "popups" then s.hideUI = "off" end
   self.queue = FC.ScreenshotQueue.New({ capacity = s.capacity, cooldown = s.cooldown, minGap = 2, coalesceWindow = 2 })
+end
+
+function Shots:OnEnable()
+  self:UpdateSnapshots()
 end
 
 function Shots:IsTriggerEnabled(name)
   local s = self:GetSettings()
   local def = self.triggers[name]
   if def and def.always then return true end
-  return s.enabled and s.triggers[name] == true
+  return s.triggers[name] == true
 end
 
 local function newRecord(req, status)
@@ -104,6 +115,9 @@ function Shots:Request(triggerName, eventIds, record)
     zoneKey = triggerName == "zone" and record and record.data.zoneKey or nil,
     requestedAtWall = time(),
   }
+  if s.hideUI == "popups" and not def.always then
+    req.baseline, req.watchUntil = self.previousSnapshot or self.snapshot, GetTime() + POPUP_WAIT
+  end
   local result = self.queue:Add(req, GetTime(), function(r, outcome) self:OnRequestDone(r, outcome) end)
   self:StartTicker()
   return result
@@ -121,6 +135,7 @@ end
 
 function Shots:Tick()
   local now = GetTime()
+  self:WatchPopups(now)
   local travel = FC:GetModule("Travel")
   local zoneKey = travel and travel:CurrentZone()
   self.queue:Expire(now, { zoneKey = zoneKey }, function(r, outcome) self:OnRequestDone(r, outcome) end)
@@ -150,27 +165,154 @@ function Shots:Capture(req, now)
   self.queue:MarkCaptured(req, now)
   self.capturing = true
   self:UpdateCountdown(nil)
-  local hidden = self:HideInterface()
+  local hidden = self:HideInterface(req)
   FC:After(hidden and HIDE_UI_BEFORE_CAPTURE or HIDE_BEFORE_CAPTURE, function()
     self.capturing = false
     self:TakeScreenshot(req)
   end)
 end
 
--- Hides the interface like Alt+Z. The client does not allow this in combat; the screenshot then shows the UI.
+-------------------------------------------------------------------------------
+-- Hiding the interface for the screenshot
+--   "all":    like Alt+Z (SetUIVisibility). The client blocks that in combat; then the interface is made
+--             transparent instead (names above characters stay visible then).
+--   "popups": the interface is made transparent, except the frames that show the event's popup (the level-up
+--             banner, an achievement toast), and the screenshot is taken once the popup is fully shown.
+-- Transparency (SetAlpha) is allowed in combat and does not change how Blizzard's frames work. The minimap's
+-- arrow, blips and quest areas are drawn by the client and ignore transparency, so the minimap is hidden
+-- instead (unless the client protects it in combat). Everything is restored right after the screenshot, at
+-- the latest after UI_RESTORE_TIMEOUT.
+-------------------------------------------------------------------------------
+
+local function ownFrame(frame)
+  local ui = FC.UI
+  return frame == (ui and ui.frame) or frame == _G.ForeverChronicleCountdown or frame == GameTooltip
+end
+
+-- Some interface frames are forbidden to addons: calling any of their methods (even IsVisible) is an error.
+-- They are skipped; only IsForbidden may be asked.
+local function usable(frame)
+  if type(frame) ~= "table" or type(frame.IsVisible) ~= "function" then return false end
+  if type(frame.IsForbidden) == "function" then
+    local ok, forbidden = pcall(frame.IsForbidden, frame)
+    if not ok or forbidden then return false end
+  end
+  return true
+end
+
+local function visibleFrame(frame)
+  if not usable(frame) then return false end
+  local ok, visible = pcall(frame.IsVisible, frame)
+  return ok and visible == true
+end
+
+-- Direct children of UIParent that are visible now (frame -> true).
+function Shots:VisibleFrames()
+  local visible = {}
+  local children = { UIParent:GetChildren() }
+  for _, frame in ipairs(children) do
+    if visibleFrame(frame) and not ownFrame(frame) then visible[frame] = true end
+  end
+  return visible
+end
+
+-- Keeps two snapshots of the visible interface while "popups" is chosen, so a request can compare with how
+-- the screen looked a moment before its event (Blizzard may show the popup before our event handler runs).
+function Shots:UpdateSnapshots()
+  local mode = self:GetSettings().hideUI
+  if mode ~= "popups" then
+    if self.snapshotTicker then self.snapshotTicker:Cancel() end
+    self.snapshotTicker, self.snapshot, self.previousSnapshot = nil, nil, nil
+    return
+  end
+  if self.snapshotTicker then return end
+  local function take()
+    self.previousSnapshot, self.snapshot = self.snapshot, self:VisibleFrames()
+  end
+  take()
+  self.snapshotTicker = FC:NewTicker(SNAPSHOT_EVERY, take)
+end
+
+-- Popup frames visible now that were not visible in the baseline snapshot: the known ones (they may sit deeper
+-- than UIParent's children), plus any child of UIParent that appeared. Without a baseline, known ones only.
+function Shots:FindPopups(baseline)
+  local found, seen = {}, {}
+  for _, name in ipairs(POPUP_FRAMES) do
+    local frame = _G[name]
+    if visibleFrame(frame) and not (baseline and baseline[frame]) then
+      found[#found + 1], seen[frame] = frame, true
+    end
+  end
+  if baseline then
+    for frame in pairs(self:VisibleFrames()) do
+      if not baseline[frame] and not seen[frame] then found[#found + 1], seen[frame] = frame, true end
+    end
+  end
+  return found
+end
+
+local function frameName(frame)
+  local ok, name = pcall(frame.GetName, frame)
+  return ok and name or "unnamed frame"
+end
+
+-- While a request waits: once its popup shows, the screenshot is taken POPUP_SETTLE seconds later (sooner
+-- than the general delay, so the popup is still on screen). Without a popup the general delay applies.
+function Shots:WatchPopups(now)
+  for _, item in ipairs(self.queue.items) do
+    if item.watchUntil and not item.popups and now <= item.watchUntil then
+      local popups = self:FindPopups(item.baseline)
+      if #popups > 0 then
+        item.popups, item.popupAt = popups, now
+        item.eligibleAt = math.min(item.eligibleAt, now + POPUP_SETTLE)
+        local names = {}
+        for _, f in ipairs(popups) do names[#names + 1] = frameName(f) end
+        FC.Diagnostics:Log("info", string.format("screenshot %s: popup %s after %.1f s", item.trigger,
+          table.concat(names, ", "), now - item.createdAt))
+      end
+    end
+  end
+end
+
 -- Returns true if the interface was hidden. It is always shown again (confirmation, failure or timeout).
-function Shots:HideInterface()
-  if not self:GetSettings().hideUI or self.uiHidden or not UIParent:IsVisible() then return false end
-  if InCombatLockdown and InCombatLockdown() then
-    FC.Diagnostics:Log("info", "interface not hidden for the screenshot: in combat")
+function Shots:HideInterface(req)
+  local mode = self:GetSettings().hideUI
+  if (mode ~= "all" and mode ~= "popups") or self.uiHidden or not UIParent:IsVisible() then return false end
+  local inCombat = InCombatLockdown and InCombatLockdown()
+  local hidden = {}
+  local ok = pcall(function()
+    if mode == "all" and not inCombat and type(SetUIVisibility) == "function" then
+      SetUIVisibility(false)
+      hidden.visibility = true
+      return
+    end
+    hidden.alpha = UIParent:GetAlpha()
+    hidden.kept = {}
+    if mode == "popups" then
+      for _, frame in ipairs(req and req.popups or self:FindPopups(nil)) do
+        if visibleFrame(frame) and frame.SetIgnoreParentAlpha then
+          hidden.kept[#hidden.kept + 1] = { frame = frame, ignored = frame.IsIgnoringParentAlpha and frame:IsIgnoringParentAlpha() }
+          frame:SetIgnoreParentAlpha(true)
+        end
+      end
+    end
+    UIParent:SetAlpha(0)
+    if usable(Minimap) and Minimap:IsShown() then
+      if inCombat and Minimap:IsProtected() then
+        FC.Diagnostics:Log("info", "screenshot: the minimap is protected in combat and stays visible")
+      else
+        Minimap:Hide()
+        hidden.minimap = true
+      end
+    end
+  end)
+  if not ok then
+    self.uiHidden = hidden
+    self:RestoreInterface()
+    FC.Diagnostics:Log("warn", "interface could not be hidden for the screenshot")
     return false
   end
-  local useVisibility = type(SetUIVisibility) == "function"
-  local ok = pcall(function()
-    if useVisibility then SetUIVisibility(false) else UIParent:Hide() end
-  end)
-  if not ok then return false end
-  self.uiHidden = { useVisibility = useVisibility }
+  self.uiHidden = hidden
   FC:After(UI_RESTORE_TIMEOUT, function() self:RestoreInterface() end)
   return true
 end
@@ -180,9 +322,22 @@ function Shots:RestoreInterface()
   if not hidden then return end
   self.uiHidden = nil
   pcall(function()
-    if hidden.useVisibility then SetUIVisibility(true) else UIParent:Show() end
+    if hidden.visibility then SetUIVisibility(true) end
+    if hidden.alpha then UIParent:SetAlpha(hidden.alpha) end
+    for _, k in ipairs(hidden.kept or {}) do k.frame:SetIgnoreParentAlpha(k.ignored and true or false) end
   end)
+  if hidden.minimap then self:ShowMinimap() end
 end
+
+-- If combat started meanwhile and the client protects the minimap, it comes back when combat ends.
+function Shots:ShowMinimap()
+  self.minimapPending = InCombatLockdown and InCombatLockdown() and Minimap:IsProtected() or false
+  if not self.minimapPending then pcall(Minimap.Show, Minimap) end
+end
+
+Shots:RegisterEvent("PLAYER_REGEN_ENABLED", function(self)
+  if self.minimapPending then self:ShowMinimap() end
+end)
 
 function Shots:TakeScreenshot(req)
   local rec = newRecord(req, "api_called")
@@ -255,25 +410,34 @@ function Shots:SetCooldown(seconds)
 end
 
 -------------------------------------------------------------------------------
--- Options (shown on the Screenshots page)
+-- Options (shown on the Settings page)
 -------------------------------------------------------------------------------
 
 local function settings() return Shots:GetSettings() end
 
 FC:RegisterOptionSection("screenshots", "SECTION_SHOT_TRIGGERS", 20, "Interface\\Icons\\INV_Misc_Spyglass_02")
-FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_ENABLED", order = 1,
-  get = function() return settings().enabled end, set = function(v) settings().enabled = v end })
 for i, name in ipairs({ "level", "achievement", "rare", "dungeon", "zone", "quest", "death" }) do
   FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_" .. name:upper(), order = 1 + i,
     tooltipKey = name == "dungeon" and "OPT_SHOT_DUNGEON_TIP" or nil,
     get = function() return settings().triggers[name] end, set = function(v) settings().triggers[name] = v end })
 end
-FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_HIDE_UI",
-  tooltipKey = "OPT_SHOT_HIDE_UI_TIP", order = 9,
-  get = function() return settings().hideUI end, set = function(v) settings().hideUI = v end })
+FC:RegisterOption({ section = "screenshots", type = "choice", labelKey = "OPT_SHOT_HIDE_UI",
+  tooltipKey = "OPT_SHOT_HIDE_UI_TIP", order = 9, buttonWidth = 82,
+  choices = { { value = "off", labelKey = "OPT_SHOT_HIDE_OFF" }, { value = "all", labelKey = "OPT_SHOT_HIDE_ALL" },
+    { value = "popups", labelKey = "OPT_SHOT_HIDE_POPUPS" } },
+  get = function() return settings().hideUI end,
+  set = function(v) settings().hideUI = v; Shots:UpdateSnapshots() end })
 FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_COUNTDOWN",
   tooltipKey = "OPT_SHOT_COUNTDOWN_TIP", order = 10,
   get = function() return settings().countdown end, set = function(v) settings().countdown = v end })
+
+-- A test screenshot with the current delay, countdown and hide settings.
+function Shots:TestShot()
+  self:Request("manual", {})
+  FC:Print(L.SHOT_TEST_QUEUED)
+end
+FC:RegisterOption({ section = "screenshots", type = "button", labelKey = "SHOT_TEST_BUTTON",
+  tooltipKey = "SHOT_TEST_TIP", order = 11, onClick = function() Shots:TestShot() end })
 FC:RegisterOption({ section = "screenshots", column = 2, type = "choice", labelKey = "OPT_SHOT_DELAY", order = 9,
   choices = { { value = 0, text = "0 s" }, { value = 2, text = "2 s" }, { value = 5, text = "5 s" }, { value = 10, text = "10 s" } },
   get = function() return settings().delay end, set = function(v) settings().delay = v end })
@@ -296,7 +460,7 @@ local function onOff(v) return v and L.SHOT_ON or L.SHOT_OFF end
 
 local function printStatus()
   local s = settings()
-  FC:Print(string.format(L.SHOT_STATUS_LINE, onOff(s.enabled), Shots.queue:Count(), s.delay, s.cooldown, onOff(s.bypass)))
+  FC:Print(string.format(L.SHOT_STATUS_LINE, Shots.queue:Count(), s.delay, s.cooldown, onOff(s.bypass)))
   local parts = {}
   for _, name in ipairs({ "level", "achievement", "rare", "dungeon", "zone", "quest", "death" }) do
     parts[#parts + 1] = L["TRIGGER_" .. name:upper()] .. ": " .. onOff(s.triggers[name])
@@ -318,11 +482,7 @@ local function handle(msg)
     FC:Print(string.format(L.SHOT_API_LINE, type(Screenshot) == "function" and L.SHOT_ON or L.SHOT_OFF,
       tostring(FC.eventStatus.SCREENSHOT_SUCCEEDED), tostring(FC.eventStatus.SCREENSHOT_FAILED)))
   elseif cmd == "test" then
-    Shots:Request("manual", {})
-    FC:Print(L.SHOT_TEST_QUEUED)
-  elseif cmd == "on" or cmd == "off" then
-    s.enabled = (cmd == "on")
-    printStatus()
+    Shots:TestShot()
   elseif Shots.triggers[cmd] and cmd ~= "manual" and (arg == "on" or arg == "off") then
     s.triggers[cmd] = (arg == "on")
     printStatus()

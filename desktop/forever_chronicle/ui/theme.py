@@ -67,8 +67,8 @@ QPushButton:pressed {{ background: #4a0b0b; }}
 QPushButton:disabled {{ color: {MUTED}; border-color: {BORDER}; background: #2a2018; }}
 
 QTabWidget::pane {{ border: 1px solid {BORDER}; background: {PANEL}; border-radius: 4px; }}
-QTabBar::tab {{ background: #241b12; color: {GOLD}; border: 1px solid {BORDER}; padding: 6px 16px; margin-right: 3px;
-                border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; min-width: 70px; }}
+QTabBar::tab {{ background: #241b12; color: {GOLD}; border: 1px solid {BORDER}; padding: 6px 12px; margin-right: 3px;
+                border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; min-width: 64px; }}
 QTabBar::tab:selected {{ background: {SELECT}; color: #ffffff; border-color: {GOLD}; }}
 QTabBar::tab:hover {{ background: #2e2216; }}
 

@@ -18,7 +18,7 @@ class EventType:
     key: str
     label_key: str                      # i18n key: name of the type (filters, legends)
     glyph: str                          # small symbol for the timeline
-    color: str                          # glyph colour
+    color: str                          # glyph colour (as the addon's timeline ticks, UI/Pages/Map.lua)
     describe: Callable[[EventRow], str]  # one-line description
 
 
@@ -67,11 +67,11 @@ register(EventType("session_started", "evt.session_started", "◷", "#9d8f75",
 register(EventType("level_up", "evt.level_up", "▲", "#ffd100",
                    lambda e: tr("evt.level_up.text", level=e.payload.get("level", "?"))))
 register(EventType("quest_completed", "evt.quest_completed", "!", "#ffd100", _quest))
-register(EventType("player_died", "evt.player_died", "☠", "#ff4040", _died))
-register(EventType("zone_discovered", "evt.zone_discovered", "⚑", "#69ccf0",
+register(EventType("player_died", "evt.player_died", "☠", "#ff3333", _died))
+register(EventType("zone_discovered", "evt.zone_discovered", "⚑", "#73d9ff",
                    lambda e: tr("evt.zone_discovered.text", zone=e.payload.get("zone") or e.zone_name or "?")))
-register(EventType("achievement_earned", "evt.achievement_earned", "★", "#ff8000", _achievement))
-register(EventType("rare_killed", "evt.rare_killed", "◆", "#c0c0c0",
+register(EventType("achievement_earned", "evt.achievement_earned", "★", "#ff8c1a", _achievement))
+register(EventType("rare_killed", "evt.rare_killed", "◆", "#cc73ff",
                    lambda e: tr("evt.rare_killed.text", name=e.payload.get("name") or "?")))
 
 

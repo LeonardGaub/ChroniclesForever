@@ -478,23 +478,62 @@ function Canvas:PlacePin(pin)
   pin:SetPoint("CENTER", self.content, "TOPLEFT", pin.px * self.zoom, -pin.py * self.zoom)
 end
 
--- pins: list of { x, y, icon, title, text }
+-- Pin looks: round icon on a dark disc with a coloured ring. icon/ring: diameters in pixels.
+local PIN_LOOKS = {
+  normal = { icon = 14, ring = 19, color = { 0.85, 0.7, 0.42 }, back = { 0.08, 0.06, 0.04 } },
+  milestone = { icon = 20, ring = 26, color = { 1, 0.82, 0 }, back = { 0.12, 0.08, 0.02 } },
+  danger = { icon = 15, ring = 21, color = { 0.95, 0.22, 0.15 }, back = { 0.3, 0.03, 0.02 } },
+}
+local PIN_LEVEL = { normal = 1, danger = 2, milestone = 3 }
+
+local function pinSize(pin, k)
+  local look = pin.look
+  pin.ring:SetSize(look.ring * k, look.ring * k)
+  pin.back:SetSize((look.ring - 3) * k, (look.ring - 3) * k)
+  pin.icon:SetSize(look.icon * k, look.icon * k)
+end
+
+local function createPin(layer)
+  local pin = CreateFrame("Frame", nil, layer)
+  pin:SetSize(22, 22)
+  pin.ring = UI:Circle(pin, "BORDER", 0)
+  pin.back = UI:Circle(pin, "BORDER", 1)
+  pin.icon = pin:CreateTexture(nil, "ARTWORK")
+  for _, t in ipairs({ pin.ring, pin.back, pin.icon }) do t:SetPoint("CENTER") end
+  UI:MaskCircle(pin, pin.icon)
+  pin:EnableMouse(true)
+  UI:Tooltip(pin, function(p) return p.title end, function(p) return p.text end)
+  -- Hover: the pin grows a little.
+  pin:HookScript("OnEnter", function(p) UI:Tween(p, 0.12, 0, function(k) pinSize(p, 1 + 0.3 * k) end) end)
+  pin:HookScript("OnLeave", function(p) UI:Tween(p, 0.12, 0, function(k) pinSize(p, 1.3 - 0.3 * k) end) end)
+  return pin
+end
+
+-- pins: list of { x, y, icon, title, text, time, kind = "milestone" | "danger" | nil, pinIcon }
 function Canvas:SetPins(pins)
   for i, data in ipairs(pins) do
     local pin = self.pins[i]
     if not pin then
-      pin = CreateFrame("Frame", nil, self.pinLayer)
-      pin:SetSize(16, 16)
-      pin.icon = pin:CreateTexture(nil, "ARTWORK")
-      pin.icon:SetAllPoints()
-      pin.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-      pin:EnableMouse(true)
-      UI:Tooltip(pin, function(p) return p.title end, function(p) return p.text end)
+      pin = createPin(self.pinLayer)
       self.pins[i] = pin
     end
+    local kind = PIN_LOOKS[data.kind] and data.kind or "normal"
+    pin.look = PIN_LOOKS[kind]
+    pin:SetFrameLevel(self.pinLayer:GetFrameLevel() + PIN_LEVEL[kind])
+    local c, b = pin.look.color, pin.look.back
+    pin.ring:SetVertexColor(c[1], c[2], c[3], 1)
+    pin.back:SetVertexColor(b[1], b[2], b[3], 1)
+    UI:StopTween(pin)
+    pin:SetAlpha(1)
+    pinSize(pin, 1)
     pin.px, pin.py = self:ToPixels(data.x, data.y)
     self:PlacePin(pin)
-    UI:SetIcon(pin.icon, data.icon)
+    if data.pinIcon and UI:SetIcon(pin.icon, data.pinIcon) then
+      pin.icon:SetTexCoord(0, 1, 0, 1)
+    else
+      UI:SetIcon(pin.icon, data.icon)
+      pin.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    end
     pin.title, pin.text, pin.time = data.title, data.text, data.time
     pin.painted = nil
   end
@@ -506,15 +545,24 @@ function Canvas:SetPins(pins)
   self:PaintPins()
 end
 
--- Pins with a time are shown once the painted route has reached it.
+-- Pins with a time are shown once the painted route has reached it; then they pop up.
 function Canvas:PaintPins()
   local to = self.paintTo
   for i = 1, self.pinCount or 0 do
     local pin = self.pins[i]
     local show = not (to and pin.time and pin.time > to)
     if pin.painted ~= show then
+      local pop = show and pin.painted == false
       pin.painted = show
       pin:SetShown(show)
+      if pop then
+        UI:Tween(pin, 0.35, 0, function(p)
+          pin:SetAlpha(p)
+          pinSize(pin, 1.9 - 0.9 * p)
+        end)
+      elseif not show then
+        UI:StopTween(pin)
+      end
     end
   end
 end

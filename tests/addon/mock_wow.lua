@@ -56,7 +56,8 @@ for e in ([[ADDON_LOADED PLAYER_LOGIN PLAYER_ENTERING_WORLD PLAYER_LOGOUT TIME_P
   LOADING_SCREEN_ENABLED LOADING_SCREEN_DISABLED SCREENSHOT_SUCCEEDED SCREENSHOT_FAILED
   PARTY_KILL PLAYER_XP_UPDATE PLAYER_TARGET_CHANGED UPDATE_MOUSEOVER_UNIT NAME_PLATE_UNIT_ADDED
   SKILL_LINES_CHANGED CHAT_MSG_SKILL TRADE_SKILL_SHOW TRADE_SKILL_LIST_UPDATE TRADE_SKILL_DATA_SOURCE_CHANGED
-  TRADE_SKILL_CLOSE NEW_RECIPE_LEARNED PLAYER_EQUIPMENT_CHANGED ENCOUNTER_START ENCOUNTER_END BOSS_KILL ZONE_CHANGED ZONE_CHANGED_INDOORS]]):gmatch("%S+") do
+  TRADE_SKILL_CLOSE NEW_RECIPE_LEARNED PLAYER_EQUIPMENT_CHANGED ENCOUNTER_START ENCOUNTER_END BOSS_KILL ZONE_CHANGED ZONE_CHANGED_INDOORS
+  PLAYER_REGEN_ENABLED]]):gmatch("%S+") do
   VALID_EVENTS[e] = true
 end
 
@@ -77,6 +78,10 @@ local function newRegion()
   r.GetStringHeight = function() return 12 end
   r.GetChecked = function(self) return self.checked end
   r.SetChecked = function(self, v) self.checked = v end
+  r.SetAlpha = function(self, a) self.alpha = a end
+  r.GetAlpha = function(self) return rawget(self, "alpha") or 1 end
+  r.SetIgnoreParentAlpha = function(self, v) self.ignoreParentAlpha = v end
+  r.IsIgnoringParentAlpha = function(self) return rawget(self, "ignoreParentAlpha") == true end
   return setmetatable(r, regionMT)
 end
 
@@ -113,6 +118,9 @@ function CreateFrame(kind, name, parent, template)
     f.SetPortraitToUnit = function(self, unit) self.portraitUnit, self.portraitClass = unit, nil end
     f.SetPortraitToClassIcon = function(self, class) self.portraitUnit, self.portraitClass = nil, class end
   end
+  f.children = {}
+  f.GetChildren = function(self) return unpack(self.children) end
+  if type(parent) == "table" and parent.children then table.insert(parent.children, f) end
   if name then _G[name] = f end
   return setmetatable(f, frameMT)
 end
@@ -127,6 +135,10 @@ function MOCK.fire(event, ...)
 end
 
 UIParent = CreateFrame("Frame")
+-- Alt+Z, and the level-up banner (shown by tests after a level-up).
+function SetUIVisibility(v) if v then UIParent:Show() else UIParent:Hide() end end
+EventToastManagerFrame = CreateFrame("Frame", "EventToastManagerFrame", UIParent)
+EventToastManagerFrame:Hide()
 Minimap = CreateFrame("Frame")
 ChatFrame1 = CreateFrame("Frame")
 ChatFrame1.AddMessage = function(_, m) table.insert(MOCK.chat, m) end
@@ -219,6 +231,10 @@ function Screenshot()
   table.insert(MOCK.screenshots, MOCK.now)
   MOCK.countdownVisibleAtCapture = ForeverChronicleCountdown ~= nil and ForeverChronicleCountdown:IsShown()
   MOCK.uiVisibleAtCapture = UIParent:IsShown()
+  MOCK.uiAlphaAtCapture = UIParent:GetAlpha()
+  MOCK.toastVisibleAtCapture = EventToastManagerFrame:IsShown()
+    and (EventToastManagerFrame:IsIgnoringParentAlpha() or UIParent:GetAlpha() > 0)
+  MOCK.minimapVisibleAtCapture = Minimap:IsShown()
   C_Timer.After(0.3, function() MOCK.fire("SCREENSHOT_SUCCEEDED") end)
 end
 

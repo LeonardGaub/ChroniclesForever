@@ -73,6 +73,18 @@ def test_main_window_with_data(app, db, tmp_path, monkeypatch, addon_fixture):
     assert import_page.backup_message.text().startswith("Wiederhergestellt: ") and "manuell" in import_page.backup_message.text()
     assert window.characters.count() == 1
 
+    settings = next(p for p in window.pages if p.title_key == "tab.settings")
+    window.tabs.setCurrentWidget(settings)
+    assert settings.music.isChecked() and settings.effects_volume.value() == config.effects_volume
+    settings.clicks.setChecked(False)
+    settings.music_volume.setValue(30)
+    saved = AppConfig.load()
+    assert not saved.click_sounds and saved.music_volume == 30, "sound settings are kept"
+    settings.preview.setChecked(True)
+    assert ctx.sound.music.active and settings.preview.text() == "■ Stopp"
+    window.tabs.setCurrentIndex(0)
+    assert not ctx.sound.music.active, "the preview ends when the page is left"
+
     i18n.set_language("en")
     assert window.tabs.tabText(0) == "Overview"
     window.tabs.setCurrentIndex(0)  # pages refresh when shown

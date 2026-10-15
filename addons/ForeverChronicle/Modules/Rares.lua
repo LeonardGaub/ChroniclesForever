@@ -17,8 +17,10 @@ FC:RegisterCapability("rares", "CAP_RARES", function()
   return FC.eventStatus.PARTY_KILL == "registered" and type(UnitClassification) == "function"
 end)
 
+FC:RegisterEventCategory("rares", { labelKey = "CAT_RARES", icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01", order = 45 })
+
 FC:RegisterEventType("rare_killed", {
-  icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+  icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01", category = "rares",
   format = function(r) return string.format(L.EVT_RARE_KILLED, r.data.name or "?") end,
 })
 

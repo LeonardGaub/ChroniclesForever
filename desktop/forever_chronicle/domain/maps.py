@@ -14,6 +14,11 @@ from ..i18n import language, tr
 ART_WIDTH, ART_HEIGHT = 1002, 668
 WORLD, KALIMDOR, EASTERN_KINGDOMS = 947, 1414, 1415
 CONTINENTS = (KALIMDOR, EASTERN_KINGDOMS)
+# Where each continent's map lies on the world map (min_x, max_x, min_y, max_y; may reach past its edges).
+# Found by matching the continent map art onto the world map art, so the pictures line up when one fades into
+# the other (cinematic mode); the game itself does not tell the addon these.
+CONTINENT_ON_WORLD = {KALIMDOR: (-0.1808, 0.6346, 0.0681, 0.8835),
+                      EASTERN_KINGDOMS: (0.3937, 1.1399, 0.1184, 0.8646)}
 
 
 @dataclass(frozen=True)

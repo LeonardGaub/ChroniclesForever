@@ -12,6 +12,7 @@ from .importing.sv_importer import ImportResult, SavedVariablesImporter
 from .storage.database import Database
 from .storage.jsonl import ExportResult, JsonlImportResult, export_jsonl, import_jsonl
 from .storage.repository import Repository
+from .ui.sound import Sound
 from .wow.paths import ClientInstall, SavedVariablesFile, client_from_path, find_forever_installs, find_saved_variables
 
 
@@ -25,6 +26,7 @@ class AppContext(QObject):
         self.db = db
         self.repo = Repository(db.conn)
         self.importer = SavedVariablesImporter(db)
+        self.sound = Sound(config)
         self._client: ClientInstall | None = None
         self._client_searched = False
 

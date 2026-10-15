@@ -57,6 +57,123 @@ local function cycler(parent, width, onStep)
   return { prev = prev, label = label, next = nextB }
 end
 
+-- Media glyphs drawn from plain textures: triangles are squares with two corners pulled together
+-- (vertex offsets). kind: "play", "pause", "prev" (|<), "next" (>|).
+local GLYPH_COLOR = { 1, 0.82, 0 }
+
+local function triangle(tex, size, pointsRight)
+  tex:SetSize(size * 0.8, size)
+  local half = size / 2
+  if pointsRight then
+    tex:SetVertexOffset(1, 0, 0)
+    tex:SetVertexOffset(2, 0, 0)
+    tex:SetVertexOffset(3, 0, -half)
+    tex:SetVertexOffset(4, 0, half)
+  else
+    tex:SetVertexOffset(1, 0, -half)
+    tex:SetVertexOffset(2, 0, half)
+    tex:SetVertexOffset(3, 0, 0)
+    tex:SetVertexOffset(4, 0, 0)
+  end
+end
+
+local function setGlyph(b, kind)
+  b.kind = kind
+  local g, s = b.glyph, b.glyphSize
+  for _, t in ipairs(g) do
+    t:ClearAllPoints()
+    t:Show()
+    for v = 1, 4 do t:SetVertexOffset(v, 0, 0) end
+  end
+  if kind == "play" then
+    triangle(g[1], s, true)
+    g[1]:SetPoint("CENTER", 1, 0)
+    g[2]:Hide()
+  elseif kind == "pause" then
+    for i = 1, 2 do g[i]:SetSize(s * 0.3, s) end
+    g[1]:SetPoint("CENTER", -s * 0.25, 0)
+    g[2]:SetPoint("CENTER", s * 0.25, 0)
+  else
+    triangle(g[1], s, kind == "next")
+    g[2]:SetSize(2, s)
+    if kind == "next" then
+      g[1]:SetPoint("CENTER", -1, 0)
+      g[2]:SetPoint("LEFT", g[1], "RIGHT", 1, 0)
+    else
+      g[1]:SetPoint("CENTER", 1, 0)
+      g[2]:SetPoint("RIGHT", g[1], "LEFT", -1, 0)
+    end
+  end
+end
+
+-- Square button (the game's square button art) with a gold media glyph. Without vertex offsets it falls
+-- back to the spellbook page arrows.
+local function mediaButton(parent, size, kind, onClick)
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(size, size)
+  local probe = b:CreateTexture(nil, "BACKGROUND")
+  if probe:SetTexture("Interface\\Buttons\\UI-SquareButton-Up") ~= false then
+    probe:SetAllPoints()
+    b:SetNormalTexture(probe)
+    b:SetPushedTexture("Interface\\Buttons\\UI-SquareButton-Down")
+    b:SetHighlightTexture("Interface\\Buttons\\UI-SquareButton-Highlight", "ADD")
+  else
+    probe:SetAllPoints()
+    probe:SetColorTexture(0, 0, 0, 0.7)
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+  end
+  b.selection = UI:SelectionBorder(b)
+  b.glyph = { b:CreateTexture(nil, "OVERLAY"), b:CreateTexture(nil, "OVERLAY") }
+  b.glyphSize = math.floor(size * 0.42)
+  for _, t in ipairs(b.glyph) do t:SetColorTexture(GLYPH_COLOR[1], GLYPH_COLOR[2], GLYPH_COLOR[3], 1) end
+  if b.glyph[1].SetVertexOffset then
+    b.SetGlyph = setGlyph
+  else
+    for _, t in ipairs(b.glyph) do t:Hide() end
+    b.SetGlyph = function(btn, k)
+      btn.kind = k
+      local dir = (k == "prev") and "Prev" or "Next"
+      local icon = k == "pause" and "Interface\\TimeManager\\PauseButton" or ("Interface\\Buttons\\UI-SpellbookIcon-" .. dir .. "Page-Up")
+      probe:SetTexture(icon)
+    end
+  end
+  b:SetScript("OnMouseDown", function(btn) for _, t in ipairs(btn.glyph) do t:SetAlpha(0.7) end end)
+  b:SetScript("OnMouseUp", function(btn) for _, t in ipairs(btn.glyph) do t:SetAlpha(1) end end)
+  b:SetScript("OnClick", onClick)
+  b:SetGlyph(kind)
+  return b
+end
+
+-- "● Live" button: the dot pulses red while following the player, grey otherwise.
+local function liveButton(parent, onClick)
+  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  b:SetSize(66, 22)
+  b:SetText(L.MAP_LIVE)
+  UI:Track(b, "MAP_LIVE")
+  local fs = b.GetFontString and b:GetFontString()
+  if type(fs) == "table" then
+    fs:ClearAllPoints()
+    fs:SetPoint("CENTER", 7, 0)
+  end
+  b.dot = UI:Circle(b, "OVERLAY", 7, 9)
+  b.dot:SetPoint("LEFT", 11, 0)
+  b.selection = UI:SelectionBorder(b)
+  UI:Tooltip(b, "MAP_LIVE", "MAP_LIVE_TIP")
+  b:SetScript("OnClick", onClick)
+  local clock = 0
+  b:SetScript("OnUpdate", function(btn, dt)
+    if not btn.on then return end
+    clock = clock + dt
+    btn.dot:SetAlpha(0.55 + 0.45 * math.abs(math.sin(clock * 2.5)))
+  end)
+  function b:SetLive(on)
+    self.on = on
+    if on then self.dot:SetVertexColor(1, 0.15, 0.1) else self.dot:SetVertexColor(0.5, 0.5, 0.5); self.dot:SetAlpha(1) end
+    UI:SetSelected(self, on)
+  end
+  return b
+end
+
 local function createSlider(parent)
   local ok, s = pcall(CreateFrame, "Slider", nil, parent, "BackdropTemplate")
   if not ok then s = CreateFrame("Slider", nil, parent) end
@@ -156,19 +273,32 @@ function page:Create(c)
   self.notice:SetPoint("TOPLEFT", 8, -6)
   self.noticeFrame = noticeFrame
 
-  -- Bottom row: play, speeds, slider, time, live
-  self.play = UI:ArrowButton(c, "Next", function() self:TogglePlay() end)
-  self.play:SetSize(30, 30)
-  self.play.selection = UI:SelectionBorder(self.play)
+  -- Bottom bar: previous event, play/pause, next event | speeds | timeline | time | live
+  local bar = CreateFrame("Frame", nil, c, "BackdropTemplate")
+  bar:SetPoint("TOPLEFT", self.canvas.frame, "BOTTOMLEFT", -1, -5)
+  bar:SetPoint("TOPRIGHT", self.canvas.frame, "BOTTOMRIGHT", 1, -5)
+  bar:SetHeight(36)
+  if bar.SetBackdrop then
+    bar:SetBackdrop({ bgFile = UI.WHITE, edgeFile = UI.WHITE, edgeSize = 1 })
+    bar:SetBackdropColor(0, 0, 0, 0.45)
+    bar:SetBackdropBorderColor(0.6, 0.5, 0.3, 0.5)
+  end
+  self.prevEvent = mediaButton(bar, 24, "prev", function() self:StepEvent(-1) end)
+  self.prevEvent:SetPoint("LEFT", 6, 0)
+  UI:Tooltip(self.prevEvent, "MAP_PREV_EVENT", "MAP_STEP_TIP")
+  self.play = mediaButton(bar, 28, "play", function() self:TogglePlay() end)
+  self.play:SetPoint("LEFT", self.prevEvent, "RIGHT", 4, 0)
   UI:Tooltip(self.play, function() return self.playing and L.MAP_PAUSE or L.MAP_PLAY end)
-  self.play:SetPoint("TOPLEFT", self.canvas.frame, "BOTTOMLEFT", 0, -10)
+  self.nextEvent = mediaButton(bar, 24, "next", function() self:StepEvent(1) end)
+  self.nextEvent:SetPoint("LEFT", self.play, "RIGHT", 4, 0)
+  UI:Tooltip(self.nextEvent, "MAP_NEXT_EVENT", "MAP_STEP_TIP")
   self.speedButtons = {}
-  local prev = self.play
+  local prev = self.nextEvent
   for i, speed in ipairs(SPEEDS) do
-    local b = CreateFrame("Button", nil, c, "UIPanelButtonTemplate")
-    b:SetSize(38, 22)
+    local b = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+    b:SetSize(34, 20)
     b:SetText(speed .. "\195\151")
-    b:SetPoint("LEFT", prev, "RIGHT", i == 1 and 10 or 4, 0)
+    b:SetPoint("LEFT", prev, "RIGHT", i == 1 and 12 or 3, 0)
     b.selection = UI:SelectionBorder(b)
     b:SetScript("OnClick", function() self.speedIndex = i; self:SyncSpeed() end)
     UI:Tooltip(b, "MAP_SPEED", "MAP_SPEED_TIP")
@@ -176,21 +306,21 @@ function page:Create(c)
     prev = b
   end
   self.live = true
-  self.liveButton = UI:IconButton(c, 30, I .. "Ability_EyeOfTheOwl", "MAP_LIVE", "MAP_LIVE_TIP", function()
+  self.liveButton = liveButton(bar, function()
     self.live, self.playing = true, false
     self.sessionIndex = 0
     self.dirty = true
     self:SyncPlay()
     self:Refresh()
   end)
-  self.liveButton:SetPoint("TOPRIGHT", self.canvas.frame, "BOTTOMRIGHT", 0, -10)
-  self.time = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  self.time:SetPoint("RIGHT", self.liveButton, "LEFT", -10, 0)
-  self.time:SetWidth(120)
+  self.liveButton:SetPoint("RIGHT", -6, 0)
+  self.time = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  self.time:SetPoint("RIGHT", self.liveButton, "LEFT", -8, 0)
+  self.time:SetWidth(112)
   self.time:SetJustifyH("RIGHT")
-  self.slider = createSlider(c)
-  self.slider:SetPoint("LEFT", prev, "RIGHT", 14, 0)
-  self.slider:SetPoint("RIGHT", self.time, "LEFT", -10, 0)
+  self.slider = createSlider(bar)
+  self.slider:SetPoint("LEFT", prev, "RIGHT", 12, -4)
+  self.slider:SetPoint("RIGHT", self.time, "LEFT", -8, -4)
   self.slider:SetScript("OnValueChanged", function(_, value, userInput)
     if self.updatingSlider or not self.timeline then return end
     if userInput == false then return end
@@ -201,7 +331,7 @@ function page:Create(c)
 
   -- Timeline: zone bands inside the slider track, event ticks just above it.
   self.bands, self.separators, self.ticks, self.tickCount = {}, {}, {}, 0
-  self.tickBar = CreateFrame("Frame", nil, c)
+  self.tickBar = CreateFrame("Frame", nil, bar)
   self.tickBar:SetPoint("BOTTOMLEFT", self.slider, "TOPLEFT", 0, 0)
   self.tickBar:SetPoint("BOTTOMRIGHT", self.slider, "TOPRIGHT", 0, 0)
   self.tickBar:SetHeight(9)
@@ -371,7 +501,9 @@ function page:Redraw()
         local x, y = Route.Project(spot, self.viewMap)
         if x then
           local text, icon = FC:DescribeEvent(r)
-          pins[#pins + 1] = { x = x, y = y, icon = icon, title = text, text = FC.Util.FormatTime(r.time), time = r.time }
+          local def = FC.eventTypes[r.type]
+          pins[#pins + 1] = { x = x, y = y, icon = icon, title = text, text = FC.Util.FormatTime(r.time), time = r.time,
+            kind = def and def.highlight, pinIcon = def and def.pinIcon }
         end
       end
     end
@@ -598,8 +730,20 @@ function page:SyncSpeed()
 end
 
 function page:SyncPlay()
-  UI:SetSelected(self.play, self.playing)
-  UI:SetToggle(self.liveButton, self.live)
+  self.play:SetGlyph(self.playing and "pause" or "play")
+  self.liveButton:SetLive(self.live)
+end
+
+-- Jumps to the previous (dir -1) or next (dir 1) mark on the timeline.
+function page:StepEvent(dir)
+  if not self.current then return end
+  local best
+  for i = 1, self.tickCount or 0 do
+    local t = self.ticks[i].time
+    if dir < 0 and t < self.current - 1 and (not best or t > best) then best = t end
+    if dir > 0 and t > self.current + 1 and (not best or t < best) then best = t end
+  end
+  if best then self:JumpTo(best) end
 end
 
 function page:TogglePlay()

@@ -10,7 +10,7 @@ local Util = FC.Util
 
 local page = { id = "overview", labelKey = "TAB_OVERVIEW", icon = "portrait", order = 10 }
 local TILE_W, TILE_H, TILE_COLUMNS = 178, 40, 2
-local SLOT_SIZE, SLOT_GAP = 37, 4
+local SLOT_SIZE, SLOT_GAP, MODEL_W = 37, 4, 260
 
 -- Gear slots as in the Classic character window: left column, right column, weapons at the bottom.
 local LEFT_SLOTS = { "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot", "ShirtSlot", "TabardSlot", "WristSlot" }
@@ -49,17 +49,34 @@ end
 -- Gear slots
 -------------------------------------------------------------------------------
 
+-- The game's item button (slot frame and quality border, as in the character window) where the client has
+-- it; otherwise a plain button with a coloured border.
+local function itemButton(parent)
+  local ok, b = pcall(CreateFrame, "ItemButton", nil, parent)
+  if not ok or not b then ok, b = pcall(CreateFrame, "Button", nil, parent, "ItemButtonTemplate") end
+  if not ok or not b then b = CreateFrame("Button", nil, parent) end
+  return b
+end
+
 local function gearSlot(parent, slotName)
   local slotID, emptyTexture = Util.SafeValues(GetInventorySlotInfo, slotName)
-  local b = CreateFrame("Button", nil, parent)
+  local b = itemButton(parent)
   b:SetSize(SLOT_SIZE, SLOT_SIZE)
+  b.native = type(b.IconBorder) == "table" and type(SetItemButtonQuality) == "function"
   b.border = b:CreateTexture(nil, "BACKGROUND")
   b.border:SetPoint("TOPLEFT", -2, 2)
   b.border:SetPoint("BOTTOMRIGHT", 2, -2)
-  b.icon = b:CreateTexture(nil, "ARTWORK")
+  b.border:SetShown(not b.native)
+  if type(b.icon) ~= "table" then b.icon = b:CreateTexture(nil, "ARTWORK") end
+  b.icon:ClearAllPoints()
   b.icon:SetAllPoints()
   b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
   b.slotID, b.slotName, b.emptyTexture = slotID, slotName, emptyTexture
+  -- Shift-click links the item in chat, Ctrl-click opens the dressing room (the game's modified clicks).
+  if b.RegisterForClicks then b:RegisterForClicks("LeftButtonUp") end
+  b:SetScript("OnClick", function(self)
+    if self.itemLink and HandleModifiedItemClick then HandleModifiedItemClick(self.itemLink) end
+  end)
   b:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     local shown
@@ -75,10 +92,25 @@ local function gearSlot(parent, slotName)
   return b
 end
 
+-- Quality border: the game's own (item button) or the coloured square behind the icon.
+local function setQuality(b, quality, link)
+  if b.native then
+    pcall(SetItemButtonQuality, b, quality, link)
+    return
+  end
+  if quality == nil then
+    b.border:SetColorTexture(0.15, 0.15, 0.15, 1)
+    return
+  end
+  local r, g, bl = UI:QualityColor(quality)
+  b.border:SetColorTexture(r or 0.3, g or 0.3, bl or 0.3, 1)
+end
+
 local function showEmpty(b)
+  b.itemLink = nil
   UI:SetIcon(b.icon, b.emptyTexture)
   b.icon:SetTexCoord(0, 1, 0, 1)
-  b.border:SetColorTexture(0.15, 0.15, 0.15, 1)
+  setQuality(b, nil)
 end
 
 -- Gear of a character that is not being played, from its snapshot (Modules/Gear.lua).
@@ -88,26 +120,135 @@ local function updateSlotFromSnapshot(b, entry)
     showEmpty(b)
     return
   end
+  b.itemLink = entry.link
   local icon = entry.icon or (C_Item and C_Item.GetItemIconByID and entry.item
     and Util.SafeValue(nil, C_Item.GetItemIconByID, entry.item))
   UI:SetIcon(b.icon, icon)
-  b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-  local r, g, bl = UI:QualityColor(entry.quality)
-  b.border:SetColorTexture(r or 0.3, g or 0.3, bl or 0.3, 1)
+  b.icon:SetTexCoord(0, 1, 0, 1)
+  setQuality(b, entry.quality or 1, entry.link)
 end
 
 local function updateSlot(b)
   b.link = nil
   local texture = b.slotID and Util.SafeValue(nil, GetInventoryItemTexture, "player", b.slotID)
   if texture then
+    b.itemLink = Util.SafeValue("string", GetInventoryItemLink, "player", b.slotID)
     b.icon:SetTexture(texture)
-    b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    local r, g, bl = UI:QualityColor(Util.SafeValue("number", GetInventoryItemQuality, "player", b.slotID))
-    b.border:SetColorTexture(r or 0.3, g or 0.3, bl or 0.3, 1)
+    b.icon:SetTexCoord(0, 1, 0, 1)
+    setQuality(b, Util.SafeValue("number", GetInventoryItemQuality, "player", b.slotID) or 1, b.itemLink)
   else
     showEmpty(b)
   end
   return texture
+end
+
+-------------------------------------------------------------------------------
+-- Race background behind the model (the dressing room art)
+-------------------------------------------------------------------------------
+
+-- Retail: one atlas per race. Classic: four pieces of a 320 x 384 picture.
+local PIECES = { { 0, 0, 256, 256 }, { 256, 0, 64, 256 }, { 0, 256, 256, 128 }, { 256, 256, 64, 128 } }
+
+local function setRaceBackground(self, raceFile)
+  if raceFile == self.bgRace then return end
+  self.bgRace = raceFile
+  local box, w, h = self.modelBg, self.modelBgW, self.modelBgH
+  for _, piece in ipairs(self.racePieces) do piece:Hide() end
+  if not raceFile then return end
+  local atlas = (DressUpTexturePath and Util.SafeValue("string", DressUpTexturePath, raceFile))
+    or ("dressingroom-background-" .. raceFile)
+  if UI:HasAtlas(atlas) then
+    local t = self.racePieces[1]
+    t:ClearAllPoints()
+    t:SetAllPoints(box)
+    t:SetAtlas(atlas)
+    t:Show()
+    return
+  end
+  for i, p in ipairs(PIECES) do
+    local t = self.racePieces[i]
+    if t:SetTexture("Interface\\DressUpFrame\\DressUpBackground-" .. raceFile .. i) == false then
+      for _, piece in ipairs(self.racePieces) do piece:Hide() end
+      return
+    end
+    t:SetTexCoord(0, 1, 0, 1)
+    t:ClearAllPoints()
+    t:SetPoint("TOPLEFT", box, "TOPLEFT", p[1] / 320 * w, -p[2] / 384 * h)
+    t:SetSize(p[3] / 320 * w, p[4] / 384 * h)
+    t:Show()
+  end
+end
+
+-------------------------------------------------------------------------------
+-- XP bar in the style of the game's experience bar: purple, blue while rested, the rested part lighter
+-- with the rested marker at its end, 20 segments and a spark at the fill.
+-------------------------------------------------------------------------------
+
+local XP_NORMAL, XP_RESTED = { 0.58, 0, 0.55 }, { 0, 0.39, 0.88 }
+
+local function xpBar(parent, width)
+  local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+  f:SetSize(width, 18)
+  if f.SetBackdrop then
+    f:SetBackdrop({ bgFile = UI.WHITE, edgeFile = UI.WHITE, edgeSize = 1 })
+    f:SetBackdropColor(0, 0, 0, 0.65)
+    f:SetBackdropBorderColor(0.55, 0.45, 0.25, 0.9)
+  end
+  local bar = CreateFrame("StatusBar", nil, f)
+  bar:SetPoint("TOPLEFT", 2, -2)
+  bar:SetPoint("BOTTOMRIGHT", -2, 2)
+  bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+  bar:SetMinMaxValues(0, 1)
+  f.bar = bar
+  f.rested = bar:CreateTexture(nil, "BORDER")
+  f.rested:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+  f.rested:SetPoint("TOPLEFT")
+  f.rested:SetPoint("BOTTOMLEFT")
+  local inner = width - 4
+  for i = 1, 19 do
+    local tick = bar:CreateTexture(nil, "OVERLAY", nil, 1)
+    tick:SetColorTexture(0, 0, 0, 0.45)
+    tick:SetSize(1, 14)
+    tick:SetPoint("LEFT", bar, "LEFT", math.floor(inner * i / 20), 0)
+  end
+  f.spark = bar:CreateTexture(nil, "OVERLAY", nil, 2)
+  f.spark:SetTexture("Interface\\CastingBar\\UI-CastingBar-Spark")
+  f.spark:SetBlendMode("ADD")
+  f.spark:SetSize(16, 30)
+  f.marker = f:CreateTexture(nil, "OVERLAY")
+  if f.marker:SetTexture("Interface\\MainMenuBar\\UI-ExhaustionTickNormal") == false then f.marker:SetTexture(nil) end
+  f.marker:SetSize(24, 24)
+  f.text = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  f.text:SetPoint("CENTER", 0, 1)
+  f.inner, f.fill = inner, false
+
+  local function place(self, fill)
+    self.bar:SetValue(fill)
+    self.spark:ClearAllPoints()
+    self.spark:SetPoint("CENTER", self.bar, "LEFT", self.inner * fill, 0)
+    self.spark:SetShown(fill > 0.005 and fill < 0.995)
+  end
+
+  -- fill and restedEnd are shares of the level (0..1); the fill glides to a new value.
+  function f:SetXP(fill, restedEnd)
+    local color = restedEnd > fill and XP_RESTED or XP_NORMAL
+    self.bar:SetStatusBarColor(color[1], color[2], color[3])
+    self.rested:SetVertexColor(color[1], color[2], color[3], 0.4)
+    self.rested:SetWidth(math.max(1, self.inner * restedEnd))
+    self.rested:SetShown(restedEnd > fill)
+    self.marker:ClearAllPoints()
+    self.marker:SetPoint("CENTER", self.bar, "LEFT", self.inner * restedEnd, 6)
+    self.marker:SetShown(restedEnd > fill)
+    local from = self.fill
+    self.fill = fill
+    if from and from < fill and fill - from < 0.5 then
+      UI:Tween(self, 0.6, 0, function(p) place(self, from + (fill - from) * p) end)
+    else
+      UI:StopTween(self)
+      place(self, fill)
+    end
+  end
+  return f
 end
 
 -------------------------------------------------------------------------------
@@ -121,13 +262,8 @@ function page:Create(c)
   self.details = c:CreateFontString(nil, "OVERLAY", "GameFontDisable")
   self.details:SetPoint("TOPLEFT", self.name, "BOTTOMLEFT", 0, -4)
 
-  self.xp = UI:Bar(c, 360)
+  self.xp = xpBar(c, 360)
   self.xp:SetPoint("TOPLEFT", self.details, "BOTTOMLEFT", 0, -10)
-  self.xp:SetStatusBarColor(0.58, 0, 0.55)
-  self.rested = self.xp:CreateTexture(nil, "BORDER")
-  self.rested:SetColorTexture(0.0, 0.39, 0.88, 0.6)
-  self.rested:SetPoint("TOPLEFT", self.xp, "TOPLEFT")
-  self.rested:SetPoint("BOTTOMLEFT", self.xp, "BOTTOMLEFT")
   self.xp:EnableMouse(true)
   UI:Tooltip(self.xp, "XP_BAR", function() return self.xpTip end)
   self.money = c:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -158,7 +294,7 @@ function page:Create(c)
   local panel = CreateFrame("Frame", nil, c)
   self.gearPanel = panel
   panel:SetPoint("TOPRIGHT", -16, -16)
-  panel:SetSize(2 * SLOT_SIZE + 260 + 2 * 10, 8 * (SLOT_SIZE + SLOT_GAP) + SLOT_SIZE + 16)
+  panel:SetSize(2 * SLOT_SIZE + MODEL_W + 2 * 10, 8 * (SLOT_SIZE + SLOT_GAP) + SLOT_SIZE + 16)
   self.slots = {}
   for i, name in ipairs(LEFT_SLOTS) do
     local b = gearSlot(panel, name)
@@ -181,6 +317,19 @@ function page:Create(c)
   modelBg:SetPoint("TOPLEFT", SLOT_SIZE + 10, 0)
   modelBg:SetPoint("BOTTOMRIGHT", -(SLOT_SIZE + 10), SLOT_SIZE + 16)
   modelBg:SetColorTexture(0, 0, 0, 0.35)
+  self.modelBgW, self.modelBgH = MODEL_W, 8 * (SLOT_SIZE + SLOT_GAP)
+  local frameLine = panel:CreateTexture(nil, "BACKGROUND", nil, -1)
+  frameLine:SetPoint("TOPLEFT", modelBg, -1, 1)
+  frameLine:SetPoint("BOTTOMRIGHT", modelBg, 1, -1)
+  frameLine:SetColorTexture(0.6, 0.5, 0.3, 0.8)
+  self.racePieces = {}
+  for i = 1, #PIECES do self.racePieces[i] = panel:CreateTexture(nil, "BACKGROUND", nil, 1) end
+  -- Soft dark edges, so the model stands out from the picture.
+  local shade = panel:CreateTexture(nil, "BACKGROUND", nil, 2)
+  shade:SetPoint("BOTTOMLEFT", modelBg)
+  shade:SetPoint("BOTTOMRIGHT", modelBg)
+  shade:SetHeight(70)
+  UI:Gradient(shade, "VERTICAL", 0, 0, 0, 0.55, 0, 0, 0, 0)
   local ok, model = pcall(CreateFrame, "PlayerModel", nil, panel)
   if ok and model then
     model:SetPoint("TOPLEFT", modelBg)
@@ -268,7 +417,8 @@ function page:RefreshGraph()
     subtitle = subtitle .. "  \194\183  " .. (change > 0 and "+" or "") .. format(change)
   end
   self.graphSubtitle:SetText(subtitle)
-  self.graph:SetData(points, length, { color = def.color, format = format, emptyText = L.GRAPH_EMPTY,
+  self.graph:SetData(points, length, { key = def.key .. ":" .. tostring(FC:ViewKey()),
+    color = def.color, format = format, emptyText = L.GRAPH_EMPTY,
     ticks = ticks, breaks = breaks, tooltip = function(p)
       return date(L.GRAPH_POINT_TIME, p.time), format(p.value)
     end })
@@ -283,6 +433,7 @@ function page:Refresh()
   self.details:SetText(string.format(L.CHAR_DETAILS, info.level or "?", info.raceName or "", info.className or "")
     .. "  \194\183  " .. (info.realm or ""))
 
+  setRaceBackground(self, info.raceFile)
   for _, part in ipairs(self.liveParts) do part:SetShown(played) end
   self.otherNote:SetShown(not played)
   if not played then
@@ -304,11 +455,9 @@ function page:Refresh()
   local xp, max = Util.SafeValue("number", UnitXP, "player"), Util.SafeValue("number", UnitXPMax, "player")
   if xp and max and max > 0 then
     local rested = Util.SafeValue("number", GetXPExhaustion) or 0
-    self.xp:SetValue(xp / max)
-    self.xp.text:SetText(string.format("%s / %s", Util.FormatNumber(xp), Util.FormatNumber(max)))
-    local restedEnd = math.min(1, (xp + rested) / max)
-    self.rested:SetWidth(math.max(1, self.xp:GetWidth() * restedEnd))
-    self.rested:SetShown(rested > 0)
+    self.xp:SetXP(xp / max, math.min(1, (xp + rested) / max))
+    self.xp.text:SetText(string.format("%s / %s  (%d %%)", Util.FormatNumber(xp), Util.FormatNumber(max),
+      math.floor(xp / max * 100)))
     self.xpTip = string.format(L.XP_TIP, Util.FormatNumber(max - xp), Util.FormatNumber(rested))
     self.xp:Show()
   else

@@ -40,7 +40,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ctx = ctx
         self.resize(1100, 720)
-        self.setMinimumSize(900, 560)
+        self.setMinimumSize(960, 560)
 
         central = QWidget()
         root = QHBoxLayout(central)

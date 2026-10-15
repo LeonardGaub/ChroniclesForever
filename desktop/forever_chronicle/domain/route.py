@@ -32,6 +32,14 @@ class Segment:
     taxi: bool = False
 
 
+@dataclass
+class ZoneRun:
+    start: float
+    to: float
+    map_id: int | None          # None inside dungeons
+    instance_id: int | None
+
+
 class Timeline:
     """Maps time to a position on a timeline of active time (value = seconds since the start, breaks left out)."""
 
@@ -254,6 +262,27 @@ class Route:
         if not intervals:
             intervals = [[start, end]]
         return Timeline([(a, b) for a, b in intervals])
+
+    def zone_runs(self, start: float, end: float) -> list[ZoneRun]:
+        """Stretches of [start, end] spent in one zone or one dungeon, in time order (the addon's
+        Route.ZoneRuns, used for the timeline's zone bands)."""
+        runs: list[ZoneRun] = []
+        current: ZoneRun | None = None
+        for p in self.points[max(0, bisect.bisect_right(self.times, start) - 1):]:
+            if p.time > end:
+                break
+            if p.end < start:
+                continue
+            map_id = p.map_id if p.instance_id is None else None
+            if current and current.map_id == map_id and current.instance_id == p.instance_id:
+                current.to = min(p.end, end)
+            else:
+                begin = max(p.time, start)
+                if current:
+                    current.to = max(current.to, begin)
+                current = ZoneRun(begin, min(p.end, end), map_id, p.instance_id)
+                runs.append(current)
+        return runs
 
     def next_time_after(self, t: int) -> int | None:
         """Start time of the first point after t (used to skip gaps during playback)."""

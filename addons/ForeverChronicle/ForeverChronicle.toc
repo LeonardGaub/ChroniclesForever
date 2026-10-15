@@ -49,6 +49,5 @@ UI\Pages\Overview.lua
 UI\Pages\Chronicle.lua
 UI\Pages\Map.lua
 UI\Pages\Professions.lua
-UI\Pages\Screenshots.lua
 UI\Pages\Settings.lua
 UI\Pages\Diagnostics.lua

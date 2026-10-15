@@ -29,8 +29,10 @@ local PROBE_LATER = { 30, 120 } -- seconds after entering: is there a position a
 
 FC:RegisterCapability("bosses", "CAP_BOSSES", function() return FC.eventStatus.ENCOUNTER_END == "registered" end)
 
+FC:RegisterEventCategory("dungeons", { labelKey = "CAT_DUNGEONS", icon = "Interface\\Icons\\INV_Misc_Key_03", order = 50 })
+
 FC:RegisterEventType("boss_killed", {
-  icon = "Interface\\Icons\\INV_Sword_04",
+  icon = "Interface\\Icons\\INV_Sword_04", category = "dungeons",
   format = function(r)
     local d = r.data
     return d.instance and string.format(L.EVT_BOSS_KILLED_IN, d.name or "?", d.instance)
@@ -38,7 +40,7 @@ FC:RegisterEventType("boss_killed", {
   end,
 })
 FC:RegisterEventType("dungeon_completed", {
-  icon = "Interface\\Icons\\INV_Misc_Key_03",
+  icon = "Interface\\Icons\\INV_Misc_Key_03", category = "dungeons", highlight = "milestone",
   format = function(r) return string.format(L.EVT_DUNGEON_COMPLETED, r.data.instance or "?", r.data.boss or "?") end,
 })
 

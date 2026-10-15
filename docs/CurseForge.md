@@ -16,11 +16,12 @@ Everything is stored locally in your SavedVariables. The addon never sends anyth
 - Records level-ups, completed quests, deaths, achievements, newly discovered zones, rare enemies killed, professions learned, profession ranks trained and recipes learned.
 - Every entry shows when it happened and where you were.
 - Click an entry to jump to that moment on the map.
+- Entries that got a screenshot are marked; hover to see whether it was saved and its file name. Tick "Only with screenshot" to list just those.
 
 ### Automatic screenshots
-- Takes a screenshot for level-ups, achievements, rare kills and the first visit to a zone. Quest completions and deaths can be switched on as well.
+- Takes a screenshot for level-ups, achievements, rare kills, completed dungeons and the first visit to a zone. Quest completions and deaths can be switched on as well; each kind has its own check box.
 - A short configurable delay lets the moment play out (default 5 seconds), and an optional countdown appears on screen. The countdown is hidden before the picture is taken.
-- An optional setting hides the whole interface for the screenshot and brings it back right after. This doesn't work in combat.
+- The interface can be hidden for the screenshot and comes back right after: all of it, or all except the event's popup (such as the level-up banner). This also works in combat.
 - A cooldown keeps several events from producing a burst of pictures. Events close together share one screenshot.
 - Test it with `/fjshot test`.
 
@@ -35,7 +36,7 @@ Everything is stored locally in your SavedVariables. The addon never sends anyth
 - Your character's full name, level, experience bar with rested XP, and gold.
 - Statistics:
   - total played time;
-  - time tracked by the addon and number of sessions;
+  - number of sessions;
   - enemies killed and experience earned;
   - rare enemies, quests, deaths, achievements, discovered zones and known recipes.
 - A 3D model of your character with all equipped gear (item tooltips included).
@@ -79,11 +80,12 @@ Alles wird lokal in deinen SavedVariables gespeichert. Das Addon sendet nichts a
 - Hält Stufenaufstiege, abgeschlossene Quests, Tode, Erfolge, neu entdeckte Gebiete, besiegte seltene Gegner, erlernte Berufe, Berufsränge und gelernte Rezepte fest.
 - Jeder Eintrag zeigt, wann und wo es passiert ist.
 - Ein Klick auf einen Eintrag springt zu diesem Moment auf der Karte.
+- Einträge mit Screenshot sind markiert; mit der Maus darüber siehst du, ob er gespeichert wurde, und den Dateinamen. „Nur mit Screenshot“ zeigt nur diese Einträge.
 
 ### Automatische Screenshots
-- Macht Screenshots bei Stufenaufstiegen, Erfolgen, seltenen Gegnern und beim ersten Besuch eines Gebiets. Quests und Tode lassen sich zusätzlich einschalten.
+- Macht Screenshots bei Stufenaufstiegen, Erfolgen, seltenen Gegnern, abgeschlossenen Dungeons und beim ersten Besuch eines Gebiets. Quests und Tode lassen sich zusätzlich einschalten; jede Art hat ein eigenes Häkchen.
 - Eine kurze einstellbare Verzögerung (Standard 5 Sekunden) lässt den Moment wirken; ein Countdown auf dem Bildschirm ist zuschaltbar. Er wird vor der Aufnahme ausgeblendet.
-- Auf Wunsch wird die ganze Oberfläche für den Screenshot ausgeblendet und gleich danach wieder angezeigt. Im Kampf geht das nicht.
+- Die Oberfläche lässt sich für den Screenshot ausblenden und kommt gleich danach zurück: ganz oder bis auf das Popup des Ereignisses (etwa den Stufenaufstieg). Das geht auch im Kampf.
 - Eine Abklingzeit verhindert eine Bilderflut. Ereignisse kurz hintereinander teilen sich einen Screenshot.
 - Zum Ausprobieren: `/fjshot test`.
 
@@ -98,7 +100,7 @@ Alles wird lokal in deinen SavedVariables gespeichert. Das Addon sendet nichts a
 - Voller Name deines Charakters, Stufe, Erfahrungsleiste mit Erholungsbonus und Gold.
 - Statistiken:
   - gesamte Spielzeit;
-  - vom Addon erfasste Zeit und Anzahl der Sitzungen;
+  - Anzahl der Sitzungen;
   - getötete Gegner und gesammelte Erfahrung;
   - seltene Gegner, Quests, Tode, Erfolge, entdeckte Gebiete und bekannte Rezepte.
 - 3D-Modell deines Charakters mit der gesamten angelegten Ausrüstung (mit Gegenstands-Tooltips).

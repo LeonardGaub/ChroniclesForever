@@ -364,14 +364,16 @@ class Repository:
                              WHERE character_id = ? AND screenshot_id = ?""",
                           (path, match, character_id, screenshot_id))
 
-    def screenshot_files_by_event(self, character_id: str) -> dict[str, str]:
-        """event_id -> screenshot file path (only for matched files)."""
-        rows = self.conn.execute("""SELECT se.event_id, s.file_path FROM screenshot_events se
+    def screenshots_by_event(self, character_id: str) -> dict[str, sqlite3.Row]:
+        """event_id -> the screenshot taken for it (file_path is NULL while no file was found). If several
+        screenshots name the same event, one with a file wins, then the newest."""
+        rows = self.conn.execute("""SELECT se.event_id, s.* FROM screenshot_events se
                                     JOIN screenshots s ON s.character_id = se.character_id
                                     AND s.screenshot_id = se.screenshot_id
-                                    WHERE se.character_id = ? AND s.file_path IS NOT NULL""",
+                                    WHERE se.character_id = ? AND s.status IN ('api_called', 'confirmed')
+                                    ORDER BY s.file_path IS NOT NULL, COALESCE(s.captured_at, s.requested_at)""",
                                  (character_id,)).fetchall()
-        return {r[0]: r[1] for r in rows}
+        return {r["event_id"]: r for r in rows}  # later rows (better ones) overwrite earlier ones
 
     def event(self, character_id: str, event_id: str) -> EventRow | None:
         row = self.conn.execute("SELECT * FROM events WHERE character_id = ? AND event_id = ?",

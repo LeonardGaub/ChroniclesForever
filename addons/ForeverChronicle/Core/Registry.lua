@@ -5,14 +5,32 @@ local ADDON, FC = ...
 
 -------------------------------------------------------------------------------
 -- Event types: how a recorded event is shown in the in-game chronicle.
---   def = { labelKey, icon, format = function(record) -> text, order }
+--   def = { labelKey, icon, format = function(record) -> text, order,
+--           category = key of an event category (Chronicle filter),
+--           highlight = "milestone" | "danger" (stands out in the Chronicle and on the map),
+--           pinIcon = texture for map pins instead of the icon }
+-- Event categories group event types for the Chronicle's filter buttons:
+--   def = { labelKey, icon, order }
 -------------------------------------------------------------------------------
 
 FC.eventTypes = {}
+FC.eventCategories = {}
 
 function FC:RegisterEventType(eventType, def)
   def.type = eventType
   self.eventTypes[eventType] = def
+end
+
+function FC:RegisterEventCategory(key, def)
+  def.key, def.order = key, def.order or 100
+  table.insert(self.eventCategories, def)
+  table.sort(self.eventCategories, function(a, b) return a.order < b.order end)
+end
+
+-- Category key of a recorded event (nil for types without one; those are always shown).
+function FC:EventCategory(record)
+  local def = self.eventTypes[record.type]
+  return def and def.category
 end
 
 local FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"

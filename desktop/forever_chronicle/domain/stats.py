@@ -90,7 +90,6 @@ def _per_hour(event_type: str) -> Callable[[Repository, str], float | None]:
 
 
 register(Stat("played_total", "stats.played_total", 10, _played_total, "duration", "time"))
-register(Stat("tracked_time", "stats.tracked_time", 11, lambda r, c: sum(_session_durations(r, c)), "duration", "time"))
 register(Stat("sessions", "stats.sessions", 12, lambda r, c: len(r.sessions(c)), "number", "time"))
 register(Stat("longest_session", "stats.longest_session", 13,
               lambda r, c: max(_session_durations(r, c), default=None), "duration", "time"))

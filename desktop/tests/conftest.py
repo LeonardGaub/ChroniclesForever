@@ -1,6 +1,9 @@
+import os
 from pathlib import Path
 
 import pytest
+
+os.environ["FOREVER_CHRONICLE_SILENT"] = "1"   # tests never play sounds (ui/sound.py still records them)
 
 REPO = Path(__file__).resolve().parents[2]
 ADDON_FIXTURE = REPO / "tests" / "fixtures" / "ForeverChronicle.lua"   # written by tests/addon (npm test)

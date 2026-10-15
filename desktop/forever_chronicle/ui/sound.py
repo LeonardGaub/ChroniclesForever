@@ -1,0 +1,292 @@
+"""Sound: button clicks, event alerts and the cinematic music (QtMultimedia).
+
+- Effects are WAV files played with QSoundEffect (low latency). The built-in ones are in ui/assets/sounds and are
+  made by tools/generate_sounds.py; a file of the same name in %APPDATA%\\ForeverChronicle\\sounds replaces one.
+- Clicks: an application-wide event filter plays "click" when a button, tab, drop-down or menu entry is clicked.
+- Music: the built-in theme, or the player's own file, or a folder of files (shuffled), with fades and ducking
+  under big moments. QMediaPlayer plays MP3, OGG, FLAC, WAV and M4A.
+- Settings are in AppConfig (click_sounds, event_sounds, music, effects_volume, music_volume, music_path).
+- FOREVER_CHRONICLE_SILENT=1 keeps everything quiet (tests); what would have played is still recorded in `played`.
+- QtMultimedia comes with PySide6-Addons. With PySide6-Essentials alone the app runs without sound (AUDIO is False).
+"""
+
+from __future__ import annotations
+
+import os
+import random
+from collections import deque
+from pathlib import Path
+
+from PySide6.QtCore import QElapsedTimer, QEvent, QObject, Qt, QTimer, QUrl
+from PySide6.QtWidgets import QAbstractButton, QComboBox, QMenu, QTabBar
+
+from ..config import AppConfig, app_home
+
+try:
+    from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QSoundEffect
+    AUDIO = True
+except ImportError:
+    AUDIO = False
+
+ASSETS = Path(__file__).resolve().parent / "assets" / "sounds"
+EFFECTS = ("click", "screenshot", "level_up", "event", "death")
+BUILTIN_MUSIC = ASSETS / "cinematic_theme.ogg"
+MUSIC_SUFFIXES = (".mp3", ".ogg", ".flac", ".wav", ".m4a", ".opus")
+TRIM = {"click": 0.55}            # the click is heard very often: quieter than the alerts
+MIN_GAP = {"click": 0.03}         # seconds before the same sound may start again
+DEFAULT_GAP = 0.35
+
+FADE_IN = 3.0                     # seconds
+FADE_OUT = 1.2
+DUCK = 0.35                       # music level under a big moment
+DUCK_IN, DUCK_OUT = 0.25, 1.2
+STEP_MS = 30
+
+
+def user_sounds_dir() -> Path:
+    """Own sounds: click.wav, screenshot.wav, level_up.wav, event.wav, death.wav replace the built-in ones."""
+    return app_home() / "sounds"
+
+
+def effect_path(name: str) -> Path:
+    own = user_sounds_dir() / f"{name}.wav"
+    return own if own.is_file() else ASSETS / f"{name}.wav"
+
+
+def music_tracks(music_path: str | None) -> list[Path]:
+    """The music to play: the chosen file, the audio files of the chosen folder, else the built-in theme."""
+    if music_path:
+        path = Path(music_path)
+        if path.is_file():
+            return [path]
+        if path.is_dir():
+            tracks = sorted(p for p in path.iterdir() if p.is_file() and p.suffix.lower() in MUSIC_SUFFIXES)
+            if tracks:
+                return tracks
+    return [BUILTIN_MUSIC]
+
+
+def gain(percent: int) -> float:
+    """Slider percent to linear gain: a square curve, so the slider feels even to the ear."""
+    return max(0.0, min(1.0, percent / 100)) ** 2
+
+
+def silent() -> bool:
+    return not AUDIO or bool(os.environ.get("FOREVER_CHRONICLE_SILENT"))
+
+
+class Sound(QObject):
+    """The app's sound effects and click filter. One instance lives in the AppContext (ctx.sound)."""
+
+    def __init__(self, config: AppConfig):
+        super().__init__()
+        self.config = config
+        self.played: deque[str] = deque(maxlen=50)     # most recent last; for tests and diagnostics
+        self._effects: dict = {}
+        self._clocks: dict[str, QElapsedTimer] = {}
+        self._music: MusicPlayer | None = None
+
+    # -- effects --------------------------------------------------------------------------
+
+    def enabled(self, name: str) -> bool:
+        return self.config.click_sounds if name == "click" else self.config.event_sounds
+
+    def play(self, name: str, force: bool = False) -> bool:
+        """Plays an effect if its setting is on (force: always, for the settings' test button). Returns whether
+        it played."""
+        if not (force or self.enabled(name)) or self.config.effects_volume <= 0:
+            return False
+        clock = self._clocks.setdefault(name, QElapsedTimer())
+        if clock.isValid() and clock.elapsed() < MIN_GAP.get(name, DEFAULT_GAP) * 1000:
+            return False
+        clock.start()
+        self.played.append(name)
+        if silent():
+            return True
+        effect = self._effect(name)
+        if effect is None:
+            return False
+        effect.setVolume(gain(self.config.effects_volume) * TRIM.get(name, 1.0))
+        effect.play()
+        return True
+
+    def _effect(self, name: str):
+        """The loaded effect; an own file added or removed meanwhile is picked up."""
+        path = effect_path(name)
+        cached = self._effects.get(name)
+        if cached and cached[0] == path:
+            return cached[1]
+        if cached and cached[1] is not None:
+            cached[1].deleteLater()
+        effect = None
+        if path.is_file():
+            effect = QSoundEffect(self)
+            effect.setSource(QUrl.fromLocalFile(str(path)))
+        self._effects[name] = (path, effect)
+        return effect
+
+    # -- clicks ---------------------------------------------------------------------------
+
+    def install_click_sounds(self, app) -> None:
+        app.installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+            if is_click_target(obj, event.position().toPoint()):
+                self.play("click")
+        return False
+
+    # -- music ----------------------------------------------------------------------------
+
+    @property
+    def music(self) -> "MusicPlayer":
+        if self._music is None:
+            self._music = MusicPlayer(self.config, self)
+        return self._music
+
+
+def is_click_target(widget, pos) -> bool:
+    """Whether a left-button release at pos (widget coordinates) clicks something."""
+    if isinstance(widget, QAbstractButton):
+        return widget.isEnabled() and widget.rect().contains(pos)
+    if isinstance(widget, QTabBar):
+        return widget.isEnabled() and widget.tabAt(pos) >= 0
+    if isinstance(widget, QComboBox):
+        return widget.isEnabled()
+    if isinstance(widget, QMenu):
+        action = widget.actionAt(pos)
+        return bool(action and action.isEnabled() and not action.isSeparator() and not action.menu())
+    return False
+
+
+class MusicPlayer(QObject):
+    """Background music with fade in/out and ducking. Plays only while someone asked for it (start/stop)."""
+
+    def __init__(self, config: AppConfig, parent=None):
+        super().__init__(parent)
+        self.config = config
+        self.tracks: list[Path] = []
+        self.index = 0
+        self.fade = 0.0           # 0..1, follows `target`
+        self.target = 0.0
+        self.duck_level = 1.0
+        self.duck_left = 0.0      # seconds the music stays ducked
+        self._player = None
+        self._output = None
+        self.timer = QTimer(self)
+        self.timer.setInterval(STEP_MS)
+        self.timer.timeout.connect(lambda: self.step(STEP_MS / 1000))
+
+    @property
+    def active(self) -> bool:
+        """Playing or fading in (not fading out or stopped)."""
+        return self.target > 0
+
+    def start(self, force: bool = False) -> None:
+        """Fades the music in (from where it is). Does nothing if music is off, unless forced (preview)."""
+        if not (force or self.config.music):
+            return
+        if not self.active or not self.tracks:
+            self._load_tracks()
+        self.target = 1.0
+        if not silent():
+            self._ensure_player()
+            if self._player.playbackState() != self._player.PlaybackState.PlayingState:
+                self._player.play()
+        self.timer.start()
+
+    def stop(self) -> None:
+        """Fades out, then stops."""
+        self.target = 0.0
+        self.timer.start()
+
+    def stop_now(self) -> None:
+        self.target = self.fade = 0.0
+        self.timer.stop()
+        if self._player:
+            self._player.stop()
+
+    def duck(self, seconds: float) -> None:
+        """Lowers the music for `seconds` (e.g. under the level-up fanfare)."""
+        self.duck_left = max(self.duck_left, seconds)
+        if self.active:
+            self.timer.start()
+
+    def volume_changed(self) -> None:
+        self._apply()
+
+    def step(self, dt: float) -> None:
+        self.duck_left = max(0.0, self.duck_left - dt)
+        duck_target = DUCK if self.duck_left > 0 else 1.0
+        self.duck_level = _approach(self.duck_level, duck_target,
+                                    dt * (1 - DUCK) / (DUCK_IN if duck_target < self.duck_level else DUCK_OUT))
+        self.fade = _approach(self.fade, self.target, dt / (FADE_IN if self.target > self.fade else FADE_OUT))
+        self._apply()
+        if self.fade == self.target and self.duck_level == duck_target and self.duck_left == 0:
+            self.timer.stop()
+            if self.target == 0 and self._player:
+                self._player.stop()
+
+    def level(self) -> float:
+        """The linear volume the music has now."""
+        return gain(self.config.music_volume) * self.fade * self.duck_level
+
+    def _apply(self) -> None:
+        if self._output:
+            self._output.setVolume(self.level())
+
+    # -- playlist -------------------------------------------------------------------------
+
+    def _load_tracks(self) -> None:
+        tracks = music_tracks(self.config.music_path)
+        if len(tracks) > 1:
+            random.shuffle(tracks)
+        changed = tracks != self.tracks
+        self.tracks, self.index = tracks, 0
+        if changed and self._player:
+            self._set_source()
+
+    def _ensure_player(self) -> None:
+        if self._player:
+            return
+        self._output = QAudioOutput(self)
+        self._output.setVolume(0.0)
+        self._player = QMediaPlayer(self)
+        self._player.setAudioOutput(self._output)
+        self._player.mediaStatusChanged.connect(self._status_changed)
+        self._player.errorOccurred.connect(self._error)
+        self._set_source()
+
+    def _set_source(self) -> None:
+        track = self.tracks[self.index]
+        self._player.setLoops(QMediaPlayer.Loops.Infinite if len(self.tracks) == 1 else 1)
+        self._player.setSource(QUrl.fromLocalFile(str(track)))
+
+    def _next(self) -> None:
+        self.index = (self.index + 1) % len(self.tracks)
+        self._set_source()
+        if self.active:
+            self._player.play()
+
+    def _status_changed(self, status) -> None:
+        if status == QMediaPlayer.MediaStatus.EndOfMedia and len(self.tracks) > 1:
+            self._next()
+
+    def _error(self, *_args) -> None:
+        """A file that cannot be played is left out; with none left, the built-in theme plays."""
+        bad = self.tracks.pop(self.index) if self.tracks else None
+        if not self.tracks:
+            self.tracks = [BUILTIN_MUSIC] if bad != BUILTIN_MUSIC else []
+        if not self.tracks:
+            self.stop_now()
+            return
+        self.index = self.index % len(self.tracks)
+        self._set_source()
+        if self.active:
+            self._player.play()
+
+
+def _approach(value: float, target: float, step: float) -> float:
+    if value < target:
+        return min(target, value + step)
+    return max(target, value - step)

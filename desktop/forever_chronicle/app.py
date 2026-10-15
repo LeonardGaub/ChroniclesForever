@@ -30,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:  # a failed backup must not stop the app; the import page shows the backup state
         pass
     ctx = AppContext(config, db)
+    ctx.sound.install_click_sounds(app)
 
     window = MainWindow(ctx)
     window.show()

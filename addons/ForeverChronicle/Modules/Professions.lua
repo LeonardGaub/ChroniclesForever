@@ -41,20 +41,22 @@ FC:RegisterCapability("recipes", "CAP_RECIPES", function()
     and type(api.GetBaseProfessionInfo) == "function" and FC.eventStatus.TRADE_SKILL_SHOW == "registered"
 end)
 
+FC:RegisterEventCategory("professions", { labelKey = "CAT_PROFESSIONS", icon = "Interface\\Icons\\Trade_BlackSmithing", order = 60 })
+
 FC:RegisterEventType("profession_learned", {
-  icon = ICON,
+  icon = ICON, category = "professions", highlight = "milestone",
   getIcon = function(r) return r.data.icon end,
   format = function(r) return string.format(L.EVT_PROFESSION_LEARNED, r.data.name or "?") end,
 })
 FC:RegisterEventType("profession_rank", {
-  icon = ICON,
+  icon = ICON, category = "professions",
   getIcon = function(r) return r.data.icon end,
   format = function(r)
     return string.format(L.EVT_PROFESSION_RANK, r.data.name or "?", Professions.RankName(r.data.maxRank))
   end,
 })
 FC:RegisterEventType("recipe_learned", {
-  icon = "Interface\\Icons\\INV_Scroll_03",
+  icon = "Interface\\Icons\\INV_Scroll_03", category = "professions",
   getIcon = function(r) return r.data.icon end,
   format = function(r) return string.format(L.EVT_RECIPE_LEARNED, r.data.name or ("#" .. tostring(r.data.recipeID))) end,
 })

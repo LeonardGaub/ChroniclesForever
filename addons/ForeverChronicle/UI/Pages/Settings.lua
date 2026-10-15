@@ -94,6 +94,18 @@ FC:RegisterOption({
 })
 
 FC:RegisterOption({
+  type = "choice", module = "UI", key = "chronicleStyle", labelKey = "OPT_CHRONICLE_STYLE",
+  tooltipKey = "OPT_CHRONICLE_STYLE_TIP", order = 5,
+  choices = { { value = "book", labelKey = "OPT_STYLE_BOOK" }, { value = "classic", labelKey = "OPT_STYLE_CLASSIC" } },
+  onChange = function() UI:RestyleChronicle() end,
+})
+
+FC:RegisterOption({
+  type = "toggle", column = 2, module = "UI", key = "animations", labelKey = "OPT_ANIMATIONS",
+  tooltipKey = "OPT_ANIMATIONS_TIP", order = 40,
+})
+
+FC:RegisterOption({
   type = "toggle", column = 2, labelKey = "OPT_DEBUG", tooltipKey = "OPT_DEBUG_TIP", order = 90,
   get = function() return FC.db.settings.debug end,
   set = function(value) FC.db.settings.debug = value end,

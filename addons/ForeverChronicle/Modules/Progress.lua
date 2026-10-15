@@ -18,23 +18,29 @@ FC:RegisterCapability("achievements", "CAP_ACHIEVEMENTS", function()
   return FC.eventStatus.ACHIEVEMENT_EARNED == "registered" and type(GetAchievementInfo) == "function"
 end)
 
+FC:RegisterEventCategory("levels", { labelKey = "CAT_LEVELS", icon = "Interface\\Icons\\Spell_Holy_InnerFire", order = 10 })
+FC:RegisterEventCategory("quests", { labelKey = "CAT_QUESTS", icon = "Interface\\Icons\\INV_Misc_Note_01", order = 20 })
+FC:RegisterEventCategory("achievements", { labelKey = "CAT_ACHIEVEMENTS", icon = "Interface\\Icons\\Achievement_General", order = 40 })
+FC:RegisterEventCategory("deaths", { labelKey = "CAT_DEATHS", icon = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01", order = 70 })
+
 FC:RegisterEventType("level_up", {
-  icon = "Interface\\Icons\\Spell_Holy_InnerFire",
+  icon = "Interface\\Icons\\Spell_Holy_InnerFire", category = "levels", highlight = "milestone",
   format = function(r) return string.format(L.EVT_LEVEL_UP, r.data.level or "?") end,
 })
 FC:RegisterEventType("quest_completed", {
-  icon = "Interface\\Icons\\INV_Misc_Note_01",
+  icon = "Interface\\Icons\\INV_Misc_Note_01", category = "quests",
   format = function(r) return string.format(L.EVT_QUEST_COMPLETED, r.data.title or ("#" .. tostring(r.data.questID))) end,
 })
 FC:RegisterEventType("player_died", {
-  icon = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01",
+  icon = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01", category = "deaths", highlight = "danger",
+  pinIcon = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull",
   format = function(r)
     local where = r.location and (r.location.subzone or r.location.zone)
     return where and string.format(L.EVT_DIED_IN, where) or L.EVT_DIED
   end,
 })
 FC:RegisterEventType("achievement_earned", {
-  icon = "Interface\\Icons\\INV_Misc_Book_09",
+  icon = "Interface\\Icons\\INV_Misc_Book_09", category = "achievements", highlight = "milestone",
   getIcon = function(r) return r.data.icon end,
   format = function(r) return string.format(L.EVT_ACHIEVEMENT, r.data.name or ("#" .. tostring(r.data.achievementID))) end,
 })

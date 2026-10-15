@@ -109,7 +109,7 @@ The addon cannot download anything. The desktop app must hand friends' data to i
   a scrollable list of all available characters, grouped as "Meine Charaktere" (every character of the
   account; the addon's SavedVariables already hold them all) and one group per friend (name, level, class,
   last seen). By default the window shows the character being played. Choosing another character makes every
-  tab (overview, chronicle, map, professions, screenshots) show that character, read-only for anyone but the
+  tab (overview, chronicle with its screenshots, map, professions) show that character, read-only for anyone but the
   one being played; a small banner names whose character is shown, with a button back to my own.
   Implementation: pages read their data through one accessor (e.g. `FC:ViewedCharacter()`) instead of
   `FC.char` directly; recording always keeps writing to the played character.

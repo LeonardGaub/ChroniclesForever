@@ -27,8 +27,10 @@ FC:RegisterCapability("played_time", "CAP_PLAYED", function()
   return type(RequestTimePlayed) == "function"
 end)
 
+FC:RegisterEventCategory("sessions", { labelKey = "CAT_SESSIONS", icon = "Interface\\Icons\\INV_Misc_PocketWatch_01", order = 80 })
+
 FC:RegisterEventType("session_started", {
-  icon = "Interface\\Icons\\INV_Misc_PocketWatch_01",
+  icon = "Interface\\Icons\\INV_Misc_PocketWatch_01", category = "sessions",
   format = function() return L.EVT_SESSION_STARTED end,
 })
 
@@ -40,15 +42,11 @@ FC:RegisterStat("played_level", { group = "session", labelKey = "STAT_PLAYED_LEV
   icon = "Interface\\Icons\\INV_Misc_Rune_01",
   compute = function() return Session:GetPlayedLevel() end })
 
--- Play time since tracking began
+-- Play time (as reported by the server) and sessions
 FC:RegisterStat("played_total", { group = "time", labelKey = "STAT_PLAYED_TOTAL", order = 10, format = "duration",
   icon = "Interface\\Icons\\INV_Misc_PocketWatch_01",
   compute = function() return Session:GetPlayedTotal() end,
   fromRecord = function(char) return Session.LastPlayedTotal(char) end })
-FC:RegisterStat("tracked_time", { group = "time", labelKey = "STAT_TRACKED_TIME", order = 11, format = "duration",
-  icon = "Interface\\Icons\\INV_Misc_PocketWatch_02",
-  compute = function() return Session:GetTrackedSeconds() end,
-  fromRecord = function(char) return Session.TrackedSeconds(char.streams.sessions.records) end })
 FC:RegisterStat("sessions", { group = "time", labelKey = "STAT_SESSIONS", order = 12,
   icon = "Interface\\Icons\\Spell_Nature_TimeStop" })
 
@@ -87,19 +85,6 @@ function Session:GetPlayedLevel()
   local s = self.current
   if s and s.playedLevel then return s.playedLevel + (time() - (s.playedAt or time())) end
   return nil
-end
-
-function Session.TrackedSeconds(records)
-  local total = 0
-  for _, s in ipairs(records) do
-    local stop = s.endedAt or time()
-    if stop > s.startedAt then total = total + (stop - s.startedAt) end
-  end
-  return total
-end
-
-function Session:GetTrackedSeconds()
-  return Session.TrackedSeconds(sessionRecords())
 end
 
 -- Played time of another character (alt or friend): the newest server-reported value, as recorded.

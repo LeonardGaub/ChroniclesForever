@@ -1,6 +1,8 @@
 """Map: route replay on the user's map artwork (spec F-005).
 
 - Map selector (zones with route points and their continents), session filter, route/event toggles.
+- Route colours as in the addon: by level (default), by session or one colour, with a legend; flight paths blue
+  (domain/route_colors.py). The choice is kept in the app settings and used by cinematic mode too.
 - Time slider and playback (1x = one minute of play time per second; gaps are skipped).
 - The marker shows the nearest recorded point; inside dungeons there is no position, so a notice is shown.
 - Selecting an event in the Chronicle moves the map to that moment (AppContext.focus_time).
@@ -19,7 +21,9 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QGraphicsEllipseItem, QGrap
                                QVBoxLayout)
 
 from ...domain import event_types, maps
+from ...domain.cinematic import Levels
 from ...domain.route import Route
+from ...domain.route_colors import MODES, SEGMENT_END, RouteColors, hex_color
 from ...i18n import format_datetime, format_duration, tr
 from ...wow.map_art import find_art
 from .. import theme
@@ -106,11 +110,15 @@ class MapPage(Page):
         self.show_events.toggled.connect(lambda _: self._draw())
         self.follow = QCheckBox()
         self.follow.setChecked(True)
+        self.color_select = QComboBox()
+        self.color_select.currentIndexChanged.connect(self._colors_selected)
         for w in (self.map_select, self.session_select):
             top.addWidget(w)
         top.addSpacing(8)
         for w in (self.show_trail, self.show_events, self.follow):
             top.addWidget(w)
+        top.addSpacing(8)
+        top.addWidget(self.color_select)
         top.addStretch(1)
         root.addLayout(top)
 
@@ -121,6 +129,10 @@ class MapPage(Page):
                                   f"border: 1px solid {theme.BORDER}; border-radius: 3px;")
         self.notice.move(10, 10)
         self.notice.hide()
+        self.legend = QLabel(self.view)
+        self.legend.setStyleSheet(f"background: rgba(0,0,0,166); color: {theme.TEXT}; padding: 6px 10px;")
+        self.legend.hide()
+        self.colors: RouteColors | None = None
 
         bottom = QHBoxLayout()
         self.play = QPushButton()
@@ -161,6 +173,10 @@ class MapPage(Page):
         repo = self.ctx.repo
         self.route = Route(repo.positions(self.character_id), repo.map_infos(), repo.instance_names(),
                            repo.entrances())
+        char = next((c for c in repo.list_characters() if c.character_id == self.character_id), None)
+        self.colors = RouteColors(self._color_mode(),
+                                  Levels(repo.events(self.character_id, types=("level_up",)), char.level if char else None),
+                                  [s["started_at"] for s in repo.sessions(self.character_id)])
         self._fill_sessions()
         self._fill_maps()
         if not self.route:
@@ -179,6 +195,28 @@ class MapPage(Page):
         self.speed.setToolTip(tr("map.speed_tip"))
         self.cinematic.setText(tr("map.cinematic"))
         self.cinematic.setToolTip(tr("map.cinematic_tip"))
+        self.color_select.blockSignals(True)
+        self.color_select.clear()
+        for mode in MODES:
+            self.color_select.addItem(tr(f"map.colors_{mode}"), mode)
+        self.color_select.setCurrentIndex(MODES.index(self._color_mode()))
+        self.color_select.setToolTip(tr("map.colors_tip"))
+        self.color_select.blockSignals(False)
+
+    def _color_mode(self) -> str:
+        mode = self.ctx.config.extra.get("map_colors")
+        return mode if mode in MODES else MODES[0]
+
+    def _colors_selected(self) -> None:
+        mode = self.color_select.currentData()
+        if mode is None or mode == self._color_mode():
+            return
+        self.ctx.config.extra["map_colors"] = mode
+        self.ctx.config.save()
+        if self.colors:
+            self.colors = RouteColors(mode, self.colors.levels, self.colors.session_starts)
+            self._draw()
+            self._update_marker()
 
     def _fill_sessions(self) -> None:
         self.session_select.blockSignals(True)
@@ -204,6 +242,7 @@ class MapPage(Page):
         self.view.scene().clear()
         self.marker = None
         self.view_map = None
+        self.legend.hide()
         self.slider.setEnabled(False)
         self.play.setEnabled(False)
         self.cinematic.setEnabled(False)
@@ -327,9 +366,10 @@ class MapPage(Page):
             self._art_notice = tr("map.no_art")
 
         start, end = self.range or (None, None)
-        if self.show_trail.isChecked():
-            for seg in self.route.segments(self.view_map, start, end):
-                self._draw_segment(scene, seg)
+        segments = self.route.segments(self.view_map, start, end) if self.show_trail.isChecked() else []
+        for seg in segments:
+            self._draw_segment(scene, seg)
+        self._show_legend(self.colors.legend(segments) if self.colors else [])
         if self.show_events.isChecked():
             self._draw_events(scene, start, end)
         self.marker = _marker(7, theme.GOLD)
@@ -352,28 +392,43 @@ class MapPage(Page):
         label.setPos((W - r.width()) / 2, (H - r.height()) / 2)
 
     def _draw_segment(self, scene: QGraphicsScene, seg) -> None:
-        path = QPainterPath()
-        for i, (_, x, y) in enumerate(seg.points):
-            pt = QPointF(x * W, y * H)
-            if i == 0:
-                path.moveTo(pt)
-            else:
-                path.lineTo(pt)
-        pen = QPen(QColor("#69ccf0" if seg.taxi else "#ffd100"), 3)
-        pen.setCosmetic(True)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        if seg.taxi:
-            pen.setStyle(Qt.PenStyle.DashLine)
-        item = QGraphicsPathItem(path)
-        item.setPen(pen)
-        item.setOpacity(0.85)
-        scene.addItem(item)
-        # Hollow circles mark where recorded data starts and ends (gaps are never bridged).
+        times = [t for t, _, _ in seg.points]
+        for a, b, color in self.colors.runs(times, seg.taxi):
+            path = QPainterPath()
+            for i in range(a, b + 1):
+                pt = QPointF(seg.points[i][1] * W, seg.points[i][2] * H)
+                if i == a:
+                    path.moveTo(pt)
+                else:
+                    path.lineTo(pt)
+            pen = QPen(QColor(color), 3)
+            pen.setCosmetic(True)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            if seg.taxi:
+                pen.setStyle(Qt.PenStyle.DashLine)
+            item = QGraphicsPathItem(path)
+            item.setPen(pen)
+            item.setOpacity(0.9)
+            scene.addItem(item)
+        # Grey dots mark where recorded data starts and ends (gaps are never bridged), as in the addon.
         for _, x, y in (seg.points[0], seg.points[-1]):
-            end = _marker(3.5, theme.PANEL_ALT, "#ffd100")
+            end = _marker(2.5, hex_color(SEGMENT_END), "#000000")
             end.setPos(QPointF(x * W, y * H))
             scene.addItem(end)
+
+    def _show_legend(self, items: list[tuple[str, str]]) -> None:
+        self.legend.setText("<br>".join(f"<span style='color:{c}'>▬</span>&nbsp; {label}" for c, label in items))
+        self.legend.adjustSize()
+        self._place_legend()
+        self.legend.setVisible(bool(items))
+
+    def _place_legend(self) -> None:
+        self.legend.move(10, self.view.height() - self.legend.height() - 10)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._place_legend()
 
     def _draw_events(self, scene: QGraphicsScene, start: int | None, end: int | None) -> None:
         for e in self.ctx.repo.events(self.character_id):
@@ -398,7 +453,7 @@ class MapPage(Page):
         self.timer.stop()
         self._set_play_text()
         self._cinematic_window = CinematicWindow(self.ctx, self.character_id, self.range[0], self.range[1],
-                                                 self.speed.currentData())
+                                                 self.speed.currentData(), self._color_mode())
         self._cinematic_window.showFullScreen()
 
     def _set_play_text(self) -> None:

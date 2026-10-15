@@ -359,8 +359,7 @@ ForeverChronicleDB = {
 				["cooldown"] = 30,
 				["countdown"] = true,
 				["delay"] = 5,
-				["enabled"] = true,
-				["hideUI"] = false,
+				["hideUI"] = "off",
 				["triggers"] = {
 					["achievement"] = true,
 					["death"] = false,
@@ -391,6 +390,14 @@ ForeverChronicleDB = {
 				["dwellSeconds"] = 5,
 			},
 			["UI"] = {
+				["animations"] = true,
+				["chronicleFiltersOpen"] = false,
+				["chronicleHidden"] = {
+				},
+				["chronicleSeen"] = {
+					["Player-4619-0112A417"] = 1791961133,
+				},
+				["chronicleStyle"] = "book",
 			},
 			["ViewBar"] = {
 			},

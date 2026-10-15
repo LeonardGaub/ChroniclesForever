@@ -122,10 +122,10 @@ if PHASE == 1 then
   SlashCmdList.FOREVERCHRONICLE("")
   check(ForeverChronicleFrame and ForeverChronicleFrame:IsShown(), "window opens with /fj")
   for i = 1, #FC.UI.pages do FC.UI:SelectPage(i) end
-  check(#FC.UI.pages == 7, "seven pages registered")
+  check(#FC.UI.pages == 6, "six pages registered")
   SlashCmdList.FOREVERCHRONICLE("lang en")
   check(FC.L.TAB_OVERVIEW == "Overview", "language switched to English")
-  check(#ForeverChronicleFrame.Tabs == 7 and ForeverChronicleFrame.Tabs[2].page.icon ~= nil, "icon tabs, one per page")
+  check(#ForeverChronicleFrame.Tabs == 6 and ForeverChronicleFrame.Tabs[2].page.icon ~= nil, "icon tabs, one per page")
 
   -- Minimap button: shown, clicks toggle the window / open settings, can be hidden, dragging saves the angle.
   local mm = ForeverChronicleMinimapButton
@@ -163,6 +163,9 @@ if PHASE == 1 then
   for i, pg in ipairs(FC.UI.pages) do if pg.id == "settings" then settingsIndex = i end end
   FC.UI:SelectPage(settingsIndex)
   check(#FC.UI.pages[settingsIndex].bars == 6, "storage bars on the settings page (" .. #FC.UI.pages[settingsIndex].bars .. ")")
+  local testButton
+  for _, control in ipairs(FC.UI.pages[settingsIndex].controls) do if type(rawget(control, "button")) == "table" then testButton = control.button end end
+  check(testButton and testButton.text == FC.L.SHOT_TEST_BUTTON, "test screenshot button in the screenshot settings")
   SlashCmdList.FOREVERCHRONICLE("lang de")
   SlashCmdList.FOREVERCHRONICLE("status")
   SlashCmdList.FOREVERCHRONICLE("help")
@@ -217,6 +220,7 @@ if PHASE == 1 then
     "screenshot confirmed and linked to both events")
   check(type(shots[1].fileStamp) == "string" and #shots[1].fileStamp == 13, "file stamp stored (" .. tostring(shots[1].fileStamp) .. ")")
   check(MOCK.screenshots[1] >= levelUpAt + 5, "screenshot taken after the 5 s delay")
+  ForeverChronicleDB.settings.modules.Screenshots.enabled = false -- the old main switch, switched off
   SAVED_OUT = save()
 
 elseif PHASE == 2 then
@@ -224,6 +228,9 @@ elseif PHASE == 2 then
   startClient(false, true)
   check(#sessions() == 1, "no new session on reload")
   check(sessions()[1].endReason == "open" and sessions()[1].endedAt == nil, "session reopened")
+  local shotSettings = ForeverChronicle:GetModule("Screenshots")
+  check(shotSettings:GetSettings().enabled == nil and shotSettings:IsTriggerEnabled("level"),
+    "no main switch any more: ticked triggers take screenshots")
   check(sessions()[1].reloads == 1, "reload counted")
   check(#events() == 5, "no new events on reload")
   MOCK.advance(120)
@@ -377,8 +384,8 @@ if PHASE == 5 then
     "test screenshot waits for the delay with countdown")
   MOCK.advance(1.5)
   check(statuses():find("manual:", 1, true), "test screenshot taken after the delay")
-  -- Hide the interface for the screenshot (not in combat) and show it again afterwards.
-  FC:GetModule("Screenshots"):GetSettings().hideUI = true
+  -- Hide the interface for the screenshot and show it again afterwards.
+  FC:GetModule("Screenshots"):GetSettings().hideUI = "all"
   MOCK.advance(3)
   SlashCmdList.FOREVERCHRONICLESHOT("test")
   MOCK.advance(3.5)
@@ -388,9 +395,58 @@ if PHASE == 5 then
   MOCK.advance(3)
   SlashCmdList.FOREVERCHRONICLESHOT("test")
   MOCK.advance(3.5)
-  check(MOCK.uiVisibleAtCapture == true and UIParent:IsShown(), "in combat the interface stays visible")
+  check(MOCK.uiVisibleAtCapture == true and MOCK.uiAlphaAtCapture == 0 and UIParent:GetAlpha() == 1,
+    "in combat the interface is made transparent instead, and restored")
   MOCK.combat = false
-  FC:GetModule("Screenshots"):GetSettings().hideUI = false
+
+  -- "Keep popups": everything transparent except the level-up banner, taken once the banner is shown.
+  local shots = FC:GetModule("Screenshots")
+  local settings = shots:GetSettings()
+  settings.hideUI, settings.delay = "popups", 5
+  -- A forbidden frame (like some of Blizzard's): any call except IsForbidden is an error, so it is skipped.
+  local forbidden = CreateFrame("Frame", nil, UIParent)
+  forbidden.IsForbidden = function() return true end
+  forbidden.IsVisible = function() error("Attempt to access forbidden object from code tainted by an AddOn") end
+  shots:UpdateSnapshots()
+  check(shots.snapshot ~= nil and not shots.snapshot[forbidden], "forbidden frames are skipped")
+  MOCK.advance(3)                                    -- past the snapshot interval (level-ups skip the cooldown)
+  local before = #MOCK.screenshots
+  MOCK.level = (MOCK.level or 22) + 1
+  MOCK.fire("PLAYER_LEVEL_UP", MOCK.level)
+  C_Timer.After(0.5, function() EventToastManagerFrame:Show() end)
+  local levelUpAt = MOCK.now
+  MOCK.advance(2.2)
+  check(#MOCK.screenshots == before + 1 and MOCK.screenshots[#MOCK.screenshots] - levelUpAt < 2.2,
+    "taken soon after the banner appeared, not after the 5 s delay")
+  check(MOCK.uiAlphaAtCapture == 0 and MOCK.toastVisibleAtCapture, "everything hidden except the banner")
+  check(UIParent:GetAlpha() == 1 and not EventToastManagerFrame:IsIgnoringParentAlpha(), "restored afterwards")
+  check(MOCK.minimapVisibleAtCapture == false and Minimap:IsShown(),
+    "the minimap (its arrow and quest areas ignore transparency) is hidden for the screenshot, then shown")
+  EventToastManagerFrame:Hide()
+  -- In combat a minimap the client protects stays as it is; one hidden just before combat returns afterwards.
+  Minimap.IsProtected = function() return true end
+  MOCK.combat = true
+  shots:HideInterface(nil)
+  check(Minimap:IsShown(), "a protected minimap is not hidden in combat")
+  shots:RestoreInterface()
+  MOCK.combat = false
+  shots:HideInterface(nil)
+  MOCK.combat = true
+  shots:RestoreInterface()
+  check(not Minimap:IsShown() and UIParent:GetAlpha() == 1, "combat started: the minimap waits")
+  MOCK.combat = false
+  MOCK.fire("PLAYER_REGEN_ENABLED")
+  check(Minimap:IsShown() and not shots.minimapPending, "the minimap returns when combat ends")
+  Minimap.IsProtected = nil
+  local alert = CreateFrame("Frame", nil, UIParent)  -- e.g. an achievement toast without a known name
+  alert:Hide()
+  local baseline = shots:VisibleFrames()
+  alert:Show()
+  local found = shots:FindPopups(baseline)
+  check(#found == 1 and found[1] == alert, "a frame that appeared after the event counts as its popup")
+  alert:Hide()
+  settings.hideUI, settings.delay = "off", 2
+  shots:UpdateSnapshots()
   SlashCmdList.FOREVERCHRONICLESHOT("status")
   SlashCmdList.FOREVERCHRONICLESHOT("api")
   SlashCmdList.FOREVERCHRONICLESHOT("bogus")
@@ -399,6 +455,71 @@ if PHASE == 5 then
   MOCK.advance(5)
   SlashCmdList.FOREVERCHRONICLE("")
   for i = 1, #FC.UI.pages do FC.UI:SelectPage(i) end
+  -- Chronicle: screenshots appear with their entry; test screenshots (no entry) as entries of their own.
+  local chronicle, chronicleIndex
+  for i, pg in ipairs(FC.UI.pages) do if pg.id == "chronicle" then chronicle, chronicleIndex = pg, i end end
+  FC.UI:SelectPage(chronicleIndex)
+  local zoneItem, tests = nil, 0
+  for _, item in ipairs(chronicle.items) do
+    if item.event and item.event.type == "zone_discovered" and item.event.data.zone == "Durotar" then zoneItem = item end
+    if not item.event and item.shot.trigger == "manual" then tests = tests + 1 end
+  end
+  check(zoneItem and zoneItem.shot and zoneItem.shot.status == "confirmed", "zone entry carries its screenshot")
+  check(tests >= 3, "test screenshots listed as their own entries (" .. tests .. ")")
+  local zoneRow
+  for _, row in ipairs(chronicle.list.rows) do if row.shotRecord == zoneItem.shot then zoneRow = row end end
+  check(zoneRow and zoneRow.shot:IsShown(), "screenshot marker shown on the zone entry")
+  local all = #chronicle.items
+  check(chronicle.shown[1].header and chronicle.shown[1].text == "Heute", "entries under a day heading")
+  local milestone
+  for _, item in ipairs(chronicle.items) do
+    if item.event and item.event.type == "level_up" then milestone = item.highlight end
+  end
+  check(milestone == "milestone", "level-ups stand out as milestones")
+  -- Category filter: hide exploration, then shift-click shows only exploration, shift-click again shows all.
+  local zoneButton
+  for _, b in ipairs(chronicle.filters) do if b.category == "exploration" then zoneButton = b end end
+  local function hasZone()
+    for _, item in ipairs(chronicle.items) do if item.event and item.event.type == "zone_discovered" then return true end end
+  end
+  check(zoneButton and hasZone(), "zones listed before filtering")
+  zoneButton:GetScript("OnClick")(zoneButton)
+  check(not hasZone() and not zoneButton.on and #chronicle.items < all, "exploration filter hides zones")
+  zoneButton:GetScript("OnClick")(zoneButton)
+  check(hasZone() and #chronicle.items == all, "exploration filter on again")
+  IsShiftKeyDown = function() return true end
+  zoneButton:GetScript("OnClick")(zoneButton)
+  local onlyZones = #chronicle.items > 0
+  for _, item in ipairs(chronicle.items) do
+    if item.event and item.event.type ~= "zone_discovered" then onlyZones = false end
+  end
+  check(onlyZones, "shift-click shows only exploration")
+  zoneButton:GetScript("OnClick")(zoneButton)
+  IsShiftKeyDown = nil
+  check(#chronicle.items == all, "shift-click again shows all")
+  -- Search: by entry text or place, ignoring case.
+  chronicle:SetSearch("DUROTAR")
+  local foundZone = false
+  for _, item in ipairs(chronicle.items) do if item == zoneItem or (item.event and item.event == zoneItem.event) then foundZone = true end end
+  check(foundZone and #chronicle.items < all, "search finds Durotar (" .. #chronicle.items .. " of " .. all .. ")")
+  chronicle:SetSearch("xyz no such entry")
+  check(#chronicle.items == 0 and chronicle.emptyFiltered:IsShown(), "search without results says so")
+  chronicle:SetSearch("")
+  check(#chronicle.items == all, "empty search shows all")
+  -- The filter icons fold in and out; the state is kept.
+  chronicle:SetFiltersOpen(true, false)
+  check(chronicle.filters[1]:IsShown() and FC.db.settings.modules.UI.chronicleFiltersOpen, "filter row unfolds")
+  chronicle:SetFiltersOpen(false, false)
+  check(not chronicle.filters[1]:IsShown() and chronicle.foldLabel.text == "Filter", "filter row folds")
+  chronicle.filter:GetScript("OnClick")(chronicle.filter)
+  local onlyShots = true
+  for _, item in ipairs(chronicle.items) do
+    if not (item.shot and (item.shot.status == "confirmed" or item.shot.status == "api_called")) then onlyShots = false end
+  end
+  check(onlyShots and #chronicle.items >= tests + 1 and #chronicle.items < all,
+    "filter shows only entries with a screenshot (" .. #chronicle.items .. " of " .. all .. ")")
+  chronicle.filter:GetScript("OnClick")(chronicle.filter)
+  check(#chronicle.items == all, "filter off shows everything again")
   MOCK.fire("PLAYER_LOGOUT")
   check(statuses():find("zone:dropped_on_logout", 1, true), "pending request dropped on logout: " .. statuses())
   local errors = 0
@@ -552,12 +673,28 @@ if PHASE == 9 then
   check(not deathPin(), "the death two seconds later is not painted yet")
   FC.UI:FocusMap(dungeonTime + 2)
   check(deathPin(), "death inside the dungeon is pinned at the entrance")
+  local skull
+  for _, pin in ipairs(page.canvas.pins) do
+    if pin:IsShown() and pin.title and pin.title:find("Ragefire", 1, true) then skull = pin end
+  end
+  check(skull.icon.texture == "Interface\\TargetingFrame\\UI-TargetingFrame-Skull" and skull.look.ring == 21,
+    "death pin: skull on a red disc")
+  -- Previous / next event buttons step along the timeline marks.
+  local mark = page.ticks[1].time
+  page.current = page.range[1]
+  page.nextEvent:GetScript("OnClick")(page.nextEvent)
+  local stepped = page.current
+  page.current = page.range[2]
+  page.prevEvent:GetScript("OnClick")(page.prevEvent)
+  check(stepped == mark and page.current == mark and not page.live, "event step buttons jump to the mark")
+  FC.UI:FocusMap(dungeonTime + 2)
   ForeverChronicleDB.entrances = nil
   check(Route.Entrance(389) and Route.Entrance(389).mapID == 1413, "entrance derived from the route for older data")
 
   -- Playback from the start.
   page.current = page.range[1]
   page:TogglePlay()
+  check(page.play.kind == "pause", "play button shows pause while playing")
   for _ = 1, 20 do page:OnUpdate(0.1) end
   check(page.current > page.range[1], "playback advances")
   page:TogglePlay()
@@ -1004,18 +1141,18 @@ if PHASE == 12 then
   check(link(head) and link(head):find("Green Tinted Goggles", 1, true) and head.icon.texture == 133001,
     "the friend's gear from the shared snapshot")
   check(link(ov.slots[2]) == nil, "empty slot stays empty")
-  local kills, tracked
+  local kills, played
   for _, tile in ipairs(ov.tiles) do
     if tile.def.key == "kills" then kills = tile.value.text end
-    if tile.def.key == "tracked_time" then tracked = tile.value.text end
+    if tile.def.key == "played_total" then played = tile.value.text end
   end
-  check(tracked and tracked ~= "-", "friend stats (tracked " .. tostring(tracked) .. ")")
+  check(played and played ~= "-", "friend stats (played " .. tostring(played) .. ")")
 
   local chron = page("chronicle")
-  local shown = 0
-  for _, row in ipairs(chron.list.rows) do if row:IsShown() then shown = shown + 1 end end
+  local shown, headings = 0, 0
+  for _, item in ipairs(chron.shown) do if item.header then headings = headings + 1 else shown = shown + 1 end end
   local friendEvents = #FC:ViewStream("events").records
-  check(friendEvents > 0 and shown == friendEvents, "friend's chronicle (" .. shown .. " entries)")
+  check(friendEvents > 0 and shown == friendEvents and headings >= 1, "friend's chronicle (" .. shown .. " entries)")
 
   local map = page("map")
   check(#map.points >= 8 and map.viewMap == 1413 and map.canvas.marker:IsShown(), "friend's route on the map")
@@ -1024,8 +1161,9 @@ if PHASE == 12 then
   local profButtons = 0
   for _, b in ipairs(prof.buttons) do if b:IsShown() then profButtons = profButtons + 1 end end
   check(profButtons == 4 and prof.title.text == "Herbalism", "friend's professions (" .. profButtons .. ")")
-  local shots = page("screenshots")
-  check(shots.empty:IsShown(), "no screenshots for the friend in game")
+  local marked = 0
+  for _, item in ipairs(page("chronicle").items) do if item.shot then marked = marked + 1 end end
+  check(marked == 0, "no screenshots for the friend in game")
 
   -- Recording continues for the played character only.
   local mine = #S(ForeverChronicleDB.characters[me].streams.events).records
@@ -1042,8 +1180,7 @@ if PHASE == 12 then
   local overviewTab = ForeverChronicleFrame.Tabs[1]
   check(overviewTab.icon.texture == "Interface\\TargetingFrame\\UI-Classes-Circles", "overview tab icon follows")
   page("chronicle")
-  shown = 0
-  for _, row in ipairs(chron.list.rows) do if row:IsShown() then shown = shown + 1 end end
+  shown = #chron.items
   check(shown == 1, "alt's chronicle")
   UI.viewBack:GetScript("OnClick")(UI.viewBack)
   check(FC:IsViewingPlayed() and not UI.viewBack:IsShown(), "back to me")

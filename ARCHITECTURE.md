@@ -146,8 +146,21 @@ Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `
 | `importing/` | SavedVariables → SQLite, validation, gaps, `.bak` fallback |
 | `storage/` | `database.py` (schema migrations + backups), `repository.py` (all SQL) |
 | `domain/` | registries: `event_types.py` (how events are shown), `stats.py` (overview statistics) |
-| `ui/` | `theme.py` (Classic look), `main_window.py`, `pages/` (one file per tab) |
+| `ui/` | `theme.py` (Classic look), `main_window.py`, `pages/` (one file per tab), `sound.py` (clicks, alerts, music) |
 | `i18n.py` | German (default) / English strings |
+
+### Sound
+
+`ui/sound.py` holds `ctx.sound`: `play(name)` for effects (WAV via QSoundEffect), an app-wide click filter, and
+`ctx.sound.music` (QMediaPlayer with fades and `duck(seconds)`). Cinematic mode starts and stops the music and plays
+`level_up`, `screenshot`, `event` and `death`. The Settings tab holds the switches, volumes and the music choice
+(built-in theme, own file, or own folder as a shuffled playlist).
+
+- Built-in sounds in `ui/assets/sounds` are synthesized by `tools/generate_sounds.py` (original, no third-party
+  audio; needs `pip install -e .[tools]`). Change the script and rerun it rather than editing the files.
+- Players can replace an effect with a WAV of the same name in `%APPDATA%\ForeverChronicle\sounds`.
+- QtMultimedia ships in PySide6-Addons. Without it (`PySide6-Essentials` only) `sound.AUDIO` is False and the app
+  runs silently. Tests set `FOREVER_CHRONICLE_SILENT=1`; `ctx.sound.played` still records what would have played.
 
 - **New statistic:** call `stats.register(Stat(key, label_key, order, compute, kind, group))` and add the label to
   `i18n.py`.
