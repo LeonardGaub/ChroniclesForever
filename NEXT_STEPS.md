@@ -7,7 +7,8 @@ at the time (older entries may describe things that changed later). Architecture
 ## Current state (2026-10-15)
 - Main addon `addons/ForeverChronicle` 0.15.0, not uploaded yet (last CurseForge build 0.14.1; the changes are
   collected under "Unreleased" in `CHANGELOG.md`). Companion `addons/ForeverChronicle_Share` 0.14.1, distributed
-  through the cloud folder. Release both together: since 0.15.0 the saved data is packed (see History).
+  through the git repository (friends with repo access; the sync script installs it after a `git pull`). Release
+  both together: since 0.15.0 the saved data is packed (see History).
 - Addon window tabs: Übersicht, Chronik (screenshots shown with their entries), Karte, Berufe, Einstellungen,
   Diagnose. Slash commands `/fj` and `/fjshot`.
 - Desktop app tabs: Übersicht, Chronik, Karte (with the cinematic mode), Berufe, Import, Einstellungen (sound),
@@ -15,9 +16,10 @@ at the time (older entries may describe things that changed later). Architecture
   package built by `tools/package_for_friend.py`. The user is moving away from the desktop app: fixes and features
   go into the addon, except features that need the screenshot files (cinematic replay).
 - Sharing with friends: the companion addon plus the cloud sync `sync/ForeverSync.ps1` (docs/Sharing_Design.md).
-  The desktop share feature was removed.
+  The desktop share feature was removed. The OneDrive folder "Journey Forever Cloud" holds only `players\`; the
+  addon and the sync script come from each PC's clone of the repository (setup: `sync\Einrichten.bat` there).
 - Tests: `tests/addon` (`npm test`: queue tests and phases 1-14, writes the fixtures) first, then `desktop`
-  (`pytest`, 105 tests). All pass.
+  (`pytest`, 106 tests). All pass.
 
 ## Open items
 1. Dungeon maps: after the user's next dungeon, read `FC.db.dungeonProbe` from the saved file and decide the
@@ -59,6 +61,16 @@ at the time (older entries may describe things that changed later). Architecture
   format and `snapshots` area.
 
 ## History
+
+### Cloud folder holds player data only (2026-10-15)
+- User decision: the code lives in git, so the OneDrive cloud folder keeps only `players\`. The `addon\` and
+  `tools\` folders there and `tools/publish_to_cloud.py` were removed.
+- Sync script version 2: `config.json` has a `repo` field (the local clone). Each run updates the script from
+  `<repo>\sync` and installs a newer addon from `<repo>\addons`, so a `git pull` is the whole release step for
+  the friend group. Setup runs from `<repo>\sync\Einrichten.bat`; it reuses the old cloud folder or finds
+  "Journey Forever Cloud" in OneDrive (also under `Shortcuts\`), else asks, and stops an older running loop.
+- A config without `repo` (set up with version 1) keeps syncing player data but looks for no updates: Gigel has to
+  run `sync\Einrichten.bat` from his clone once.
 
 ### Map route work, addon 0.15.0 and dungeons (2026-10-14/15)
 - Slash command `/fj` (was `/fc`), `/fjshot` (was `/fcshot`).

@@ -1,7 +1,10 @@
 <#
 Journey Forever - cloud sync (docs/Sharing_Design.md, version 2). Uses only what Windows brings along.
 
-  Setup (Einrichten.bat, from the tools folder inside the shared cloud folder):
+The shared cloud folder holds only player data (<cloud>\players). The addon and this script come from a local
+clone of the git repository: after a git pull, the next run installs the new version.
+
+  Setup (sync\Einrichten.bat in the repository clone):
       powershell -ExecutionPolicy Bypass -File ForeverSync.ps1 -Setup
   Background (started hidden at Windows login by ForeverSync.vbs from the Startup folder):
       powershell -ExecutionPolicy Bypass -File ForeverSync.ps1 -Loop
@@ -9,8 +12,8 @@ Journey Forever - cloud sync (docs/Sharing_Design.md, version 2). Uses only what
       powershell -ExecutionPolicy Bypass -File ForeverSync.ps1 -Once
 
 Each run:
-  1. updates this script from <cloud>\tools
-  2. installs a newer addon from <cloud>\addon (only while WoW is not running; keeps Friends\FriendsData.lua)
+  1. updates this script from <repo>\sync
+  2. installs a newer addon from <repo>\addons (only while WoW is not running; keeps Friends\FriendsData.lua)
   3. uploads this PC's ForeverChronicle_Share.lua (per WoW account) to <cloud>\players\<shareId>-<account hash>.lua
   4. downloads all other players' files, accepts only pure data, writes ForeverChronicle_Share\Friends\FriendsData.lua
   5. daily backup of the addon's SavedVariables (newest 10 days kept)
@@ -21,7 +24,8 @@ param(
   [switch]$Setup,
   [switch]$Loop,
   [switch]$Once,
-  [string]$CloudFolder,     # setup: the shared folder (default: the parent of the folder this script is in)
+  [string]$CloudFolder,     # setup: the shared folder (default: the last one, else found in OneDrive, else asked)
+  [string]$RepoFolder,      # setup: the repository clone (default: the parent of the folder this script is in)
   [string]$ClientFolder,    # setup: the WoW Forever client folder (default: found automatically)
   [string]$DataDir,         # where settings, log and backups live (default: %LOCALAPPDATA%\ForeverChronicle\sync)
   [switch]$NoStartup,       # setup: do not add the Startup entry (tests)
@@ -29,7 +33,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ScriptVersion = 1
+$ScriptVersion = 2
+$CloudName = 'Journey Forever Cloud'
 $AddonNames = @('ForeverChronicle', 'ForeverChronicle_Share')
 $ShareFile = 'ForeverChronicle_Share.lua'
 $FriendsFile = 'FriendsData.lua'
@@ -175,7 +180,8 @@ function Test-PureData([string]$Text) {
 # -- steps --------------------------------------------------------------------------------------------
 
 function Update-Self($Config) {
-  $src = Join-Path $Config.cloud 'tools'
+  if (-not $Config.repo) { return }  # set up before version 2: run sync\Einrichten.bat from the repository
+  $src = Join-Path $Config.repo 'sync'
   foreach ($name in 'ForeverSync.ps1', 'ForeverSync.vbs') {
     $from = Join-Path $src $name
     $to = Join-Path $DataDir $name
@@ -188,8 +194,9 @@ function Update-Self($Config) {
 }
 
 function Update-Addon($Config) {
+  if (-not $Config.repo) { return }
   $addons = Join-Path $Config.client 'Interface\AddOns'
-  $source = Join-Path $Config.cloud 'addon'
+  $source = Join-Path $Config.repo 'addons'
   $newest = Get-TocVersion (Join-Path $source 'ForeverChronicle')
   if (-not $newest) { return }
   $installed = Get-TocVersion (Join-Path $addons 'ForeverChronicle')
@@ -335,9 +342,37 @@ function Invoke-Sync {
 
 # -- setup ----------------------------------------------------------------------------------------------
 
+function Test-Repo([string]$Folder) {
+  return $Folder -and (Test-Path (Join-Path $Folder 'addons\ForeverChronicle\ForeverChronicle.toc')) -and
+         (Test-Path (Join-Path $Folder 'sync\ForeverSync.ps1'))
+}
+
+# The shared folder in this PC's OneDrive (also as a shortcut to a folder someone else shared).
+function Find-Cloud {
+  foreach ($root in @($env:OneDrive, $env:OneDriveConsumer, $env:OneDriveCommercial) | Where-Object { $_ } | Select-Object -Unique) {
+    foreach ($candidate in (Join-Path $root $CloudName), (Join-Path $root "Shortcuts\$CloudName")) {
+      if (Test-Path (Join-Path $candidate 'players')) { return $candidate }
+    }
+  }
+  return $null
+}
+
 function Invoke-Setup {
-  if (-not $CloudFolder) { $CloudFolder = Split-Path (Split-Path $PSCommandPath) }
-  if (-not (Test-Path (Join-Path $CloudFolder 'tools'))) { throw "Not a Journey Forever cloud folder: $CloudFolder" }
+  $old = Read-Json $ConfigPath
+  if (-not $RepoFolder) { $RepoFolder = Split-Path (Split-Path $PSCommandPath) }
+  if (-not (Test-Repo $RepoFolder) -and $old -and (Test-Repo $old.repo)) { $RepoFolder = $old.repo }
+  if (-not (Test-Repo $RepoFolder)) { throw "Kein Journey-Forever-Repository: $RepoFolder (sync\Einrichten.bat im Repository starten)" }
+  $RepoFolder = (Resolve-Path $RepoFolder).Path
+  if (-not $CloudFolder -and $old -and $old.cloud -and (Test-Path (Join-Path $old.cloud 'players'))) { $CloudFolder = $old.cloud }
+  if (-not $CloudFolder) { $CloudFolder = Find-Cloud }
+  if (-not $CloudFolder) {
+    Add-Type -AssemblyName System.Windows.Forms
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = "Gemeinsamen Cloud-Ordner waehlen ($CloudName)"
+    if ($dialog.ShowDialog() -eq 'OK') { $CloudFolder = $dialog.SelectedPath }
+  }
+  if (-not $CloudFolder -or -not (Test-Path $CloudFolder -PathType Container)) { throw 'Kein Cloud-Ordner gewaehlt.' }
+  New-Item -ItemType Directory -Force -Path (Join-Path $CloudFolder 'players') | Out-Null
   if (-not $ClientFolder) { $ClientFolder = Find-Client }
   if (-not $ClientFolder) {
     Add-Type -AssemblyName System.Windows.Forms
@@ -346,16 +381,18 @@ function Invoke-Setup {
     if ($dialog.ShowDialog() -eq 'OK') { $ClientFolder = Find-ClientIn $dialog.SelectedPath }
   }
   if (-not $ClientFolder) { throw 'WoW Forever wurde nicht gefunden.' }
-  $old = Read-Json $ConfigPath
   $shareId = if ($old -and $old.shareId -match '^[0-9a-f]{32}$') { $old.shareId } else { [guid]::NewGuid().ToString('N') }
   New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
-  Write-Json $ConfigPath ([pscustomobject]@{ cloud = $CloudFolder; client = $ClientFolder; shareId = $shareId;
-                                             interval = $IntervalMinutes; scriptVersion = $ScriptVersion })
+  Write-Json $ConfigPath ([pscustomobject]@{ cloud = $CloudFolder; repo = $RepoFolder; client = $ClientFolder;
+                                             shareId = $shareId; interval = $IntervalMinutes; scriptVersion = $ScriptVersion })
   foreach ($name in 'ForeverSync.ps1', 'ForeverSync.vbs') {
-    $from = Join-Path (Join-Path $CloudFolder 'tools') $name
-    if (Test-Path $from) { Copy-Item -Force $from (Join-Path $DataDir $name) }
+    Copy-Item -Force (Join-Path (Join-Path $RepoFolder 'sync') $name) (Join-Path $DataDir $name)
   }
   if (-not $NoStartup) {
+    # A loop of an older version would keep running until the next login: stop it, the new one starts below.
+    Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
+      Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*ForeverSync.ps1*-Loop*' } |
+      ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     $startup = [Environment]::GetFolderPath('Startup')
     $shell = New-Object -ComObject WScript.Shell
     $link = $shell.CreateShortcut((Join-Path $startup 'Journey Forever Sync.lnk'))
@@ -364,12 +401,13 @@ function Invoke-Setup {
     $link.Description = 'Journey Forever: Addon und Freunde-Daten mit dem Cloud-Ordner abgleichen'
     $link.Save()
   }
-  Write-Log "setup: cloud $CloudFolder, client $ClientFolder"
+  Write-Log "setup: cloud $CloudFolder, repo $RepoFolder, client $ClientFolder"
   Invoke-Sync
   if (-not $NoStartup) { Start-Process -FilePath (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList ('"' + (Join-Path $DataDir 'ForeverSync.vbs') + '"') }
   Write-Host ''
   Write-Host 'Journey Forever Sync ist eingerichtet.'
-  Write-Host "  Cloud-Ordner: $CloudFolder"
+  Write-Host "  Cloud-Ordner: $CloudFolder (nur Spielerdaten)"
+  Write-Host "  Repository:   $RepoFolder (Addon-Updates: nach git pull automatisch)"
   Write-Host "  Spiel:        $ClientFolder"
   Write-Host '  Laeuft ab jetzt unsichtbar bei jeder Windows-Anmeldung (alle 10 Minuten).'
   Write-Host '  Im Spiel nach einem Update oder neuen Freunde-Daten: /reload'

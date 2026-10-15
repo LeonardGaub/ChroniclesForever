@@ -5,7 +5,7 @@ addons/ForeverChronicle/        in-game addon (Lua, Interface 16001), the CurseF
 addons/ForeverChronicle_Share/  private friends companion (sharing through a cloud folder)
 desktop/                        desktop app (Python 3.12 + PySide6 + SQLite)
 sync/                           cloud sync script for the friend group (PowerShell)
-tools/                          packaging (CurseForge, friends' zip, cloud folder) and sound generation
+tools/                          packaging (CurseForge, friends' zip) and sound generation
 tests/addon/                    addon tests in a mocked WoW client (Node + fengari)
 tests/fixtures/                 SavedVariables written by the addon tests, used by desktop tests
 docs/                           designs, spec tools, Phase 0 report, CurseForge texts

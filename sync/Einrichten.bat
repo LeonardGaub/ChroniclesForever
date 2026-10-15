@@ -1,5 +1,5 @@
 @echo off
-rem Journey Forever: one-time setup of the cloud sync (addon updates and friends' data). Lives in the cloud folder's tools folder.
+rem Journey Forever: one-time setup of the cloud sync (friends' data; addon updates from this repository). Lives in the repository's sync folder.
 title Journey Forever Sync einrichten
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0ForeverSync.ps1" -Setup
 if errorlevel 1 (
