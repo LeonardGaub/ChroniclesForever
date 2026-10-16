@@ -103,19 +103,46 @@ def test_cloud_folder_missing_keeps_friends(db, cloud):
     assert result.removed == [] and friends(db), "OneDrive offline is not 'every friend left'"
 
 
-def test_replaces_the_same_character_from_an_old_share_file(db, cloud):
-    """Before 2026-10-14 friends came as desktop share files: the same character (natural key without "friend:")
-    is replaced by the cloud one, and the old friend goes once they have no characters left. Mine stay."""
-    conn = db.conn
-    old = conn.execute("INSERT INTO owners (share_id, display_name) VALUES (?, 'Gigel')", ("9" * 32,)).lastrowid
-    for cid, key, owner in (("old-alt", "Player-4619-0ALT0001", old), ("mine", "Player-4619-0MINE001", None)):
-        conn.execute("INSERT INTO characters (character_id, natural_key, identity_quality, name, owner_id, created_at) "
-                     "VALUES (?, ?, 'guid', 'X', ?, 0)", (cid, key, owner))
-    conn.commit()
+def character(db, cid, key, owner=None, account=None):
+    db.conn.execute("INSERT INTO characters (character_id, natural_key, identity_quality, name, owner_id, wow_account, "
+                    "created_at) VALUES (?, ?, 'guid', 'X', ?, ?, 0)", (cid, key, owner, account))
+
+
+def my_account(db, account):
+    db.conn.execute("INSERT INTO import_runs (source_path, source_type, account, started_at, status) "
+                    "VALUES ('x', 'saved_variables', ?, 0, 'ok')", (account,))
+
+
+def test_replaces_other_copies_of_the_friends_characters(db, cloud):
+    """Before 2026-10-14 friends came as desktop share files, and a friend's backup (JSONL) imported here makes
+    their characters look like mine: the friend's file replaces those copies (same player GUID), and an old-share
+    friend goes once they have no characters left."""
+    old = db.conn.execute("INSERT INTO owners (share_id, display_name) VALUES (?, 'Gigel')", ("9" * 32,)).lastrowid
+    character(db, "old-share", "Player-4619-0ALT0001", owner=old)
+    character(db, "from-backup", "Player-4619-0112A417", account="439576031#1")   # the friend's WoW account
+    character(db, "mine", "Player-4619-0MINE001", account="131324136#1")
+    my_account(db, "131324136#1")
+    db.conn.commit()
     put(cloud, "Bob-ffffffff-0badc0de.lua", friend_text())
-    import_friends(db, cloud)
-    assert count(db, "SELECT COUNT(*) FROM characters WHERE character_id = 'old-alt'") == 0
+    assert import_friends(db, cloud).replaced == 2
+    assert count(db, "SELECT COUNT(*) FROM characters WHERE character_id IN ('old-share', 'from-backup')") == 0
     assert count(db, "SELECT COUNT(*) FROM owners WHERE display_name = 'Gigel'") == 0
-    assert count(db, "SELECT COUNT(*) FROM characters WHERE natural_key = 'friend:ffffffff-0badc0de:"
-                     "Player-4619-0ALT0001'") == 1
+    assert count(db, "SELECT COUNT(*) FROM characters WHERE natural_key LIKE 'friend:ffffffff-0badc0de:%'") == 2
     assert count(db, "SELECT COUNT(*) FROM characters WHERE character_id = 'mine' AND owner_id IS NULL") == 1
+
+    # Also when the friend's file has not changed (copies imported later, e.g. another backup import).
+    character(db, "again", "Player-4619-0112A417", account="439576031#1")
+    db.conn.commit()
+    result = import_friends(db, cloud)
+    assert result.unchanged == 1 and result.replaced == 1 and result.changed
+
+
+def test_keeps_my_own_character_even_if_a_friend_shares_it(db, cloud):
+    """A copy of a WoW account this PC imported game data from (or of no known account) is mine: it stays."""
+    character(db, "mine", "Player-4619-0112A417", account="131324136#1")
+    character(db, "unknown", "Player-4619-0ALT0001")
+    my_account(db, "131324136#1")
+    db.conn.commit()
+    put(cloud, "Bob-ffffffff-0badc0de.lua", friend_text())
+    assert import_friends(db, cloud).replaced == 0
+    assert count(db, "SELECT COUNT(*) FROM characters WHERE character_id IN ('mine', 'unknown')") == 2

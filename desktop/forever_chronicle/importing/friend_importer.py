@@ -7,7 +7,7 @@ characters under that friend (owners table, characters.owner_id).
 - A newer file replaces everything of that friend: their characters keep their local IDs, everything else is
   imported again (a share file holds only the newest records). An unchanged file is skipped.
 - A friend whose file is gone from the cloud is removed. Friends from the old desktop share files (until
-  2026-10-14, other share IDs) stay.
+  2026-10-14, other share IDs) stay, except for characters a friend's file now brings (drop_other_copies).
 - Parsing never executes code (wow.lua_parser); a file of more than 8 MB is skipped, like the sync script does.
 """
 
@@ -36,10 +36,11 @@ class FriendImportResult:
     unchanged: int = 0
     removed: list[str] = field(default_factory=list)     # names of friends whose file is gone
     failed: list[str] = field(default_factory=list)      # "name: reason"
+    replaced: int = 0            # other copies of friends' characters dropped (drop_other_copies)
 
     @property
     def changed(self) -> bool:
-        return bool(self.imported or self.removed)
+        return bool(self.imported or self.removed or self.replaced)
 
 
 def share_id_of(path: Path) -> str | None:
@@ -78,6 +79,37 @@ def import_friends(db: Database, setup: SyncSetup) -> FriendImportResult:
             with db.transaction():
                 remove_owner(db, owner_id)
             result.removed.append(name)
+    with db.transaction():
+        result.replaced = drop_other_copies(db)
+    return result
+
+
+def drop_other_copies(db: Database) -> int:
+    """Other copies of the friends' characters (same player GUID, natural key without "friend:"), which the
+    friend's file replaces: from the old desktop share files, or a friend's backup imported as JSONL, which made them
+    look like mine. A copy counts as mine (and stays) when it is of a WoW account this PC imported game data from,
+    or of no known account. An old-share friend left without characters goes too. Returns how many copies went."""
+    my_accounts = {row[0] for row in db.conn.execute(
+        "SELECT DISTINCT account FROM import_runs WHERE source_type = 'saved_variables' AND account IS NOT NULL")}
+    dropped, emptied = 0, set()
+    for (natural_key,) in db.conn.execute(
+            "SELECT natural_key FROM characters WHERE owner_id IS NOT NULL AND natural_key LIKE 'friend:%'").fetchall():
+        plain = natural_key.split(":", 2)[2]
+        row = db.conn.execute("SELECT character_id, owner_id, wow_account FROM characters WHERE natural_key = ?",
+                              (plain,)).fetchone()
+        if row is None:
+            continue
+        character_id, owner_id, account = row
+        if owner_id is None and (account is None or account in my_accounts):
+            continue
+        delete_character_data(db, character_id, keep_character=False)
+        dropped += 1
+        if owner_id is not None:
+            emptied.add(owner_id)
+    for owner_id in emptied:
+        if db.conn.execute("SELECT 1 FROM characters WHERE owner_id = ?", (owner_id,)).fetchone() is None:
+            db.conn.execute("DELETE FROM owners WHERE owner_id = ?", (owner_id,))
+    return dropped
     return result
 
 
@@ -114,19 +146,6 @@ def _import_friend(db: Database, importer: SavedVariablesImporter, path: Path, s
     for (character_id, natural_key) in db.conn.execute(
             "SELECT character_id, natural_key FROM characters WHERE owner_id = ?", (owner_id,)).fetchall():
         delete_character_data(db, character_id, keep_character=natural_key in characters)
-    # The same characters from the old desktop share files (natural key without "friend:"): replaced by these;
-    # an old-share friend left without characters goes too. Never my own (owner_id NULL).
-    old_owners = set()
-    for key in characters:
-        plain = key.split(":", 2)[2]
-        for (character_id, old_owner) in db.conn.execute(
-                "SELECT character_id, owner_id FROM characters WHERE natural_key = ? AND owner_id IS NOT NULL",
-                (plain,)).fetchall():
-            delete_character_data(db, character_id, keep_character=False)
-            old_owners.add(old_owner)
-    for old_owner in old_owners:
-        if db.conn.execute("SELECT 1 FROM characters WHERE owner_id = ?", (old_owner,)).fetchone() is None:
-            db.conn.execute("DELETE FROM owners WHERE owner_id = ?", (old_owner,))
     result = importer.import_data({"ForeverChronicleDB": root}, str(path), name, modified, len(raw),
                                   ImportResult(source=str(path)), owner_id=owner_id)
     if result.status in ("rejected", "failed"):
