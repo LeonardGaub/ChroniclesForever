@@ -8,8 +8,9 @@ See your own route and your friends' routes on the same map: where everyone went
 where you met.
 
 ## What is already there
-- The companion shares each friend character's route from its **last 3 sessions**, at most **20,000 points**
-  (`Share.ROUTE_SESSIONS`, `Share.MAX_POINTS`), in the same compact format as the positions stream. It also
+- The companion shares each friend character's route from **all sessions**, the newest **20,000 points**
+  (`Share.MAX_POINTS`; until 2026-10-16 only the last 3 sessions), in the same compact format as the positions
+  stream. It also
   shares the map geometry, instances and dungeon entrances the route uses.
 - The sync script writes them into `Friends\FriendsData.lua` (one function per friend). The character chooser
   already shows a friend's character read-only, with the same map page.

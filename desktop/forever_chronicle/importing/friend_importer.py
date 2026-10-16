@@ -4,8 +4,11 @@ characters under that friend (owners table, characters.owner_id).
 
 - One owner per friend file: share_id "<id>-<account>" (the first 8 characters of their shareId and their account
   hash), so a renamed friend or the older file naming stays the same owner.
-- A newer file replaces everything of that friend: their characters keep their local IDs, everything else is
-  imported again (a share file holds only the newest records). An unchanged file is skipped.
+- A newer file adds to what the app has of that friend (since 2026-10-16; before, it replaced it): a share file
+  holds only the newest records (200 chronicle entries, 20,000 route points per character), so the app keeps the
+  history beyond that, like it does for my own characters. Chronicle entries are kept by ID, route points by time,
+  sessions, stats, gear and professions are updated. A character no longer in the file goes with everything.
+  An unchanged file is skipped.
 - A friend whose file is gone from the cloud is removed. Friends from the old desktop share files (until
   2026-10-14, other share IDs) stay, except for characters a friend's file now brings (drop_other_copies).
 - Parsing never executes code (wow.lua_parser); a file of more than 8 MB is skipped, like the sync script does.
@@ -145,7 +148,8 @@ def _import_friend(db: Database, importer: SavedVariablesImporter, path: Path, s
                     (name, modified, int(time.time()), owner_id))
     for (character_id, natural_key) in db.conn.execute(
             "SELECT character_id, natural_key FROM characters WHERE owner_id = ?", (owner_id,)).fetchall():
-        delete_character_data(db, character_id, keep_character=natural_key in characters)
+        if natural_key not in characters:  # no longer shared: goes with everything
+            delete_character_data(db, character_id, keep_character=False)
     result = importer.import_data({"ForeverChronicleDB": root}, str(path), name, modified, len(raw),
                                   ImportResult(source=str(path)), owner_id=owner_id)
     if result.status in ("rejected", "failed"):

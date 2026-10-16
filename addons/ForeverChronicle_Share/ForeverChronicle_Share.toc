@@ -3,7 +3,7 @@
 ## Notes: Companion of Journey Forever for a private friend group: shares your characters through a cloud folder (sync script) and shows your friends' characters.
 ## Notes-deDE: Ergänzung zu Journey Forever für eine private Freundesgruppe: teilt deine Charaktere über einen Cloud-Ordner (Sync-Skript) und zeigt die Charaktere deiner Freunde.
 ## Author: Journey Forever
-## Version: 0.14.1
+## Version: 0.14.2
 ## Dependencies: ForeverChronicle
 ## Group: ForeverChronicle
 ## Category: Journey Forever

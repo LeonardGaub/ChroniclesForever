@@ -11,7 +11,7 @@ files and the desktop share dialog are no longer needed.
 - **Data:** a second addon `ForeverChronicle_Share` declares `## SavedVariables: ForeverChronicleShareDB`,
   so the game itself writes a separate, small file with only the data meant for friends. The main addon fills it on
   every logout and `/reload`: one entry per character of the account, in the record shape the character chooser
-  already reads (info, stats, gear, professions, last 200 events, routes of the last 3 sessions, sessions, the maps,
+  already reads (info, stats, gear, professions, last 200 events, the route of all sessions (newest 20,000 points), sessions, the maps,
   instances and entrances used), plus the sender's name and addon version.
 - **Sharing settings in game:** "Teilen" settings section with the name for friends (free text), per character
   on/off, and per category on/off. Default: everything on. Screenshots are not shared (the game cannot show images).
@@ -42,8 +42,9 @@ files and the desktop share dialog are no longer needed.
   `FriendsData.lua` (the script owns it); share files and the share dialog are removed. Since 2026-10-16 every
   import (at start, "Jetzt importieren", after "Jetzt abgleichen") also reads the friends' files from the cloud
   folder (`importing/friend_importer.py`): read-only characters under each friend (one owner per file,
-  `<id>-<account>`), replaced by a newer file, removed when the file is gone; the same character from an old
-  desktop share file is replaced.
+  `<id>-<account>`); a newer file adds to what the app has (so it keeps history beyond the share file's limits),
+  a character no longer shared goes, a friend whose file is gone is removed; other copies of the same character
+  (old desktop share files, a friend's backup imported here) are replaced.
 - **Postponed:** addon messages between online friends (cloud sync already brings all data, also offline; maybe
   later for live info such as who is online where).
 - **Limits:** new data arrives after the sender's logout or `/reload` and their sync, then the receiver's sync, and
@@ -115,8 +116,9 @@ The addon cannot download anything. The desktop app must hand friends' data to i
   strict literal-only serializer (numbers, escaped strings, tables), never by pasting text, and tested against
   injection attempts (quotes, `]]`, newlines, `` in names).
 - **Size:** the client loads the file into memory at every login. Sized for ~10 friends × several characters
-  (~50 characters): per character the overview and stats, the last 200 chronicle events and the routes of the
-  last 3 sessions (compact strings; target well under 5 MB for the whole file).
+  (~50 characters): per character the overview and stats, the last 200 chronicle events and the newest
+  20,000 route points of all sessions (compact strings, about 1 MB per character at most; the sync skips friend
+  files over 8 MB). Until 2026-10-16 only the routes of the last 3 sessions.
 - **UI: a character layer around the whole window** (user decision 2026-10-14, replaces the separate
   "Freunde" tab). The window gets a character chooser at the top (the portrait / name area opens it):
   a scrollable list of all available characters, grouped as "Meine Charaktere" (every character of the

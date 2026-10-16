@@ -215,12 +215,16 @@ function Update-Addon($Config) {
   if (-not $Config.repo) { return }
   $addons = Join-Path $Config.client 'Interface\AddOns'
   $source = Join-Path $Config.repo 'addons'
-  $newest = Get-TocVersion (Join-Path $source 'ForeverChronicle')
-  if (-not $newest) { return }
-  $installed = Get-TocVersion (Join-Path $addons 'ForeverChronicle')
-  $shareMissing = -not (Test-Path (Join-Path $addons 'ForeverChronicle_Share'))
-  if ($installed -and $newest -le $installed -and -not $shareMissing) { return }
-  if (Test-GameRunning $Config.client) { Write-Log "addon $newest waits: WoW is running"; return }
+  # Both addons have their own version: a newer one of either (or a missing one) installs both.
+  $changes = @()
+  foreach ($name in $AddonNames) {
+    $newest = Get-TocVersion (Join-Path $source $name)
+    $installed = Get-TocVersion (Join-Path $addons $name)
+    if ($newest -and (-not $installed -or $newest -gt $installed)) { $changes += "$name $installed -> $newest" }
+  }
+  if (-not $changes) { return }
+  $changes = $changes -join ', '
+  if (Test-GameRunning $Config.client) { Write-Log "addon update waits: WoW is running ($changes)"; return }
   foreach ($name in $AddonNames) {
     $from = Join-Path $source $name
     if (Test-Path $from) {
@@ -231,7 +235,7 @@ function Update-Addon($Config) {
   }
   $friends = Join-Path $addons "ForeverChronicle_Share\Friends\$FriendsFile"
   if (-not (Test-Path $friends)) { $script:ForceFriends = $true }
-  Write-Log "addon installed: $installed -> $newest"
+  Write-Log "addon installed: $changes"
 }
 
 function Get-ShareFiles($Config) {

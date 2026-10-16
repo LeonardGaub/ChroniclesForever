@@ -23,8 +23,7 @@ local Share = FC:NewModule("Share", { order = 60, defaults = {
 Share.FORMAT = 2               -- 2: streams packed (FC.Storage.Pack)
 Share.SHARE_ADDON = "ForeverChronicle_Share"
 Share.EVENTS = 200               -- newest chronicle entries per character
-Share.ROUTE_SESSIONS = 3         -- routes of the newest sessions
-Share.MAX_POINTS = 20000         -- per character
+Share.MAX_POINTS = 20000         -- newest route points per character (all sessions; about 1 MB at most)
 Share.CATEGORIES = { "stats", "chronicle", "routes", "sessions", "professions", "gear" }
 
 local INFO_FIELDS = { "key", "guid", "name", "nameSuffix", "realm", "className", "classFile", "raceName", "raceFile",
@@ -36,16 +35,13 @@ local function newest(list, n)
   return out
 end
 
--- Positions of the newest sessions (compact strings "time,..."), at most MAX_POINTS.
+-- The route of all sessions (compact strings "time,..."), the newest MAX_POINTS points. Until 2026-10-16 only the
+-- newest 3 sessions were shared, so friends missed the start of a journey.
 local function routes(char)
   local positions = char.streams and char.streams.positions and char.streams.positions.records or {}
-  local sessions = char.streams and char.streams.sessions and char.streams.sessions.records or {}
-  local since = 0
-  if #sessions > 0 then since = sessions[math.max(1, #sessions - Share.ROUTE_SESSIONS + 1)].startedAt or 0 end
   local out = {}
   for _, text in ipairs(positions) do
-    local t = tonumber(type(text) == "string" and text:match("^(%d+),") or nil)
-    if t and t >= since then out[#out + 1] = text end
+    if type(text) == "string" and text:match("^%d+,") then out[#out + 1] = text end
   end
   return newest(out, Share.MAX_POINTS)
 end
@@ -69,7 +65,7 @@ function Share:BuildCharacter(key, char)
     record.streams.positions = { nextSeq = #points + 1, records = points }
     if not cats.sessions and streams.sessions then -- the map's session filter needs the session times
       local times = {}
-      for _, s in ipairs(newest(streams.sessions.records or {}, self.ROUTE_SESSIONS)) do
+      for _, s in ipairs(streams.sessions.records or {}) do
         times[#times + 1] = { startedAt = s.startedAt, endedAt = s.endedAt }
       end
       record.streams.sessions = { records = times }

@@ -146,3 +146,35 @@ def test_keeps_my_own_character_even_if_a_friend_shares_it(db, cloud):
     put(cloud, "Bob-ffffffff-0badc0de.lua", friend_text())
     assert import_friends(db, cloud).replaced == 0
     assert count(db, "SELECT COUNT(*) FROM characters WHERE character_id IN ('mine', 'unknown')") == 2
+
+
+def small_share(characters):
+    """A share file (format 1, unpacked) with characters {key: (events, point times)}."""
+    parts = []
+    for key, (events, points) in characters.items():
+        evs = ",".join(f'{{["id"] = "{e}", ["type"] = "level_up", ["seq"] = {i + 1}, ["time"] = {1791900000 + i}}}'
+                       for i, e in enumerate(events))
+        pts = ",".join(f'"{t},1413,0.5000,0.5000,,,"' for t in points)
+        parts.append(f'{{["info"] = {{["key"] = "{key}", ["name"] = "{key}", ["level"] = 5}}, ["streams"] = {{'
+                     f'["events"] = {{["records"] = {{{evs}}}}}, ["positions"] = {{["records"] = {{{pts}}}}}}}}}')
+    return ('ForeverChronicleShareDB = {\n\t["format"] = 1,\n\t["name"] = "Bob",\n\t["characters"] = {'
+            + ",".join(parts) + "}}\n")
+
+
+def test_a_newer_file_adds_to_the_friends_history(db, cloud):
+    """A share file holds only the newest records: what the app had from older files stays."""
+    path = put(cloud, "Bob-ffffffff-0badc0de.lua", small_share({"P-1": (["e1", "e2"], [1791900000, 1791900060])}), 60)
+    import_friends(db, cloud)
+    put(cloud, path.name, small_share({"P-1": (["e2", "e3"], [1791900060, 1791900120]), "P-2": ([], [])}), 30)
+    assert import_friends(db, cloud).imported == ["Bob"]
+    key = "friend:ffffffff-0badc0de:P-1"
+    assert count(db, "SELECT COUNT(*) FROM events JOIN characters USING (character_id) WHERE natural_key = ?",
+                 key) == 3, "e1 from the older file stays, e2 is not doubled"
+    assert count(db, "SELECT COUNT(*) FROM positions JOIN characters USING (character_id) WHERE natural_key = ?",
+                 key) == 3
+
+    # A character the friend no longer shares goes with everything.
+    put(cloud, path.name, small_share({"P-2": ([], [])}))
+    import_friends(db, cloud)
+    assert count(db, "SELECT COUNT(*) FROM characters WHERE natural_key = ?", key) == 0
+    assert count(db, "SELECT COUNT(*) FROM events") == 0 and count(db, "SELECT COUNT(*) FROM positions") == 0

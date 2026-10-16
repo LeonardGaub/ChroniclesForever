@@ -1240,11 +1240,18 @@ if PHASE == 13 then
   check(mine.streams.screenshots == nil, "no screenshots")
   SAVED_OUT = shareText
 
-  -- Limits: only the newest events, only the newest sessions' route.
+  -- Limits: only the newest events and route points (the route of all sessions, not only the newest).
   Share.EVENTS = 1
   data = Share:Build()
   check(#S(data.characters[1].streams.events).records == 1, "event limit")
   Share.EVENTS = 200
+  local all = S(ForeverChronicleDB.characters[me].streams.positions).records
+  check(#S(data.characters[1].streams.positions).records == #all, "the whole route, all sessions")
+  Share.MAX_POINTS = 3
+  data = Share:Build()
+  local points = S(data.characters[1].streams.positions).records
+  check(#points == 3 and points[3] == all[#all] and points[1] == all[#all - 2], "point limit keeps the newest")
+  Share.MAX_POINTS = 20000
 
   -- Categories and characters can be switched off.
   local s = Share:GetSettings()

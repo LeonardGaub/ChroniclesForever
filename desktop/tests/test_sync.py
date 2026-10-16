@@ -160,6 +160,17 @@ def test_second_run_changes_nothing_then_updates(world):
     assert "## Version: 9" in installed.read_text(encoding="utf-8") and friends.is_file()
     assert "addon installed" in log(world)
 
+    # A newer companion alone (the main addon unchanged) is installed too.
+    share_dir = world["repo"] / "addons" / "ForeverChronicle_Share"
+    toc = share_dir / "ForeverChronicle_Share.toc"
+    toc.write_text(toc.read_text(encoding="utf-8").replace("## Version: ", "## Version: 9", 1), encoding="utf-8")
+    (share_dir / "Share.lua").write_text((share_dir / "Share.lua").read_text(encoding="utf-8") + "\n-- newer\n",
+                                         encoding="utf-8")
+    once(world)
+    game_share = world["client"] / "Interface" / "AddOns" / "ForeverChronicle_Share"
+    assert (game_share / "Share.lua").read_text(encoding="utf-8").endswith("-- newer\n") and friends.is_file()
+    assert "addon installed: ForeverChronicle_Share" in log(world)
+
 
 
 def test_pure_data_check_is_fast_on_big_files(world, tmp_path):
