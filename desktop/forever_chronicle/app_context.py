@@ -6,7 +6,9 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
+from . import cloud_sync
 from .config import AppConfig
+from .importing.friend_importer import FriendImportResult, import_friends
 from .importing.screenshot_matcher import match_screenshots
 from .importing.sv_importer import ImportResult, SavedVariablesImporter
 from .storage.database import Database
@@ -32,6 +34,7 @@ class AppContext(QObject):
         self.sound = Sound(config)
         self._client: ClientInstall | None = None
         self._client_searched = False
+        self.last_friend_import = FriendImportResult()
 
     def client(self) -> ClientInstall | None:
         if self._client or self._client_searched:
@@ -59,11 +62,20 @@ class AppContext(QObject):
     def import_all(self, skip_unchanged: bool = False) -> list[ImportResult]:
         results = [self.importer.import_file(sv.path, sv.account, skip_unchanged=skip_unchanged)
                    for sv in self.saved_variables()]
+        friends = self.import_friends(notify=False)
         matched = self.match_screenshots()
         new_icons = self.extract_icons()
-        if matched or new_icons or any(r.status != "unchanged" for r in results):
+        if matched or new_icons or friends.changed or any(r.status != "unchanged" for r in results):
             self.data_changed.emit()
         return results
+
+    def import_friends(self, notify: bool = True) -> FriendImportResult:
+        """Friends' characters from the cloud folder of this PC's sync (importing/friend_importer.py)."""
+        setup = cloud_sync.find_setup()
+        self.last_friend_import = import_friends(self.db, setup) if setup else FriendImportResult()
+        if notify and self.last_friend_import.changed:
+            self.data_changed.emit()
+        return self.last_friend_import
 
     def extract_icons(self) -> int:
         """Takes the icons recorded with events, professions and recipes that have no picture yet out of the local

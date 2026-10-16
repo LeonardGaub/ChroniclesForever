@@ -116,6 +116,7 @@ class SavedVariablesImporter:
     def __init__(self, db: Database):
         self.db = db
         self.repo = Repository(db.conn)
+        self._owner_id: int | None = None
 
     # -- file handling ------------------------------------------------------------
 
@@ -173,11 +174,15 @@ class SavedVariablesImporter:
 
     def import_data(self, variables: dict[str, Any], source: str, account: str | None = None,
                     mtime: int | None = None, size: int | None = None,
-                    result: ImportResult | None = None) -> ImportResult:
+                    result: ImportResult | None = None, owner_id: int | None = None) -> ImportResult:
+        """``owner_id``: the characters belong to a friend (importing/friend_importer.py): marked as theirs in the
+        same transaction, without gap tracking (a friend's file holds only the newest records)."""
         result = result or ImportResult(source=source)
         db_root = variables.get(VARIABLE_NAME)
+        self._owner_id = owner_id
         with self.db.transaction():
-            import_id = self.repo.start_import(source, "saved_variables", account, mtime, size)
+            import_id = self.repo.start_import(source, "saved_variables" if owner_id is None else "friend",
+                                               account, mtime, size)
             result.import_id = import_id
             reason = self._check_root(db_root)
             if reason:
@@ -219,6 +224,9 @@ class SavedVariablesImporter:
                           import_id: int, result: ImportResult) -> None:
         info = as_dict(char.get("info"))
         character_id = self.repo.upsert_character(key, info, account)
+        if self._owner_id is not None:
+            self.db.conn.execute("UPDATE characters SET owner_id = ? WHERE character_id = ?",
+                                 (self._owner_id, character_id))
         result.characters += 1
         # Counters kept by the addon (kills, experience, ...): totals, replaced on every import.
         for stat_key, value in as_dict(char.get("stats")).items():
@@ -349,6 +357,8 @@ class SavedVariablesImporter:
 
     def _track_stream(self, character_id: str, stream: str, records: list[dict[str, Any]], import_id: int,
                       result: ImportResult) -> None:
+        if self._owner_id is not None:
+            return
         seqs = [_int(r["seq"]) for r in records]
         check = check_gap(self.repo.last_seq(character_id, stream), seqs)
         if check.reset:

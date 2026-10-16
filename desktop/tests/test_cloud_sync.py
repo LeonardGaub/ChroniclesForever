@@ -141,6 +141,7 @@ def test_sync_now_shows_push_and_pull(page, tmp_path, monkeypatch):
     wait_for(page)
     assert "friends file written: 2 friend file(s)" in page.sync_message.text()
     assert "/reload" in page.sync_message.text() and page.sync_button.isEnabled()
+    assert 'In der App eingelesen: Jonas "J" Fränd' in page.sync_message.text(), "friends into the app too"
     assert "friends file written" in page.sync_label.text(), "the last log line"
 
 

@@ -39,7 +39,11 @@ files and the desktop share dialog are no longer needed.
   next sync installs it, also on the developer's own PC. The cloud folder holds only `players/` (2026-10-15; until
   then it also had `addon/` and `tools/`).
 - **Desktop app:** optional (long history beyond the SavedVariables caps, screenshot gallery). It stops writing
-  `FriendsData.lua` (the script owns it); share files and the share dialog are removed.
+  `FriendsData.lua` (the script owns it); share files and the share dialog are removed. Since 2026-10-16 every
+  import (at start, "Jetzt importieren", after "Jetzt abgleichen") also reads the friends' files from the cloud
+  folder (`importing/friend_importer.py`): read-only characters under each friend (one owner per file,
+  `<id>-<account>`), replaced by a newer file, removed when the file is gone; the same character from an old
+  desktop share file is replaced.
 - **Postponed:** addon messages between online friends (cloud sync already brings all data, also offline; maybe
   later for live info such as who is online where).
 - **Limits:** new data arrives after the sender's logout or `/reload` and their sync, then the receiver's sync, and

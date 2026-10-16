@@ -212,10 +212,19 @@ class ImportPage(Page):
         new = cloud_sync.log_lines(cloud_sync.sync_dir(), self._sync_log_start)
         if code != 0 or status != QProcess.ExitStatus.NormalExit:
             self.sync_message.setText(tr("sync.failed", message=output or code))
-        elif any(" failed: " in line for line in new):
-            self.sync_message.setText(tr("sync.failed", message="\n".join(new)))
-        else:
-            self.sync_message.setText(tr("sync.done") + ("\n" + "\n".join(new) if new else " " + tr("sync.nothing")))
+            self._refresh_sync()
+            return
+        self.run_import()  # into the app too: my newest data and friends' characters from the cloud folder
+        lines = [tr("sync.failed", message="") if any(" failed: " in line for line in new) else tr("sync.done")]
+        lines += new
+        friends = self.ctx.last_friend_import
+        if friends.imported:
+            lines.append(tr("sync.app_friends", names=", ".join(friends.imported)))
+        if friends.removed:
+            lines.append(tr("sync.app_removed", names=", ".join(friends.removed)))
+        if friends.failed:
+            lines.append(tr("sync.app_failed", message="; ".join(friends.failed)))
+        self.sync_message.setText("\n".join(lines))
         self._refresh_sync()
 
     def _sync_failed(self, error: QProcess.ProcessError) -> None:
