@@ -18,7 +18,8 @@ Over the window (widgets, all transparent for the mouse):
   death gets the same card in dark red.
 - AchievementToast: an event, as a small achievement alert that slides in from the right.
 - PhotoOverlay: a screenshot as a polaroid that flies out from the marker after a white flash, drifts slowly
-  under an achievement banner while it is shown, and flies back to its pin.
+  under an achievement banner while it is shown, and flies back to its pin. A level-up's picture gets a
+  ribbon saying "Level up" instead (its title has just named the level).
 """
 
 from __future__ import annotations
@@ -927,6 +928,100 @@ def draw_banner(painter: QPainter, rect: QRectF, heading: str, title: str, place
     painter.restore()
 
 
+def draw_ribbon(painter: QPainter, rect: QRectF, text: str, shine: float = -1.0) -> None:
+    """A gold-trimmed ribbon with one word in large gold letters, its notched tails folded behind (a level-up's
+    screenshot: the title before it already named the level). shine: where a passing light crosses the letters
+    (0 to 1; none outside)."""
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    h = rect.height() * 0.66
+    tail, drop, notch = h * 0.9, h * 0.24, h * 0.34
+    font = pixel_font(h * 0.52, True)
+    font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 112)
+    path = QPainterPath()
+    path.addText(QPointF(0, 0), font, text.upper())
+    box = path.boundingRect()
+    pad = h * 0.8
+    w = min(rect.width() - 1.6 * tail, box.width() + 2 * pad)
+    fit = min(1.0, (w - 2 * pad) / max(1.0, box.width()))
+    cx, cy = rect.center().x(), rect.center().y()
+    plate = QRectF(cx - w / 2, cy - h / 2, w, h)
+
+    # Tails behind the plate, a little lower, with a notched end and a dark fold where they turn.
+    for sign in (-1, 1):
+        edge = cx + sign * w / 2
+        inner, outer = edge - sign * h * 0.4, edge + sign * tail
+        top, bottom = plate.top() + drop, plate.bottom() + drop
+        shape = QPainterPath(QPointF(inner, top))
+        for x, y in ((outer, top), (outer - sign * notch, (top + bottom) / 2), (outer, bottom), (inner, bottom)):
+            shape.lineTo(x, y)
+        shape.closeSubpath()
+        fill = QLinearGradient(0, top, 0, bottom)
+        fill.setColorAt(0, QColor(46, 34, 20, 245))
+        fill.setColorAt(1, QColor(10, 7, 4, 245))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 80))
+        painter.drawPath(shape.translated(3, 4))
+        painter.setPen(QPen(TRIM, 1.5))
+        painter.setBrush(fill)
+        painter.drawPath(shape)
+        fold = QPainterPath(QPointF(inner, plate.bottom()))
+        fold.lineTo(edge, plate.bottom())
+        fold.lineTo(edge, bottom)
+        fold.closeSubpath()
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 200))
+        painter.drawPath(fold)
+
+    # The plate, with a soft shadow, gold trim and a fine inner line.
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(0, 0, 0, 90))
+    painter.drawRect(plate.translated(3, 4))
+    fill = QLinearGradient(plate.topLeft(), plate.bottomLeft())
+    fill.setColorAt(0, QColor(78, 58, 30, 250))
+    fill.setColorAt(0.5, QColor(40, 29, 16, 250))
+    fill.setColorAt(1, QColor(16, 11, 6, 250))
+    painter.setPen(QPen(TRIM, 2))
+    painter.setBrush(fill)
+    painter.drawRect(plate)
+    painter.setPen(QPen(TRIM_DARK, 1))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRect(plate.adjusted(5, 5, -5, -5))
+    for sign in (-1, 1):
+        painter.save()
+        painter.translate(cx + sign * (w / 2 - pad * 0.5), cy)
+        painter.rotate(45)
+        painter.fillRect(QRectF(-4, -4, 8, 8), TRIM)
+        painter.restore()
+
+    # The word: gold letters with a warm glow, a dark outline and a passing shine.
+    painter.translate(cx, cy)
+    painter.scale(fit, fit)
+    path.translate(-box.center().x(), -box.center().y())
+    box = path.boundingRect()
+    for width, alpha in ((16, 26), (8, 50)):
+        pen = QPen(QColor(255, 196, 60, alpha), width)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.strokePath(path, pen)
+    outline = QPen(QColor(20, 10, 0, 235), 4)
+    outline.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.strokePath(path, outline)
+    letters = QLinearGradient(0, box.top(), 0, box.bottom())
+    for at, color in zip((0, 0.45, 1), ("#fff6c8", theme.GOLD, "#b07a10")):
+        letters.setColorAt(at, QColor(color))
+    painter.fillPath(path, letters)
+    if 0 < shine < 1:
+        band = box.height() * 0.9
+        x = box.left() - band + shine * (box.width() + 2 * band)
+        light = QLinearGradient(x, box.top(), x + band, box.top() + band * 0.5)
+        light.setColorAt(0, QColor(255, 255, 255, 0))
+        light.setColorAt(0.5, QColor(255, 255, 255, 190))
+        light.setColorAt(1, QColor(255, 255, 255, 0))
+        painter.setClipPath(path)
+        painter.fillRect(box.adjusted(-4, -4, 4, 4), light)
+    painter.restore()
+
+
 class AchievementToast(_Overlay):
     """An event as a small achievement alert: slides in from the right, moves up when older ones go, and
     fades out."""
@@ -1095,5 +1190,9 @@ class PhotoOverlay(_Overlay):
         if drop > 0:
             heading, title, _, badge, color, icon = banner_parts(shot.cue, with_time=False)
             painter.setOpacity(drop)
-            draw_banner(painter, banner.translated(0, -18 * (1 - drop)), heading, title, "", badge, color, icon)
+            if shot.cue.level is not None:     # the level-up title before it already named the level
+                draw_ribbon(painter, banner.translated(0, -18 * (1 - drop)), heading,
+                            (age - self.FLY * 0.8 - 0.3) / 0.9)
+            else:
+                draw_banner(painter, banner.translated(0, -18 * (1 - drop)), heading, title, "", badge, color, icon)
         painter.end()

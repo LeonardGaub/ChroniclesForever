@@ -730,8 +730,10 @@ class CinematicWindow(QWidget):
                 break
         if t >= self.end:
             t, self.ended = self.end, True
+            # Playing time in the range, breaks left out (as the level-up title's time since the level before).
+            played = self.route.timeline(self.start, self.end, GAP_SKIP).total
             self._show_title(tr("cine.end"), life=10**9,
-                             subtitle=f"{format_datetime(self.start)}  –  {format_datetime(self.end)}")
+                             subtitle=tr("cine.end_played", time=format_duration(played)))
             self._sync_controls()
         self.t = t
         self._crossings(before, t)
