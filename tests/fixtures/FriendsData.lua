@@ -18,7 +18,7 @@ local function add(source, text)
     end
   end
 end
-add("ffffffffffffffffffffffffffffffff-0badc0de.lua", [=[
+add("Bob_the_Friend-ffffffff-0badc0de.lua", [=[
 
 ForeverChronicleShareDB = {
 	["addonVersion"] = "dev",

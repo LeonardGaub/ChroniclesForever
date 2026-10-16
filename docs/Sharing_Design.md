@@ -23,8 +23,10 @@ files and the desktop share dialog are no longer needed.
   2. addon update: if `<repo>/addons/` holds a newer version (after a `git pull`), mirrors it into the game's
      AddOns folder (keeps
      `Friends\FriendsData.lua`); only while WoW is not running, otherwise next run;
-  3. upload: copies each account's `ForeverChronicle_Share.lua` to `<cloud>/players/<shareId>-<account>.lua`
-     when it changed (one file per person and account; nobody writes another's file);
+  3. upload: copies each account's `ForeverChronicle_Share.lua` to `<cloud>/players/<name>-<id>-<account>.lua`
+     when it changed (one file per person and account; nobody writes another's file). `<name>` is the name
+     friends see (letters and digits), `<id>` the first 8 characters of the shareId; when the name changes the
+     old file is removed. Since 2026-10-16; before that `<shareId>-<account>.lua`, still accepted from friends;
   4. download: reads all other players' files, accepts them only if they are pure data (strict literal-only
      check, size limit), and writes `Friends\FriendsData.lua` (one function per friend); visible after `/reload`;
   5. backup: once a day copies the addon's SavedVariables to a local backup folder (newest 10 kept);

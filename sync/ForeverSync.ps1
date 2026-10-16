@@ -14,7 +14,8 @@ clone of the git repository: after a git pull, the next run installs the new ver
 Each run:
   1. updates this script from <repo>\sync
   2. installs a newer addon from <repo>\addons (only while WoW is not running; keeps Friends\FriendsData.lua)
-  3. uploads this PC's ForeverChronicle_Share.lua (per WoW account) to <cloud>\players\<shareId>-<account hash>.lua
+  3. uploads this PC's ForeverChronicle_Share.lua (per WoW account) to <cloud>\players\<name>-<id>-<account hash>.lua
+     (name: the one friends see; id: the first 8 characters of the shareId); renamed when the name changes
   4. downloads all other players' files, accepts only pure data, writes ForeverChronicle_Share\Friends\FriendsData.lua
   5. daily backup of the addon's SavedVariables (newest 10 days kept)
 Settings and log: %LOCALAPPDATA%\ForeverChronicle\sync (config.json, sync.log, state.json).
@@ -41,6 +42,9 @@ $FriendsFile = 'FriendsData.lua'
 $MaxFriendBytes = 8MB
 $MaxTotalBytes = 60MB
 $ForeverFlavors = @('wow_classic_beta')
+# Player files: <name>-<id>-<account>.lua, or <shareId>-<account>.lua from scripts before 2026-10-16.
+$PlayerFileName = [regex]::new(
+  '^(?:(?<name>[\p{L}\p{N}_]{1,24})-(?<id>[0-9a-f]{8})|(?<id>[0-9a-f]{32}))-(?<account>[0-9a-f]{8})\.lua$')
 
 if (-not $DataDir) { $DataDir = Join-Path $env:LOCALAPPDATA 'ForeverChronicle\sync' }
 $ConfigPath = Join-Path $DataDir 'config.json'
@@ -225,19 +229,42 @@ function Get-ShareFiles($Config) {
   })
 }
 
+# The name friends see (the top-level "name" of a share file), reduced to letters and digits for a file name.
+function Get-PlayerName([string]$Text) {
+  $name = ''
+  if ($Text -match '(?m)^[ \t]?\["name"\]\s*=\s*"((?:[^"\\\r\n]|\\.)*)"') { $name = $matches[1] }
+  $name = (($name -replace '\\.', '') -replace '[^\p{L}\p{N}]+', '_').Trim('_')
+  if ($name.Length -gt 24) { $name = $name.Substring(0, 24).TrimEnd('_') }
+  if (-not $name) { $name = 'Spieler' }
+  return $name
+}
+
+function Test-OwnFile($Config, [string]$Name) {
+  $m = $PlayerFileName.Match($Name)
+  return $m.Success -and $Config.shareId.StartsWith($m.Groups['id'].Value)
+}
+
 function Send-Own($Config, $State) {
   $players = Join-Path $Config.cloud 'players'
   foreach ($f in Get-ShareFiles $Config) {
     $bytes = [IO.File]::ReadAllBytes($f.Path)
+    $text = [Text.Encoding]::UTF8.GetString($bytes)
     $hash = Get-Sha $bytes
     $accountId = (Get-Sha ([Text.Encoding]::UTF8.GetBytes($f.Account))).Substring(0, 8)
-    $target = Join-Path $players ('{0}-{1}.lua' -f $Config.shareId, $accountId)
+    $target = Join-Path $players ('{0}-{1}-{2}.lua' -f (Get-PlayerName $text), $Config.shareId.Substring(0, 8), $accountId)
     $key = "upload:$accountId"
     if ($State.$key -eq $hash -and (Test-Path $target)) { continue }
-    if (-not (Test-PureData ([Text.Encoding]::UTF8.GetString($bytes)))) { Write-Log "own share file is not plain data, skipped: $($f.Path)"; continue }
+    if (-not (Test-PureData $text)) { Write-Log "own share file is not plain data, skipped: $($f.Path)"; continue }
     Write-FileAtomic $target $bytes
     $State | Add-Member -Force -NotePropertyName $key -NotePropertyValue $hash
     Write-Log ("uploaded {0} ({1:N0} KB)" -f (Split-Path $target -Leaf), ($bytes.Length / 1KB))
+    # The same account under an older name (renamed in game, or the naming before 2026-10-16): removed.
+    foreach ($old in Get-ChildItem -Path $players -Filter "*-$accountId.lua" -File) {
+      if ($old.FullName -ne $target -and (Test-OwnFile $Config $old.Name)) {
+        Remove-Item -Force $old.FullName
+        Write-Log "removed old upload $($old.Name)"
+      }
+    }
   }
 }
 
@@ -255,8 +282,8 @@ function Receive-Friends($Config, $State) {
   $total = 0
   if (Test-Path $players) {
     foreach ($file in Get-ChildItem -Path $players -Filter '*.lua' -File | Sort-Object Name) {
-      if ($file.Name.StartsWith($Config.shareId)) { continue }  # my own
-      if ($file.Name -notmatch '^[0-9a-f]{32}-[0-9a-f]{8}\.lua$') { Write-Log "ignored unexpected file $($file.Name)"; continue }
+      if (-not $PlayerFileName.IsMatch($file.Name)) { Write-Log "ignored unexpected file $($file.Name)"; continue }
+      if (Test-OwnFile $Config $file.Name) { continue }
       if ($file.Length -gt $MaxFriendBytes -or $total + $file.Length -gt $MaxTotalBytes) {
         Write-Log "skipped $($file.Name): too large"; continue
       }

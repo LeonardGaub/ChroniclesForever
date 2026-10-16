@@ -13,7 +13,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 SHARE_FIXTURE = REPO / "tests" / "fixtures" / "ForeverChronicle_Share.lua"
-FRIEND_ID = "f" * 32
+FRIEND_FILE = "Bob_the_Friend-ffffffff-0badc0de.lua"
 
 pytestmark = pytest.mark.skipif(sys.platform != "win32" or not shutil.which("powershell"),
                                 reason="Windows PowerShell needed")
@@ -52,10 +52,10 @@ def world(tmp_path):
     renamed = renamed.replace('\t\t\t\t["name"] = "Blind",', '\t\t\t\t["name"] = "Thrall",', 1)
     assert renamed.count("Thrall") == 1 and 'Bob \\"the\\" Friend' in renamed
     text = renamed
-    (cloud / "players" / f"{FRIEND_ID}-0badc0de.lua").write_text(text, encoding="utf-8")
+    (cloud / "players" / FRIEND_FILE).write_text(text, encoding="utf-8")
     (cloud / "players" / f"{'e' * 32}-00000001.lua").write_text(
         'ForeverChronicleShareDB = { name = "x" } os.exit(1) ForeverChronicleFriends = nil', encoding="utf-8")
-    (cloud / "players" / f"{'d' * 32}-00000002.lua").write_text(
+    (cloud / "players" / "Mallory-dddddddd-00000002.lua").write_text(
         'ForeverChronicleShareDB = { ["name"] = ("Mallory"):rep(3) }', encoding="utf-8")
     (cloud / "players" / "readme.lua").write_text("ForeverChronicleShareDB = {}", encoding="utf-8")
     return {"repo": repo, "cloud": cloud, "client": client, "data": tmp_path / "data", "saved": saved}
@@ -94,15 +94,15 @@ def test_setup_installs_shares_and_receives(world):
     assert (addons / "ForeverChronicle" / "ForeverChronicle.toc").is_file()
     assert (addons / "ForeverChronicle_Share" / "ForeverChronicle_Share.toc").is_file()
 
-    # 2. my share file uploaded under my ID, the account number hidden behind a hash
-    mine = list((world["cloud"] / "players").glob(f"{config['shareId']}-*.lua"))
-    assert len(mine) == 1 and "123456" not in mine[0].name
+    # 2. my share file uploaded under my name and ID, the account number hidden behind a hash
+    mine = list((world["cloud"] / "players").glob(f"*-{config['shareId'][:8]}-*.lua"))
+    assert len(mine) == 1 and mine[0].name.startswith("Blind-") and "123456" not in mine[0].name
     assert mine[0].read_bytes() == (world["saved"] / "ForeverChronicle_Share.lua").read_bytes()
 
     # 3. friends: only the plain-data friend file, never my own, the malicious or the oddly named one
     friends = addons / "ForeverChronicle_Share" / "Friends" / "FriendsData.lua"
     text = friends.read_text(encoding="utf-8")
-    assert f"{FRIEND_ID}-0badc0de.lua" in text and config["shareId"] not in text
+    assert FRIEND_FILE in text and config["shareId"][:8] not in text
     assert "os.exit" not in text and "Mallory" not in text
     lua = run_lua(friends)
     assert lua["extraGlobals"] == []
@@ -132,11 +132,20 @@ def test_second_run_changes_nothing_then_updates(world):
     assert friends.stat().st_mtime_ns == stamp                         # nothing new: nothing rewritten
     assert "uploaded" not in "".join(log(world).splitlines(True)[lines:])
 
-    # The game wrote new share data: uploaded again.
+    # The game wrote new share data under a new name: uploaded under that name, my older uploads (also one named
+    # the way scripts before 2026-10-16 did) removed, a friend's file kept.
+    players = world["cloud"] / "players"
+    share_id = json.loads((world["data"] / "config.json").read_text(encoding="utf-8-sig"))["shareId"]
+    [mine] = players.glob(f"Blind-{share_id[:8]}-*.lua")
+    account = mine.stem.rsplit("-", 1)[1]
+    (players / f"{share_id}-{account}.lua").write_bytes(mine.read_bytes())
     share = world["saved"] / "ForeverChronicle_Share.lua"
-    share.write_text(share.read_text(encoding="utf-8").replace('"Blind"', '"Blindy"', 1), encoding="utf-8")
+    share.write_text(share.read_text(encoding="utf-8").replace('\n\t["name"] = "Blind",', '\n\t["name"] = "Blindy",', 1),
+                     encoding="utf-8")
     once(world)
     assert "uploaded" in "".join(log(world).splitlines(True)[lines:])
+    assert sorted(p.name for p in players.glob(f"*{account}.lua")) == [f"Blindy-{share_id[:8]}-{account}.lua"]
+    assert (players / FRIEND_FILE).is_file()
 
     # A newer addon in the repository (git pull) is installed; the friends file in the game folder is kept.
     toc = world["repo"] / "addons" / "ForeverChronicle" / "ForeverChronicle.toc"
