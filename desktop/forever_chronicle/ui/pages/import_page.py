@@ -1,11 +1,10 @@
-"""Import: client folder, found SavedVariables files, import button, map art, backups/JSONL transfer and history."""
+"""Import: client folder, found SavedVariables files, import button, backups/JSONL transfer and history."""
 
 from __future__ import annotations
 
 import re
 import sqlite3
 import time
-import zipfile
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
@@ -14,7 +13,6 @@ from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, Q
                                QPushButton, QTableWidgetItem, QVBoxLayout)
 
 from ...i18n import format_datetime, tr
-from ...wow.map_art import available_art, import_map_art
 from .. import theme
 from ..widgets import Page, muted, table, value_label
 
@@ -69,16 +67,6 @@ class ImportPage(Page):
         self.message = muted()
         fl.addWidget(self.message)
         root.addWidget(self.files_box)
-
-        self.art_box = QGroupBox()
-        al = QHBoxLayout(self.art_box)
-        self.art_label = QLabel()
-        self.art_label.setWordWrap(True)
-        self.art_button = QPushButton()
-        self.art_button.clicked.connect(self._import_art)
-        al.addWidget(self.art_label, 1)
-        al.addWidget(self.art_button)
-        root.addWidget(self.art_box)
 
         # Backups and JSONL export/import (spec F-011).
         self.backup_box = QGroupBox()
@@ -140,10 +128,6 @@ class ImportPage(Page):
         else:
             self.files_label.setText(tr("import.files_none"))
         self.run.setEnabled(bool(files))
-        self.art_box.setTitle(tr("import.maps"))
-        self.art_button.setText(tr("import.maps_button"))
-        count = len(available_art())
-        self.art_label.setText(tr("import.maps_count", n=count) if count else tr("import.maps_none"))
         self._refresh_backups()
         self._fill_history()
 
@@ -206,23 +190,6 @@ class ImportPage(Page):
             return
         if not self.ctx.set_client_dir(Path(path)):
             QMessageBox.warning(self, tr("app.title"), tr("import.invalid_dir"))
-        self.refresh()
-
-    def _import_art(self) -> None:
-        start = str(Path.home() / "Downloads")
-        path, _ = QFileDialog.getOpenFileName(self, tr("import.maps_title"), start, "ZIP (*.zip)")
-        if not path:
-            return
-        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            count = import_map_art(Path(path))
-        except (OSError, zipfile.BadZipFile) as exc:
-            count, error = 0, str(exc)
-        else:
-            error = None
-        finally:
-            QGuiApplication.restoreOverrideCursor()
-        self.message.setText(tr("import.failed", message=error) if error else tr("import.maps_done", n=count))
         self.refresh()
 
     def _export(self) -> None:

@@ -36,20 +36,11 @@ def test_package_contents(tmp_path):
     assert b"\r\n" in bat and b"\n" not in bat.replace(b"\r\n", b"")          # Windows line endings
 
 
-def test_bundled_maps_are_a_fallback(tmp_path, monkeypatch):
-    own, bundled = tmp_path / "own", tmp_path / "bundled"
-    own.mkdir()
-    bundled.mkdir()
-    (bundled / "1413.jpg").write_bytes(b"x")
-    (bundled / "1411.jpg").write_bytes(b"x")
-    (own / "1413.png").write_bytes(b"x")
-    monkeypatch.setattr(map_art, "art_dir", lambda: own)
-    monkeypatch.setattr(map_art, "bundled_dir", lambda: bundled)
-    assert map_art.find_art(1413) == own / "1413.png"           # the user's own image wins
-    assert map_art.find_art(1411) == bundled / "1411.jpg"
-    assert map_art.find_art(9999) is None
-    assert map_art.available_art() == {1411, 1413}
-    assert map_art.find_art(1411, folder=own) is None           # an explicit folder is used alone
+def test_map_images_live_in_git():
+    """The one map folder (wow/map_art.py): the client images from tools/extract_maps.py, kept in git."""
+    folder = Path(map_art.__file__).resolve().parents[1] / "maps"
+    assert folder == REPO / "desktop" / "forever_chronicle" / "maps"
+    assert (folder / "1412.jpg").is_file() and len(list(folder.glob("*.jpg"))) >= 52
 
 
 def fake_client(tmp_path) -> ClientInstall:

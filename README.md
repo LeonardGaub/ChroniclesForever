@@ -8,7 +8,7 @@ A personal adventure history for **World of Warcraft: Forever** (Blizzard's Clas
 - **Friends companion** (`addons/ForeverChronicle_Share`, private, not on CurseForge): shares characters with a
   small friend group through a cloud folder (`sync/ForeverSync.ps1`) and shows the friends' characters.
 - **Desktop app** (`desktop/`, Python 3.12 + PySide6): imports the addon's SavedVariables into SQLite and keeps
-  the full history. It shows statistics, the chronicle, the route map on your own map art, professions and recipes; screenshots appear right in the chronicle with the entry that triggered them.
+  the full history. It shows statistics, the chronicle, the route map on the game's own map images, professions and recipes; screenshots appear right in the chronicle with the entry that triggered them.
 
 German UI by default, English switchable.
 

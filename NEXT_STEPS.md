@@ -4,7 +4,7 @@ Start here. "Current state" and "Open items" are kept up to date; "History" keep
 at the time (older entries may describe things that changed later). Architecture and extension guide:
 `ARCHITECTURE.md`. Player-facing addon changes for the next upload: `CHANGELOG.md`.
 
-## Current state (2026-10-15)
+## Current state (2026-10-16)
 - Main addon `addons/ForeverChronicle` 0.15.0, not uploaded yet (last CurseForge build 0.14.1; the changes are
   collected under "Unreleased" in `CHANGELOG.md`). Companion `addons/ForeverChronicle_Share` 0.14.1, distributed
   through the git repository (friends with repo access; the sync script installs it after a `git pull`). Release
@@ -19,7 +19,7 @@ at the time (older entries may describe things that changed later). Architecture
   The desktop share feature was removed. The OneDrive folder "Journey Forever Cloud" holds only `players\`; the
   addon and the sync script come from each PC's clone of the repository (setup: `sync\Einrichten.bat` there).
 - Tests: `tests/addon` (`npm test`: queue tests and phases 1-14, writes the fixtures) first, then `desktop`
-  (`pytest`, 106 tests). All pass.
+  (`pytest`, 110 tests). All pass.
 
 ## Open items
 1. Dungeon maps: after the user's next dungeon, read `FC.db.dungeonProbe` from the saved file and decide the
@@ -29,10 +29,9 @@ at the time (older entries may describe things that changed later). Architecture
 3. Spec v1.4: the updates listed below are not written yet.
 4. The friends' package is not yet tested end to end on a clean PC (Python install and pip download).
 5. Gear: test whether `SetCustomRace` / `TryOn` work in Forever, for a dressed model of other characters.
-6. Open question for the user: real WoW icons for the desktop (wow.export from the local client, or the Wowhead
-   icon CDN).
+6. Open question for the user: real WoW icons for the desktop. `desktop/forever_chronicle/wow/casc.py` can now read them from the local
+   client (icons are BLP files by fileDataID; the addon already records icon IDs).
 7. Short in-game checks for the user: open each profession window once and look at the Berufe tab.
-
 ## Confirmed client facts
 - Install: `C:\Program Files (x86)\World of Warcraft\_classic_beta_\` (`WowB.exe`, client 1.60.1). TOC Interface 16001.
 - SavedVariables: `WTF\Account\131324136#1\SavedVariables\` plus `.lua.bak`.
@@ -40,8 +39,8 @@ at the time (older entries may describe things that changed later). Architecture
 ## Decisions made
 - WoW Forever = Blizzard Classic+ on the Mainline API with Midnight addon rules.
 - Published on CurseForge as "Journey Forever" (main addon only); the companion stays private. Internal names
-  keep "ForeverChronicle" (folders, SavedVariables, paths) so existing data survives. The user provides map
-  artwork for the desktop app (done).
+  keep "ForeverChronicle" (folders, SavedVariables, paths) so existing data survives. Map images for the desktop
+  app come from the game client (tools/extract_maps.py) and live only in `desktop/forever_chronicle/maps/`.
 - UI: German default and switchable. Classic look: Blizzard templates in game, Classic theme on desktop.
 - Modular architecture: new stats arrive as new addon modules and desktop registry entries (see ARCHITECTURE.md).
 - Screenshots: shared delay after the event (user request, default 5 s), on-screen countdown (not chat: chat would be in
@@ -61,6 +60,24 @@ at the time (older entries may describe things that changed later). Architecture
   format and `snapshots` area.
 
 ## History
+
+### Map images from the game client (2026-10-16)
+- Cause of the offset routes (Dorgar's Mulgore, 2026-10-15): the coordinates were right, the desktop art was
+  wrong. Forever reworked Mulgore, so the Classic image differs from what the game draws (lake shape, roads,
+  labels; not a shift or scale). Confirmed with the user's own character there.
+- New `tools/extract_maps.py` (with `desktop/forever_chronicle/wow/casc.py` for the local CASC storage and `tools/db2.py` for WDC5
+  tables) draws every map with art as the game does: base tiles (UiMapXMapArt -> UiMapArtTile) plus all
+  exploration overlays (WorldMapOverlay/WorldMapOverlayTile, cut like Blizzard's MapExplorationPin). The DB2
+  files have no names in the root file; their fileDataIDs are constants in the tool. Product
+  `wow_classic_beta`, build 1.60.1.70425.
+- The 60 images replaced the 52 Classic ones in `desktop/forever_chronicle/maps/`, now the only map folder (user
+  decision): the app no longer looks in `%APPDATA%\ForeverChronicle\maps`, and the Import tab's
+  "Kartenbilder importieren" (Classic zip) is gone, with the art names in `domain/maps.py`. Old copies left in
+  that AppData folder (the user's, friends') are ignored and can be deleted. Background: Claude's shell runs inside
+  the Claude app package, so its writes to AppData are redirected and never reach the user's programs. Changed against Classic: Mulgore, Stormwind,
+  Eastern Plaguelands, Redridge, Alterac (Dalaran), Undercity. New: Zephras Isle (2521), Darkspear Islands
+  (2524), 2482, 2548, 2652, 2665, and the extra continent maps 1463/1464. World and continents match Classic,
+  so `CONTINENT_ON_WORLD` stays valid. Rerun the tool after a client patch.
 
 ### Cloud folder holds player data only (2026-10-15)
 - User decision: the code lives in git, so the OneDrive cloud folder keeps only `players\`. The `addon\` and

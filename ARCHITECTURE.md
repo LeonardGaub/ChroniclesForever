@@ -131,8 +131,10 @@ shown on the smallest known zone that contains them (`Route.ZoneFor` / `Route.vi
 
 Desktop: `domain/route.py` handles projection, segments and time lookup (pure, tested).
 `domain/maps.py` holds the Classic uiMapID table: art name and German/English names.
-`wow/map_art.py` imports the user's artwork into `%APPDATA%\ForeverChronicle\maps\<uiMapID>.jpg`; the 52 zone
-images also live in git in `forever_chronicle/maps/` and are used when the user has none of their own.
+`wow/map_art.py` finds map images in one place: `forever_chronicle/maps/<uiMapID>.jpg`, kept in git and shipped
+in the friend package. They come from the game client itself: `tools/extract_maps.py` reads the local install (`desktop/forever_chronicle/wow/casc.py`, `tools/db2.py`) and draws each map
+fully explored, as the game does. Rerun it after a client patch; Forever reworked several zones (Mulgore,
+Stormwind, Eastern Plaguelands, ...), so the Classic images do not fit everywhere.
 `ui/pages/map_page.py` is the map tab. All art uses the 1002×668 world-map canvas that game coordinates are
 normalized to, which was verified against real Phase 0 coordinates.
 

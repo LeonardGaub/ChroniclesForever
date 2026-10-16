@@ -11,7 +11,7 @@ dependencies = ["PySide6>=6.6"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
-tools = ["numpy>=1.26", "soundfile>=0.12"]   # tools/generate_sounds.py
+tools = ["numpy>=1.26", "soundfile>=0.12", "pillow>=10"]   # tools/generate_sounds.py, tools/extract_maps.py
 
 [project.scripts]
 forever-chronicle = "forever_chronicle.app:main"

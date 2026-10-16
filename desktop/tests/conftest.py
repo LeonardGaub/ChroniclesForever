@@ -11,10 +11,10 @@ PROBE_SV = REPO / "probe-results" / "ForeverChronicle_Probe_SavedVariables_2026-
 
 
 @pytest.fixture(autouse=True)
-def no_bundled_maps(tmp_path, monkeypatch):
-    """Tests choose their own map art; the images bundled in git would make every map look imported."""
+def own_maps_folder(tmp_path, monkeypatch):
+    """Tests choose their own map images (tmp_path/maps); the images in git would give every map art."""
     from forever_chronicle.wow import map_art
-    monkeypatch.setattr(map_art, "bundled_dir", lambda: tmp_path / "no-bundled-maps")
+    monkeypatch.setattr(map_art, "maps_dir", lambda: tmp_path / "maps")
 
 
 @pytest.fixture

@@ -1,8 +1,7 @@
-"""Classic map table: uiMapID, artwork name, German/English names and continent.
+"""Classic map table: uiMapID, German/English names and continent.
 
 Forever uses the Classic uiMapIDs (confirmed in Phase 0: 1413 The Barrens, 1414 Kalimdor, 1454 Orgrimmar).
-The artwork names match the files in the user's map art archive ("Explored zones/<art>.jpg").
-All artwork uses the world map canvas of 1002 x 668 pixels; map coordinates are normalized to it.
+All map images (wow/map_art.py) use the world map canvas of 1002 x 668 pixels; map coordinates are normalized to it.
 """
 
 from __future__ import annotations
@@ -23,7 +22,6 @@ CONTINENT_ON_WORLD = {KALIMDOR: (-0.1808, 0.6346, 0.0681, 0.8835),
 @dataclass(frozen=True)
 class MapDef:
     map_id: int
-    art: str
     en: str
     de: str
     continent: int | None
@@ -31,62 +29,61 @@ class MapDef:
 
 _K, _E = KALIMDOR, EASTERN_KINGDOMS
 CLASSIC_MAPS = [
-    MapDef(947, "world", "Azeroth", "Azeroth", None),
-    MapDef(1414, "kalimdor", "Kalimdor", "Kalimdor", None),
-    MapDef(1415, "easternkingdoms", "Eastern Kingdoms", "Östliche Königreiche", None),
-    MapDef(1411, "durotar", "Durotar", "Durotar", _K),
-    MapDef(1412, "mulgore", "Mulgore", "Mulgore", _K),
-    MapDef(1413, "barrens", "The Barrens", "Brachland", _K),
-    MapDef(1438, "teldrassil", "Teldrassil", "Teldrassil", _K),
-    MapDef(1439, "darkshore", "Darkshore", "Dunkelküste", _K),
-    MapDef(1440, "ashenvale", "Ashenvale", "Eschental", _K),
-    MapDef(1441, "1kneedles", "Thousand Needles", "Tausend Nadeln", _K),
-    MapDef(1442, "stonetalon", "Stonetalon Mountains", "Steinkrallengebirge", _K),
-    MapDef(1443, "desolace", "Desolace", "Desolace", _K),
-    MapDef(1444, "feralas", "Feralas", "Feralas", _K),
-    MapDef(1445, "dustwallowmarsh", "Dustwallow Marsh", "Düstermarschen", _K),
-    MapDef(1446, "tanaris", "Tanaris", "Tanaris", _K),
-    MapDef(1447, "azshara", "Azshara", "Azshara", _K),
-    MapDef(1448, "felwood", "Felwood", "Teufelswald", _K),
-    MapDef(1449, "ungorocrater", "Un'Goro Crater", "Krater von Un'Goro", _K),
-    MapDef(1450, "moonglade", "Moonglade", "Mondlichtung", _K),
-    MapDef(1451, "silithus", "Silithus", "Silithus", _K),
-    MapDef(1452, "winterspring", "Winterspring", "Winterquell", _K),
-    MapDef(1454, "orgrimmar", "Orgrimmar", "Orgrimmar", _K),
-    MapDef(1456, "thunderbluff", "Thunder Bluff", "Donnerfels", _K),
-    MapDef(1457, "darnassus", "Darnassus", "Darnassus", _K),
-    MapDef(1416, "alterac", "Alterac Mountains", "Alteracgebirge", _E),
-    MapDef(1417, "arathi", "Arathi Highlands", "Arathihochland", _E),
-    MapDef(1418, "badlands", "Badlands", "Ödland", _E),
-    MapDef(1419, "blastedlands", "Blasted Lands", "Verwüstete Lande", _E),
-    MapDef(1420, "tirisfal", "Tirisfal Glades", "Tirisfal", _E),
-    MapDef(1421, "silverpine", "Silverpine Forest", "Silberwald", _E),
-    MapDef(1422, "wplaguelands", "Western Plaguelands", "Westliche Pestländer", _E),
-    MapDef(1423, "eplaguelands", "Eastern Plaguelands", "Östliche Pestländer", _E),
-    MapDef(1424, "hillsbrad", "Hillsbrad Foothills", "Vorgebirge des Hügellands", _E),
-    MapDef(1425, "hinterlands", "The Hinterlands", "Hinterland", _E),
-    MapDef(1426, "dunmorogh", "Dun Morogh", "Dun Morogh", _E),
-    MapDef(1427, "searinggorge", "Searing Gorge", "Sengende Schlucht", _E),
-    MapDef(1428, "burningsteppes", "Burning Steppes", "Brennende Steppe", _E),
-    MapDef(1429, "elwynn", "Elwynn Forest", "Wald von Elwynn", _E),
-    MapDef(1430, "deadwindpass", "Deadwind Pass", "Gebirgspass der Totenwinde", _E),
-    MapDef(1431, "duskwood", "Duskwood", "Dämmerwald", _E),
-    MapDef(1432, "lochmodan", "Loch Modan", "Loch Modan", _E),
-    MapDef(1433, "redridge", "Redridge Mountains", "Rotkammgebirge", _E),
-    MapDef(1434, "stranglethorn", "Stranglethorn Vale", "Schlingendorntal", _E),
-    MapDef(1435, "swampofsorrows", "Swamp of Sorrows", "Sümpfe des Elends", _E),
-    MapDef(1436, "westfall", "Westfall", "Westfall", _E),
-    MapDef(1437, "wetlands", "Wetlands", "Sumpfland", _E),
-    MapDef(1453, "stormwind", "Stormwind City", "Sturmwind", _E),
-    MapDef(1455, "ironforge", "Ironforge", "Eisenschmiede", _E),
-    MapDef(1458, "undercity", "Undercity", "Unterstadt", _E),
-    MapDef(1459, "alteracvalley", "Alterac Valley", "Alteractal", None),
-    MapDef(1460, "warsonggulch", "Warsong Gulch", "Kriegshymnenschlucht", None),
-    MapDef(1461, "arathibasin", "Arathi Basin", "Arathibecken", None),
+    MapDef(947, "Azeroth", "Azeroth", None),
+    MapDef(1414, "Kalimdor", "Kalimdor", None),
+    MapDef(1415, "Eastern Kingdoms", "Östliche Königreiche", None),
+    MapDef(1411, "Durotar", "Durotar", _K),
+    MapDef(1412, "Mulgore", "Mulgore", _K),
+    MapDef(1413, "The Barrens", "Brachland", _K),
+    MapDef(1438, "Teldrassil", "Teldrassil", _K),
+    MapDef(1439, "Darkshore", "Dunkelküste", _K),
+    MapDef(1440, "Ashenvale", "Eschental", _K),
+    MapDef(1441, "Thousand Needles", "Tausend Nadeln", _K),
+    MapDef(1442, "Stonetalon Mountains", "Steinkrallengebirge", _K),
+    MapDef(1443, "Desolace", "Desolace", _K),
+    MapDef(1444, "Feralas", "Feralas", _K),
+    MapDef(1445, "Dustwallow Marsh", "Düstermarschen", _K),
+    MapDef(1446, "Tanaris", "Tanaris", _K),
+    MapDef(1447, "Azshara", "Azshara", _K),
+    MapDef(1448, "Felwood", "Teufelswald", _K),
+    MapDef(1449, "Un'Goro Crater", "Krater von Un'Goro", _K),
+    MapDef(1450, "Moonglade", "Mondlichtung", _K),
+    MapDef(1451, "Silithus", "Silithus", _K),
+    MapDef(1452, "Winterspring", "Winterquell", _K),
+    MapDef(1454, "Orgrimmar", "Orgrimmar", _K),
+    MapDef(1456, "Thunder Bluff", "Donnerfels", _K),
+    MapDef(1457, "Darnassus", "Darnassus", _K),
+    MapDef(1416, "Alterac Mountains", "Alteracgebirge", _E),
+    MapDef(1417, "Arathi Highlands", "Arathihochland", _E),
+    MapDef(1418, "Badlands", "Ödland", _E),
+    MapDef(1419, "Blasted Lands", "Verwüstete Lande", _E),
+    MapDef(1420, "Tirisfal Glades", "Tirisfal", _E),
+    MapDef(1421, "Silverpine Forest", "Silberwald", _E),
+    MapDef(1422, "Western Plaguelands", "Westliche Pestländer", _E),
+    MapDef(1423, "Eastern Plaguelands", "Östliche Pestländer", _E),
+    MapDef(1424, "Hillsbrad Foothills", "Vorgebirge des Hügellands", _E),
+    MapDef(1425, "The Hinterlands", "Hinterland", _E),
+    MapDef(1426, "Dun Morogh", "Dun Morogh", _E),
+    MapDef(1427, "Searing Gorge", "Sengende Schlucht", _E),
+    MapDef(1428, "Burning Steppes", "Brennende Steppe", _E),
+    MapDef(1429, "Elwynn Forest", "Wald von Elwynn", _E),
+    MapDef(1430, "Deadwind Pass", "Gebirgspass der Totenwinde", _E),
+    MapDef(1431, "Duskwood", "Dämmerwald", _E),
+    MapDef(1432, "Loch Modan", "Loch Modan", _E),
+    MapDef(1433, "Redridge Mountains", "Rotkammgebirge", _E),
+    MapDef(1434, "Stranglethorn Vale", "Schlingendorntal", _E),
+    MapDef(1435, "Swamp of Sorrows", "Sümpfe des Elends", _E),
+    MapDef(1436, "Westfall", "Westfall", _E),
+    MapDef(1437, "Wetlands", "Sumpfland", _E),
+    MapDef(1453, "Stormwind City", "Sturmwind", _E),
+    MapDef(1455, "Ironforge", "Eisenschmiede", _E),
+    MapDef(1458, "Undercity", "Unterstadt", _E),
+    MapDef(1459, "Alterac Valley", "Alteractal", None),
+    MapDef(1460, "Warsong Gulch", "Kriegshymnenschlucht", None),
+    MapDef(1461, "Arathi Basin", "Arathibecken", None),
 ]
 
 BY_ID = {m.map_id: m for m in CLASSIC_MAPS}
-BY_ART = {m.art: m for m in CLASSIC_MAPS}
 
 
 def display_name(map_id: int | None, client_name: str | None = None) -> str:

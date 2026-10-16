@@ -1,4 +1,4 @@
-"""Map: route replay on the user's map artwork (spec F-005).
+"""Map: route replay on the game's map images (spec F-005).
 
 - Map selector (zones with route points and their continents), session filter, route/event toggles.
 - Route colours as in the addon: by level (default), by session or one colour, with a legend; flight paths blue

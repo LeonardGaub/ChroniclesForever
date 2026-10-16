@@ -1,5 +1,4 @@
 import os
-import zipfile
 
 import pytest
 
@@ -13,7 +12,7 @@ from forever_chronicle.domain.route import GAP_SECONDS, Route  # noqa: E402
 from forever_chronicle.importing.sv_importer import SavedVariablesImporter  # noqa: E402
 from forever_chronicle.storage.repository import PositionPoint, Repository  # noqa: E402
 from forever_chronicle.wow.lua_parser import parse_saved_variables  # noqa: E402
-from forever_chronicle.wow.map_art import available_art, find_art, import_map_art  # noqa: E402
+from forever_chronicle.wow.map_art import find_art  # noqa: E402
 
 
 def P(t, map_id=1413, x=0.5, y=0.5, until=None, taxi=False, instance=None):
@@ -101,23 +100,11 @@ def _jpeg_bytes(color="#335577") -> bytes:
     return bytes(buf.data())
 
 
-def test_import_map_art_takes_only_known_images(tmp_path):
-    QApplication.instance() or QApplication([])
-    archive = tmp_path / "maps.zip"
-    jpg = _jpeg_bytes()
-    with zipfile.ZipFile(archive, "w") as z:
-        z.writestr("WoW Classic Maps/Explored zones/barrens.jpg", jpg)
-        z.writestr("WoW Classic Maps/Explored zones/kalimdor.jpg", jpg)
-        z.writestr("WoW Classic Maps/Explored zones/silithus_old.jpg", jpg)        # unknown name
-        z.writestr("__MACOSX/WoW Classic Maps/Explored zones/._barrens.jpg", b"junk")
-        z.writestr("WoW Classic Maps/Explored zones/durotar.jpg", b"not an image")  # rejected
-        z.writestr("WoW Classic Maps/Sprite assets/Barrens/Barrens1.png", jpg)    # not a full map
-        z.writestr("../../evil/Explored zones/mulgore.jpg", jpg)                   # stored by map ID only
-    dest = tmp_path / "art"
-    assert import_map_art(archive, dest) == 3
-    assert available_art(dest) == {1413, 1414, 1412}
-    assert find_art(1413, dest).name == "1413.jpg"
-    assert not (tmp_path / "evil").exists()
+def test_map_images_come_from_one_folder(tmp_path):
+    (tmp_path / "maps").mkdir()
+    (tmp_path / "maps" / "1413.jpg").write_bytes(b"x")
+    assert find_art(1413) == tmp_path / "maps" / "1413.jpg"
+    assert find_art(9999) is None and find_art(None) is None
 
 
 def test_map_page_replay_and_timeline_focus(db, tmp_path, monkeypatch, addon_fixture):
