@@ -3,15 +3,19 @@
 On the map (scene items):
 - RouteItem: the route up to the current moment. Older parts are thin and dim; the last TRAIL_SECONDS grow
   brighter and wider in small steps towards the marker, the newest minutes glow. Flight paths are dashed, and
-  their dashes move along the line.
+  their dashes move along the line; corpse runs are pale and dotted.
 - MarkerItem: the player, at screen size: a disc in the class colour with a pulsing halo and an arrow in the
-  direction of travel; a flapping gryphon on flight paths and a swirling portal inside dungeons.
+  direction of travel; a flapping gryphon on flight paths and a swirling portal inside dungeons. Dead it is a
+  dim grave mark, released a floating wisp (the ghost).
 - PinsItem: a pin where each event of the replay happened, once it has happened (screenshots as small
   polaroids), and short bursts on the map at the moment something happens.
+- CinemaView: the view showing the map; while the player is dead it drains the colour like the game's spirit
+  world (grey with a cold blue light).
 
 Over the window (widgets, all transparent for the mouse):
 - CinemaFrame: a vignette and letterbox bars that slide in when the replay starts.
-- TitleCard: the large title of a level-up (and of the end): it scales in with a glow and a passing shine.
+- TitleCard: the large title of a level-up (and of the end): it scales in with a glow and a passing shine. A
+  death gets the same card in dark red.
 - AchievementToast: an event, as a small achievement alert that slides in from the right.
 - PhotoOverlay: a screenshot as a polaroid that flies out from the marker after a white flash, drifts slowly
   under an achievement banner while it is shown, and flies back to its pin.
@@ -26,7 +30,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import (QBrush, QColor, QFont, QFontMetrics, QImageReader, QLinearGradient, QPainter,
                            QPainterPath, QPen, QPixmap, QRadialGradient)
-from PySide6.QtWidgets import QGraphicsItem, QWidget
+from PySide6.QtWidgets import QGraphicsColorizeEffect, QGraphicsItem, QGraphicsView, QWidget
 
 from ..domain import maps
 from ..domain.cinematic import Cue
@@ -46,7 +50,10 @@ TRIM, TRIM_DARK, BANNER_HEADING = QColor("#c9a24a"), QColor(201, 162, 74, 90), Q
 PAPER, PAPER_EDGE, INK = QColor("#f3eee2"), QColor("#c9bea6"), QColor("#3b2a18")
 SYMBOL_FONTS = ["Segoe UI Symbol", "Segoe UI", "DejaVu Sans"]
 PIN_POP = 0.35             # seconds a new pin takes to pop up
-BURST_LIFE = {"level": 1.7, "death": 1.5, "event": 1.1}
+BURST_LIFE = {"level": 1.7, "death": 1.5, "event": 1.1, "revive": 1.8, "spirit": 1.6}
+GHOST_COLOR = QColor("#b9d3ea")   # the corpse run on the map, and the ghost
+GHOST_DOTS = (0.1, 2.2)    # dotted line of the corpse run, in pen widths
+SPIRIT_TINT = QColor(96, 116, 142)    # the spirit world's light: grey tones in this colour
 LETTERBOX = 2.2            # aspect ratio of the picture between the bars
 BARS_SECONDS = 1.2         # time the bars take to slide in
 
@@ -128,9 +135,10 @@ def cropped(pixmap: QPixmap, aspect: float, zoom: float = 1.0, drift: QPointF = 
 # -- route --------------------------------------------------------------------------------------------------
 
 class RouteItem(QGraphicsItem):
-    """The route on one map, painted up to time t; the last part up to the moving marker (head)."""
+    """The route on one map, painted up to time t; the last part up to the moving marker (head). Lines within a
+    ghost span (from the release to coming back to life) are the corpse run."""
 
-    def __init__(self, segments, colors: RouteColors):
+    def __init__(self, segments, colors: RouteColors, ghost_spans=()):
         super().__init__()
         self.segs = []
         self.has_taxi = False
@@ -141,12 +149,31 @@ class RouteItem(QGraphicsItem):
             for a, b, color in runs:
                 for i in range(a + 1, b + 1):
                     line_colors[i] = color
+            if ghost_spans and not seg.taxi:
+                ghostly = [i for i in range(1, len(times))
+                           if any(a < times[i] <= b for a, b in ghost_spans)]
+                for i in ghostly:
+                    line_colors[i] = GHOST_COLOR
+                if ghostly:
+                    runs = self._runs(line_colors)
             self.segs.append((times, [QPointF(x * W, y * H) for _, x, y in seg.points], seg.taxi, runs,
                               line_colors))
             self.has_taxi = self.has_taxi or seg.taxi
         self.t = 0.0
         self.head: QPointF | None = None
         self.phase = 0.0
+
+    @staticmethod
+    def _runs(line_colors) -> list[tuple[int, int, QColor]]:
+        """(first point, last point, colour) of the stretches whose lines share a colour."""
+        runs: list[tuple[int, int, QColor]] = []
+        for i in range(1, len(line_colors)):
+            color = line_colors[i]
+            if runs and runs[-1][1] == i - 1 and runs[-1][2] == color:
+                runs[-1] = (runs[-1][0], i, color)
+            else:
+                runs.append((i - 1, i, color))
+        return runs
 
     def boundingRect(self) -> QRectF:
         return QRectF(-10, -10, W + 20, H + 20)
@@ -170,6 +197,8 @@ class RouteItem(QGraphicsItem):
             pen.setDashPattern(list(DASH))
             period = sum(DASH)
             pen.setDashOffset(period - self.phase % period)   # a falling offset moves the dashes forward
+        elif color.rgb() == GHOST_COLOR.rgb() and width < 10:
+            pen.setDashPattern(list(GHOST_DOTS))
         return pen
 
     def painted(self) -> int:
@@ -257,7 +286,7 @@ class MarkerItem(QGraphicsItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.setZValue(10)
         self.color = QColor(theme.GOLD)
-        self.mode = "walk"           # "walk" | "taxi" | "dungeon"
+        self.mode = "walk"           # "walk" | "taxi" | "dungeon" | "dead" | "ghost"
         self.angle = 0.0             # direction of travel in degrees, as on screen (0: right, 90: down)
         self.motion = 0.0            # 0..1: how visible the arrow is (only while moving)
         self.moving = False
@@ -290,6 +319,10 @@ class MarkerItem(QGraphicsItem):
             self._portal(painter, pulse)
         elif self.mode == "taxi":
             self._gryphon(painter, pulse)
+        elif self.mode == "ghost":
+            self._ghost(painter, pulse)
+        elif self.mode == "dead":
+            self._grave(painter, pulse)
         else:
             self._walker(painter, pulse)
 
@@ -323,6 +356,47 @@ class MarkerItem(QGraphicsItem):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(255, 255, 255, 150))
         painter.drawEllipse(QPointF(-2.5, -3), 2.6, 2.6)
+
+    def _ghost(self, painter: QPainter, pulse: float) -> None:
+        """A floating wisp: a pale flame bobbing on a cold halo, its tail pointing back along the way."""
+        self._halo(painter, GHOST_COLOR, 24 + 7 * pulse, 150 - 40 * pulse)
+        painter.save()
+        painter.translate(0, -2.5 * math.sin(self.clock * 2.4))
+        painter.scale(1.35, 1.35)
+        painter.rotate(self.angle + 90)
+        flame = QPainterPath()                       # pointing down (+y) before the rotation: tail behind
+        flame.moveTo(0, -9)
+        flame.cubicTo(8, -9, 9, 2, 0, 18 + 3 * pulse)
+        flame.cubicTo(-9, 2, -8, -9, 0, -9)
+        body = QRadialGradient(QPointF(0, -2), 16)
+        body.setColorAt(0, QColor(255, 255, 255, 245))
+        body.setColorAt(0.5, with_alpha(GHOST_COLOR, 225))
+        body.setColorAt(1, with_alpha(GHOST_COLOR, 90))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(10, 20, 40, 110))              # a soft shadow keeps it visible on pale maps
+        painter.drawPath(flame.translated(1.5, 2))
+        painter.setPen(QPen(QColor(16, 28, 52, 220), 1.6))
+        painter.setBrush(body)
+        painter.drawPath(flame)
+        painter.setBrush(QColor(255, 255, 255, 230))
+        painter.drawEllipse(QPointF(0, -2.5), 3.4, 3.4)
+        painter.restore()
+
+    def _grave(self, painter: QPainter, pulse: float) -> None:
+        """The body where the player fell: a dim headstone with a faint red glow."""
+        self._halo(painter, QColor("#ff3b30"), 18 + 3 * pulse, 90)
+        stone = QPainterPath()
+        stone.moveTo(-7, 9)
+        stone.lineTo(-7, -3)
+        stone.cubicTo(-7, -12, 7, -12, 7, -3)
+        stone.lineTo(7, 9)
+        stone.closeSubpath()
+        painter.setPen(QPen(QColor(0, 0, 0, 230), 1.8))
+        painter.setBrush(QColor("#8f949a"))
+        painter.drawPath(stone)
+        painter.setPen(QPen(QColor(40, 40, 44, 220), 1.6))
+        painter.drawLine(QPointF(0, -6), QPointF(0, 4))
+        painter.drawLine(QPointF(-3.5, -2.5), QPointF(3.5, -2.5))
 
     def _gryphon(self, painter: QPainter, pulse: float) -> None:
         self._halo(painter, self.TAXI_COLOR, 26 + 4 * pulse, 170)
@@ -513,7 +587,7 @@ class PinsItem(QGraphicsItem):
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         delays = (0.0, 0.2) if b.kind != "event" else (0.0,)
-        reach = {"level": 110, "death": 70, "event": 55}[b.kind]
+        reach = {"level": 110, "death": 70, "event": 55, "revive": 90, "spirit": 60}[b.kind]
         for delay in delays:
             y = (x - delay) / (1 - delay)
             if 0 < y < 1:
@@ -529,6 +603,47 @@ class PinsItem(QGraphicsItem):
                 a = math.radians(i * 30 + x * 25)
                 d = QPointF(math.cos(a), math.sin(a))
                 painter.drawLine(p + d * r1, p + d * (r1 + 16 * fade))
+        elif b.kind in ("revive", "spirit"):
+            # Light rising from the spot: coming back to life (gold), or the ghost appearing (pale blue).
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
+            for i in range(9):
+                dx = (i - 4) * 7 + 3 * math.sin(i * 1.7)
+                rise = ease_out(clamp(x * 1.3 - (i % 3) * 0.08))
+                bottom = p + QPointF(dx, 10 - 30 * rise)
+                top = bottom - QPointF(0, 26 + 34 * rise * (1 - abs(i - 4) / 6))
+                beam = QLinearGradient(bottom, top)
+                beam.setColorAt(0, with_alpha(b.color, 0))
+                beam.setColorAt(0.5, with_alpha(b.color, 200 * fade))
+                beam.setColorAt(1, with_alpha(QColor("white"), 0))
+                pen = QPen(QBrush(beam), 3 if i % 2 else 2)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                painter.setPen(pen)
+                painter.drawLine(bottom, top)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+
+
+# -- view ---------------------------------------------------------------------------------------------------
+
+class CinemaView(QGraphicsView):
+    """The map view. grey (0..1) drains the colour from everything on it in a cold blue light, like the game's
+    spirit world while the player is dead (a colorize effect: grey tones tinted with SPIRIT_TINT; only switched
+    on while needed, since it draws the view once more)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.grey = 0.0
+        self.spirit = QGraphicsColorizeEffect(self)
+        self.spirit.setColor(SPIRIT_TINT)
+        self.spirit.setStrength(0.0)
+        self.spirit.setEnabled(False)
+        self.setGraphicsEffect(self.spirit)
+
+    def set_grey(self, grey: float) -> None:
+        grey = clamp(grey)
+        if abs(grey - self.grey) > 1e-4:
+            self.grey = grey
+            self.spirit.setStrength(grey)
+            self.spirit.setEnabled(grey > 0.001)
 
 
 # -- window overlays ----------------------------------------------------------------------------------------
@@ -595,15 +710,22 @@ class TitleCard(_Overlay):
 
     INTRO = 0.45
     SHINE = (0.35, 1.25)          # when the shine passes, in seconds of its life
+    # Colours per tone: glow, top/middle/bottom of the letters' fill, heading and its lines.
+    TONES = {
+        "gold": (QColor(255, 196, 60), ("#fff6c8", theme.GOLD, "#b07a10"), BANNER_HEADING, TRIM),
+        "death": (QColor(220, 40, 30), ("#ffd9d2", "#d8352b", "#6e0f0c"), QColor("#e8a39b"), QColor("#a8433a")),
+    }
 
     def __init__(self, parent):
         super().__init__(parent)
         self.heading = self.text = self.subtitle = ""
+        self.tone = "gold"
         self.age, self.life = 0.0, 0.0
         self.hide()
 
-    def show_text(self, text: str, life: float, heading: str = "", subtitle: str = "") -> None:
+    def show_text(self, text: str, life: float, heading: str = "", subtitle: str = "", tone: str = "gold") -> None:
         self.text, self.heading, self.subtitle = text, heading, subtitle
+        self.tone = tone if tone in self.TONES else "gold"
         self.age, self.life = 0.0, life
         self.show()
         self.raise_()
@@ -648,17 +770,17 @@ class TitleCard(_Overlay):
         painter.scale(fit, fit)
         path.translate(-box.center().x(), -box.center().y())
         box = path.boundingRect()
+        glow, letters, heading_color, trim = self.TONES[self.tone]
         for width, alpha in ((26, 22), (14, 40), (7, 70)):
-            pen = QPen(QColor(255, 196, 60, int(alpha * intro)), width)
+            pen = QPen(with_alpha(glow, alpha * intro), width)
             pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
             painter.strokePath(path, pen)
         outline = QPen(QColor(20, 10, 0, 235), 5)
         outline.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.strokePath(path, outline)
         fill = QLinearGradient(0, box.top(), 0, box.bottom())
-        fill.setColorAt(0, QColor("#fff6c8"))
-        fill.setColorAt(0.45, QColor(theme.GOLD))
-        fill.setColorAt(1, QColor("#b07a10"))
+        for at, color in zip((0, 0.45, 1), letters):
+            fill.setColorAt(at, QColor(color))
         painter.fillPath(path, fill)
         shine = (self.age - self.SHINE[0]) / (self.SHINE[1] - self.SHINE[0])
         if 0 < shine < 1:
@@ -682,20 +804,20 @@ class TitleCard(_Overlay):
             tw = QFontMetrics(hf).horizontalAdvance(text)
             y = top - h * 0.1
             painter.setFont(hf)
-            painter.setPen(BANNER_HEADING)
+            painter.setPen(heading_color)
             painter.drawText(QRectF(-tw / 2 - 10, y - h * 0.06, tw + 20, h * 0.12), Qt.AlignmentFlag.AlignCenter,
                              text)
             reach = max(half, tw / 2 + 40) + 70 * intro
             for sign in (-1, 1):
                 x0, x1 = sign * (tw / 2 + 18), sign * reach
                 line = QLinearGradient(x0, 0, x1, 0)
-                line.setColorAt(0, TRIM)
-                line.setColorAt(1, QColor(201, 162, 74, 0))
+                line.setColorAt(0, trim)
+                line.setColorAt(1, with_alpha(trim, 0))
                 painter.fillRect(QRectF(min(x0, x1), y - 0.75, abs(x1 - x0), 1.5), line)
                 painter.save()
                 painter.translate(x0, y)
                 painter.rotate(45)
-                painter.fillRect(QRectF(-3, -3, 6, 6), TRIM)
+                painter.fillRect(QRectF(-3, -3, 6, 6), trim)
                 painter.restore()
         if self.subtitle:
             sf = pixel_font(h * 0.08)

@@ -5,53 +5,77 @@
   the map page's choice (by level, by session, one colour), as in the addon (domain/route_colors.py).
 - The marker shows the player in the class colour with an arrow in the direction of travel, a gryphon on flight
   paths and a portal inside dungeons. Each event leaves a pin on the map; screenshots leave a small polaroid.
-- The camera follows the player at a fixed zoom; on a zone change the new map fades in from black. A trip to
+- The camera follows the player calmly and zooms a little on its own: out on flight paths and fast stretches, in
+  when a moment is close or the player stands still. On a zone change the new map fades in from black. A trip to
   the other continent (boat, zeppelin) is shown on the world map: the camera pulls back from the old zone, the
   player crosses the sea on a dashed arc, and the camera dives into the new zone.
   A vignette and letterbox bars frame the picture; the top bar names the character, the zone and the moment.
 - Events slide in as achievement alerts and flash a burst on the map; level-ups get a large title. At each
   screenshot the replay pauses: the picture flies out from the marker as a polaroid under an achievement
   banner (domain/cinematic.py decides which moments). The visual pieces are in ui/cinematic_fx.py.
+- Deaths: the replay slows down before one and holds a moment on a dark red title while the world turns grey
+  (the game's spirit world). The body is a headstone; after the release the ghost is a pale wisp and the corpse
+  run a pale dotted line. Back at the body the colour returns with rising light.
 - Breaks without route points (logouts, long pauses) are skipped. The replay slows down shortly before each
-  screenshot and gets back to speed afterwards.
-- Controls (play/pause, speeds, a timeline with marks for events and screenshots) appear while the mouse moves
-  and fade out after a moment without movement; the mouse pointer hides with them.
+  screenshot and gets back to speed afterwards. Standstills (AFK, waiting) play normally, much faster or are
+  skipped (option; the moments inside them are still shown).
+- Music: the zone's music from the game (wow/zone_music.py), changing with the zone after a moment there, or
+  the music chosen in the settings (option "cine_music").
+- Controls (play/pause, speeds, standstills, music, video export, a timeline with marks for events and
+  screenshots) appear while the mouse moves and fade out after a moment without movement; the mouse pointer
+  hides with them.
 - Keys: Space pause/continue (at the end: start again), 1-4 speed, Right: next moment, Left: 5 minutes back,
-  M: music on/off, Esc: close.
+  S: standstills, M: music on/off, Esc: close.
 - Sound (ui/sound.py): music fades in with the window and out when it closes; level-ups play a fanfare (the music
   ducks under it), screenshots a shutter, alerts a chime and deaths a bell.
+- The video export (ui/cinematic_export.py) runs the same window off screen, frame by frame.
 """
 
 from __future__ import annotations
 
 import bisect
 import math
+import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from PySide6.QtCore import QElapsedTimer, QEvent, QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QGraphicsOpacityEffect, QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsScene,
-                               QGraphicsView, QHBoxLayout, QLabel,
-                               QPushButton, QToolTip, QWidget)
+                               QGraphicsView, QHBoxLayout, QLabel, QPushButton, QToolTip, QWidget)
 
 from ..domain import maps
-from ..domain.cinematic import Cue, Levels, build_cues, CUE_EVENT_TYPES
+from ..domain.cinematic import Cue, Death, Levels, build_cues, CUE_EVENT_TYPES, death_spans, still_spans
 from ..domain.route import Route, Timeline
 from ..domain.route_colors import RouteColors, zone_colors
 from ..i18n import format_datetime, format_duration, tr
+from ..wow import zone_music
 from ..wow.map_art import find_art
 from . import icons, theme
-from .cinematic_fx import (FADE_SECONDS, AchievementToast, CinemaFrame, MarkerItem, PhotoOverlay, Pin, PinsItem,
-                           RouteItem, TitleCard, clamp, ease_in_out,
-                           load_thumbnail)
+from .cinematic_fx import (FADE_SECONDS, GHOST_COLOR, AchievementToast, CinemaFrame, CinemaView, MarkerItem,
+                           PhotoOverlay, Pin, PinsItem, RouteItem, TitleCard, clamp, ease_in_out, load_thumbnail)
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
 TICK_MS = 33
 BASE_SPEED = 60            # game seconds per real second at 1x (as on the map page)
 SPEEDS = (1, 2, 4, 10)
 ZOOM = 2.4                 # camera zoom relative to the whole map
-CAMERA_EASE = 0.12         # share of the way the camera moves towards the marker per tick
+FOLLOW_SECONDS = 0.45      # time constant of the camera following the marker
+KEEP_INSIDE = 0.3          # the marker stays within this share of the picture's width/height from its centre
+ZOOM_OUT_TAXI = 0.86       # dynamic zoom (share of ZOOM): on flight paths ...
+ZOOM_OUT_FAST = 0.9        # ... at most this far out while the marker races across the picture ...
+ZOOM_IN_CLOSE = 1.07       # ... and a little in when a moment is close, or while standing still or dead
+ZOOM_SECONDS = 2.6         # time constant of zoom changes: slow, so the picture stays calm
+FAST_FROM, FAST_TO = 0.12, 0.45   # marker speed (picture widths per second) where zooming out begins / is full
+CLOSE_SECONDS = 2.5        # real seconds before a moment in which the camera moves in
 GAP_SKIP = 30              # breaks without points longer than this are skipped
+STILL_MODES = ("normal", "fast", "skip")
+STILL_FASTER = 8           # standstills run this many times faster in "fast" mode
+STILL_NOTE = 2.4           # seconds a skipped standstill is named
+DEATH_SECONDS = 3.2        # the death title
+DEATH_HOLD = 1.4           # real seconds the replay holds at a death
+GREY_IN, GREY_OUT = 0.9, 1.6   # seconds for the colour to drain at a death and to return on coming back
+MUSIC_SETTLE = 2.5         # real seconds in a zone before its music starts (passing through changes nothing)
 TOAST_SECONDS = 4.0
 LEVEL_SECONDS = 3.6
 LEVEL_HOLD = 2.8           # a screenshot right after a level-up waits this long into the level-up title
@@ -267,25 +291,39 @@ def _faded(widget: QWidget) -> QGraphicsOpacityEffect:
 
 
 class CinematicWindow(QWidget):
-    def __init__(self, ctx, character_id: str, start: int, end: int, speed: int = 4, colors: str = "level"):
+    def __init__(self, ctx, character_id: str, start: int, end: int, speed: int = 4, colors: str = "level",
+                 sound=None, exporting: bool = False, still: str | None = None):
+        """sound: what plays the music and effects (default ctx.sound; the video export passes its recorder).
+        exporting: driven frame by frame off screen, without controls or a timer of its own.
+        still: how standstills play (STILL_MODES; default: the choice kept in the settings)."""
         super().__init__(None, Qt.WindowType.Window)
         self.setWindowTitle(tr("cine.title"))
         self.setStyleSheet(f"background: black; color: {theme.TEXT};")
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.ctx = ctx
+        self.character_id = character_id
+        self.exporting = exporting
         repo = ctx.repo
-        self.sound = ctx.sound
+        self.sound = sound or ctx.sound
         self.route = Route(repo.positions(character_id), repo.map_infos(), repo.instance_names(), repo.entrances())
         # Quests are no cues, but a quest screenshot names its quest.
         events = repo.events(character_id, types=CUE_EVENT_TYPES + ("quest_completed",), limit=1_000_000)
         self.cues: list[Cue] = build_cues(events, repo.screenshots(character_id, only_files=True), start, end)
         self.cue_times = [c.time for c in self.cues]
+        self.deaths: list[Death] = [d for d in death_spans(events, self.route) if d.revived >= start and d.time <= end]
+        self.ghost_spans = [(d.released, d.revived) for d in self.deaths if d.released is not None]
         char = next((c for c in repo.list_characters() if c.character_id == character_id), None)
         self.char_name = char.name if char else ""
         self.char_color = theme.class_color(char.class_file if char else None)
         self.levels = Levels(events, char.level if char else None)
+        self.color_mode = colors
         self.colors = RouteColors(colors, self.levels, [s["started_at"] for s in repo.sessions(character_id)])
         self.start, self.end = start, max(end, start + 1)
         self.speed = speed if speed in SPEEDS else 4
+        self.still_spans = still_spans(self.route, self.start, self.end)
+        self.still_starts = [a for a, _ in self.still_spans]
+        mode = still or ctx.config.extra.get("cine_still")
+        self.still_mode = mode if mode in STILL_MODES else "fast"
         self.t = float(self.route.next_time_after(start - 1) or start)
         self.cue_index = bisect.bisect_left(self.cue_times, self.t)
         self.paused = False
@@ -295,11 +333,31 @@ class CinematicWindow(QWidget):
         self.pins: PinsItem | None = None
         self.camera: QPointF | None = None
         self.last_head: QPointF | None = None
+        self.zoom = 1.0                     # dynamic zoom, a share of ZOOM
+        self.screen_speed = 0.0             # how fast the marker crosses the picture (widths per second, smoothed)
+        self.frame_dt = 0.0                 # real time of the current step (camera smoothing)
+        self.hold = 0.0                     # real seconds the replay waits (at a death)
         self._art: dict[int, QPixmap] = {}
         self._soft: dict[int, QPixmap | None] = {}
         self._thumbs: dict[str, QPixmap | None] = {}
 
-        self.view = QGraphicsView(self)
+        # Zone music: the files of every place in the range come out of the game in the background (the export
+        # takes them first); until a zone's files are there, the music playing goes on.
+        self.zone_music = ctx.config.extra.get("cine_music", "zone") == "zone"
+        self.music_now: tuple[Path, ...] | None = None
+        self.music_next: tuple[Path, ...] | None = None
+        self.music_wait = 0.0
+        music_files = zone_music.all_file_ids(
+            (r.map_id if r.map_id is not None else self.route.view_for(self.route.point_at(int(r.start))),
+             r.instance_id) for r in self.route.zone_runs(self.start, self.end)) if self.zone_music else []
+        if zone_music.missing(music_files) and ctx.client():
+            if exporting:
+                zone_music.extract_missing(ctx.client(), music_files)
+            else:
+                threading.Thread(target=zone_music.extract_missing, args=(ctx.client(), music_files),
+                                 daemon=True).start()
+
+        self.view = CinemaView(self)
         self.view.setScene(QGraphicsScene(self.view))
         self.view.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -339,6 +397,15 @@ class CinematicWindow(QWidget):
 
         self.toasts: list[AchievementToast] = []
         self.title = TitleCard(self)
+        # Under the top bar: "fast-forward" while a standstill runs faster, or the standstill just skipped.
+        self.still_label = QLabel(self)
+        self.still_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.still_label.setStyleSheet(
+            f"background: rgba(0,0,0,150); color: {theme.MUTED}; border: 1px solid rgba(201,162,74,90);"
+            f"border-radius: 3px; padding: 3px 10px; font-family: {fonts}; font-size: 11pt;")
+        self.still_effect = _faded(self.still_label)
+        self.still_note = 0.0               # seconds left showing a skipped standstill
+        self.still_label.hide()
         self.photo = PhotoOverlay(self, PHOTO_SECONDS)
         self.photo_on = False
         self.pending_photo: Cue | None = None
@@ -379,11 +446,18 @@ class CinematicWindow(QWidget):
             button.clicked.connect(lambda _=False, s=speed: self.set_speed(s))
             row.addWidget(button)
             self.speed_buttons.append((speed, button))
+        self.still_button = QPushButton()
+        self.still_button.clicked.connect(self.cycle_still)
+        row.addWidget(self.still_button)
         self.music_button = QPushButton("♪")
         self.music_button.setCheckable(True)
         self.music_button.setFixedWidth(40)
         self.music_button.clicked.connect(self.toggle_music)
         row.addWidget(self.music_button)
+        self.export_button = QPushButton(tr("cine.export"))
+        self.export_button.setToolTip(tr("cine.export_tip"))
+        self.export_button.clicked.connect(self.export_video)
+        row.addWidget(self.export_button)
         row.addSpacing(10)
         self.bar = TimelineBar(self._seek_from_bar, self._zone_name)
         self.bar.set_data(self.route.timeline(self.start, self.end, GAP_SKIP), self.cues,
@@ -396,7 +470,8 @@ class CinematicWindow(QWidget):
         self.keys_label.setToolTip(tr("cine.keys_tip"))
         self.keys_label.setMaximumWidth(220)
         row.addWidget(self.keys_label)
-        for widget in [self.play_button, self.music_button] + [b for _, b in self.speed_buttons]:
+        for widget in [self.play_button, self.still_button, self.music_button, self.export_button] + [
+                b for _, b in self.speed_buttons]:
             widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)   # Space stays with the window
         self.controls_effect = _faded(self.controls)
         self.controls_idle = CONTROLS_IDLE + FADE_SECONDS   # hidden until the mouse moves
@@ -412,9 +487,11 @@ class CinematicWindow(QWidget):
         super().showEvent(event)
         self._layout()
         self._apply_zoom()
-        if not self.timer.isActive():
-            self.start_playback()
-            self.sound.music.start()
+        if not self.timer.isActive() and not self.clock.isValid():
+            if not self.exporting:
+                self.start_playback()
+            self.music_now = self._wanted_music()
+            self.sound.music.start(tracks=list(self.music_now) if self.music_now else None)
 
     def closeEvent(self, event) -> None:
         self.timer.stop()
@@ -434,6 +511,12 @@ class CinematicWindow(QWidget):
         self.controls.setGeometry(0, r.height() - CONTROLS_HEIGHT, r.width(), CONTROLS_HEIGHT)
         self._layout_bars()
         self._layout_toasts()
+        self._layout_still()
+
+    def _layout_still(self) -> None:
+        self.still_label.adjustSize()
+        self.still_label.move((self.width() - self.still_label.width()) // 2,
+                              CinemaFrame.target_bar(self.width(), self.height()) + 14)
 
     def _layout_bars(self) -> None:
         """The top bar's texts, fading in with the bar. They stay inside the window: a child reaching past its
@@ -476,6 +559,8 @@ class CinematicWindow(QWidget):
             self.set_speed(SPEEDS[key - Qt.Key.Key_1])
         elif key == Qt.Key.Key_M:
             self.toggle_music()
+        elif key == Qt.Key.Key_S:
+            self.cycle_still()
         elif key == Qt.Key.Key_Right:
             if self.cue_index < len(self.cues):
                 self.seek(self.cues[self.cue_index].time - 1)
@@ -489,6 +574,9 @@ class CinematicWindow(QWidget):
         self.cue_index = bisect.bisect_left(self.cue_times, self.t)
         self.ended = False
         self.ramp = RAMP_SECONDS
+        self.hold = 0.0
+        self.view.set_grey(1.0 if self._death_at(self.t) else 0.0)
+        self.still_note = 0.0
         self.title.hide()
         self._hide_photo()
         self.pending_photo = None
@@ -500,6 +588,7 @@ class CinematicWindow(QWidget):
         if self.pins:
             self.pins.clear_bursts()
         self._render(jump=True)
+        self._update_music(0.0, now=True)
 
     def _seek_from_bar(self, t: float) -> None:
         self.wake_controls()
@@ -523,12 +612,30 @@ class CinematicWindow(QWidget):
         config.music = not config.music
         config.save()
         if config.music:
-            self.sound.music.start()
+            self.music_now = self._wanted_music()
+            self.sound.music.start(tracks=list(self.music_now) if self.music_now else None)
         else:
             self.sound.music.stop()
         self._sync_controls()
 
+    def cycle_still(self) -> None:
+        """Standstills: normal, faster, skipped; the choice is kept in the settings."""
+        self.still_mode = STILL_MODES[(STILL_MODES.index(self.still_mode) + 1) % len(STILL_MODES)]
+        self.ctx.config.extra["cine_still"] = self.still_mode
+        self.ctx.config.save()
+        self._sync_controls()
+
+    def export_video(self) -> None:
+        """Pauses and offers to save the replay as a video (ui/cinematic_export.py)."""
+        from .cinematic_export import ExportDialog
+        if not self.ended:
+            self.paused = True
+        self._sync_controls()
+        ExportDialog(self, self.ctx, self.character_id, self.start, self.end, self.speed, self.color_mode).exec()
+
     def _sync_controls(self) -> None:
+        self.still_button.setText(tr(f"cine.still.{self.still_mode}"))
+        self.still_button.setToolTip(tr("cine.still_tip"))
         self.music_button.setChecked(self.sound.config.music)
         self.music_button.setToolTip(tr("cine.music_off") if self.sound.config.music else tr("cine.music_on"))
         playing = not self.paused and not self.ended
@@ -577,8 +684,11 @@ class CinematicWindow(QWidget):
 
     def advance(self, dt: float) -> None:
         """One step of real time dt (seconds): animations and overlays, then the replay unless a picture is
-        shown."""
+        shown or the replay holds (at a death)."""
+        self.frame_dt = dt
         self._age_overlays(dt)
+        self._update_grey(dt)
+        self._update_music(dt)
         if self.photo_on:
             if not self.photo.advance(dt):
                 self._hide_photo()
@@ -591,11 +701,17 @@ class CinematicWindow(QWidget):
         if self.voyage is not None:
             self._travel(dt)
             return
+        if self.hold > 0:
+            self.hold = max(0.0, self.hold - dt)
+            self._render()                  # the camera settles meanwhile
+            return
         if self.paused or self.ended:
             return
         self.ramp += dt
+        before = self.t
         t = self.t + self.speed * BASE_SPEED * dt * self.pace()
         t = self._skip_gap(t)
+        t = self._skip_still(t)
         while self.cue_index < len(self.cues) and self.cues[self.cue_index].time <= t:
             cue = self.cues[self.cue_index]
             self.cue_index += 1
@@ -609,24 +725,123 @@ class CinematicWindow(QWidget):
                     self._show_photo(cue)
                 break
             self._show_cue(cue)
+            if cue.event_type == "player_died":
+                t = max(self.t, cue.time)  # hold right there
+                break
         if t >= self.end:
             t, self.ended = self.end, True
             self._show_title(tr("cine.end"), life=10**9,
                              subtitle=f"{format_datetime(self.start)}  –  {format_datetime(self.end)}")
             self._sync_controls()
         self.t = t
+        self._crossings(before, t)
         self._render()
 
     def pace(self) -> float:
-        """Share of the chosen speed: slower shortly before a screenshot, back to full speed after one."""
+        """Share of the chosen speed: slower shortly before a screenshot or a death, back to full speed after
+        one; much faster through a standstill ("fast" mode)."""
         factor = min(1.0, SLOW_MIN + (1 - SLOW_MIN) * self.ramp / RAMP_SECONDS)
-        upcoming = next((c for c in self.cues[self.cue_index:] if c.kind == "screenshot"), None)
+        if self.still_mode == "fast" and self._still_at(self.t) is not None:
+            factor *= STILL_FASTER
+        upcoming = next((c for c in self.cues[self.cue_index:]
+                         if c.kind == "screenshot" or c.event_type == "player_died"), None)
         if upcoming is not None:
             window = self.speed * BASE_SPEED * SLOW_SECONDS   # game time covered in SLOW_SECONDS at full speed
             distance = upcoming.time - self.t
             if distance < window:
                 factor = min(factor, SLOW_MIN + (1 - SLOW_MIN) * max(0.0, distance) / window)
         return factor
+
+    # -- standstills -------------------------------------------------------------------------
+
+    def _still_at(self, t: float) -> tuple[float, float] | None:
+        i = bisect.bisect_right(self.still_starts, t) - 1
+        if i >= 0 and t < self.still_spans[i][1]:
+            return self.still_spans[i]
+        return None
+
+    def _skip_still(self, t: float) -> float:
+        """In "skip" mode a standstill is jumped over, up to its end or the next moment inside it."""
+        if self.still_mode != "skip":
+            return t
+        span = self._still_at(t)
+        if span is None:
+            return t
+        target = span[1]
+        if self.cue_index < len(self.cues):
+            target = min(target, max(t, self.cues[self.cue_index].time - 1))
+        if target > t:
+            self.still_note = STILL_NOTE
+            self.still_label.setText(tr("cine.still_skipped", time=format_duration(int(span[1] - span[0]))))
+            self._layout_still()
+        return max(t, target)
+
+    def _update_still(self, dt: float) -> None:
+        """The note under the top bar: fast-forward through a standstill, or the standstill just skipped."""
+        self.still_note = max(0.0, self.still_note - dt)
+        span = self._still_at(self.t) if self.still_mode == "fast" and not self.ended else None
+        show = self.still_note > 0 or span is not None
+        if span is not None and self.still_note <= 0:
+            text = tr("cine.still_fast", factor=STILL_FASTER, time=format_duration(int(span[1] - span[0])))
+            if text != self.still_label.text():
+                self.still_label.setText(text)
+                self._layout_still()
+        opacity = self.still_effect.opacity()
+        opacity = min(1.0, opacity + dt / FADE_SECONDS) if show else max(0.0, opacity - dt / FADE_SECONDS)
+        self.still_effect.setOpacity(opacity)
+        self.still_label.setVisible(opacity > 0)
+
+    # -- deaths ------------------------------------------------------------------------------
+
+    def _death_at(self, t: float) -> Death | None:
+        return next((d for d in self.deaths if d.dead(t)), None)
+
+    def _crossings(self, before: float, t: float) -> None:
+        """Light where the ghost appears at the graveyard, and where the player comes back to life."""
+        if not self.pins or not self.marker.isVisible():
+            return
+        for d in self.deaths:
+            if d.released is not None and before < d.released <= t:
+                self.pins.burst(self.marker.pos(), GHOST_COLOR, "spirit")
+            if before < d.revived <= t:
+                self.pins.burst(self.marker.pos(), QColor(theme.GOLD), "revive")
+                self.sound.play("event")
+
+    def _update_grey(self, dt: float) -> None:
+        dead = self._death_at(self.t) is not None
+        grey = self.view.grey
+        grey = min(1.0, grey + dt / GREY_IN) if dead else max(0.0, grey - dt / GREY_OUT)
+        self.view.set_grey(grey)
+
+    # -- music -------------------------------------------------------------------------------
+
+    def _wanted_music(self) -> tuple[Path, ...] | None:
+        """The zone's music at the current moment (None: the music chosen in the settings). Where a place has
+        none of its own, or its files are not there yet, the music playing goes on."""
+        if not self.zone_music:
+            return None
+        point = self.route.point_at(int(self.t))
+        if point is None:
+            return self.music_now
+        files = zone_music.file_ids(self.route.view_for(point), point.instance_id, self.t)
+        found = tuple(zone_music.paths(files))
+        return found or self.music_now
+
+    def _update_music(self, dt: float, now: bool = False) -> None:
+        """Changes to the zone's music once the replay has been there for MUSIC_SETTLE seconds (at once after a
+        jump), so passing through a zone changes nothing."""
+        if not self.zone_music or not self.sound.music.active:
+            return
+        wanted = self._wanted_music()
+        if wanted == self.music_now:
+            self.music_next, self.music_wait = None, 0.0
+            return
+        if wanted != self.music_next:
+            self.music_next, self.music_wait = wanted, 0.0
+        self.music_wait += dt
+        if now or self.music_wait >= MUSIC_SETTLE:
+            self.music_now, self.music_next = wanted, None
+            self.sound.music.play(list(wanted) if wanted else None)
 
     def _skip_gap(self, t: float) -> float:
         """Time without points (logout, a long break) is skipped."""
@@ -657,23 +872,70 @@ class CinematicWindow(QWidget):
             self.route_item.set_time(self.t, head if point.instance_id is None else None)
         if self.pins:
             self.pins.set_time(self.t, animate=not jump)
-        self.marker.set_mode("dungeon" if point.instance_id is not None else "taxi" if point.taxi else "walk")
+        death = self._death_at(self.t)
+        self.marker.set_mode("dungeon" if point.instance_id is not None else "taxi" if point.taxi
+                             else ("ghost" if death.ghost(self.t) else "dead") if death else "walk")
         if head is not None:
+            moved = 0.0
             if self.last_head is not None and not jump:
                 self.marker.aim(head.x() - self.last_head.x(), head.y() - self.last_head.y())
+                moved = math.hypot(head.x() - self.last_head.x(), head.y() - self.last_head.y())
             self.last_head = head
             self.marker.setPos(head)
             self.marker.show()
-            self.camera = head if self.camera is None else QPointF(
-                self.camera.x() + (head.x() - self.camera.x()) * CAMERA_EASE,
-                self.camera.y() + (head.y() - self.camera.y()) * CAMERA_EASE)
-            self.view.centerOn(self.camera)
+            self._follow(head, moved, point.taxi, death is not None, jump)
         else:
             self.last_head = None
             self.marker.hide()
         self._set_caption(zone, self.route.instance_name(point))
         self.bar.set_value(self.bar.timeline.to_value(self.t))
         self.clock_label.setText(format_datetime(int(self.t)))
+
+    # -- camera ------------------------------------------------------------------------------
+
+    def _scale(self) -> float:
+        """View scale (screen pixels per map pixel) at the current zoom."""
+        vw, vh = self.view.viewport().width(), self.view.viewport().height()
+        return min(vw / W, vh / H) * ZOOM * self.zoom
+
+    def _follow(self, head: QPointF, moved: float, taxi: bool, dead: bool, jump: bool) -> None:
+        """Moves the camera calmly after the marker, keeping it near the middle, and lets the zoom drift towards
+        what is happening: out on flight paths and fast stretches, in when a moment is close or the player
+        stands still or lies dead. Both change slowly (time constants), so the picture stays calm."""
+        dt = self.frame_dt
+        scale = self._scale()
+        if dt > 0 and not jump:
+            width = max(1, self.view.viewport().width())
+            speed = moved * scale / width / dt            # picture widths per second
+            self.screen_speed += (speed - self.screen_speed) * (1 - math.exp(-dt / 1.0))
+        if taxi:
+            target = ZOOM_OUT_TAXI
+        elif self.screen_speed > FAST_FROM:
+            target = 1 - (1 - ZOOM_OUT_FAST) * clamp((self.screen_speed - FAST_FROM) / (FAST_TO - FAST_FROM))
+        elif dead or self._still_at(self.t) is not None or self._moment_close():
+            target = ZOOM_IN_CLOSE
+        else:
+            target = 1.0
+        if jump or self.camera is None:
+            self.camera = QPointF(head)
+        else:
+            self.zoom += (target - self.zoom) * (1 - math.exp(-dt / ZOOM_SECONDS))
+            follow = 1 - math.exp(-dt / FOLLOW_SECONDS)
+            self.camera = QPointF(self.camera.x() + (head.x() - self.camera.x()) * follow,
+                                  self.camera.y() + (head.y() - self.camera.y()) * follow)
+            # Never let the marker drift out of the middle of the picture.
+            scale = self._scale()
+            area = self.picture_area()
+            max_dx, max_dy = KEEP_INSIDE * area.width() / scale, KEEP_INSIDE * area.height() / scale
+            self.camera = QPointF(min(max(self.camera.x(), head.x() - max_dx), head.x() + max_dx),
+                                  min(max(self.camera.y(), head.y() - max_dy), head.y() + max_dy))
+        self._apply_zoom()
+
+    def _moment_close(self) -> bool:
+        """True when the next moment comes within CLOSE_SECONDS of real time at the current pace."""
+        if self.cue_index >= len(self.cues):
+            return False
+        return self.cues[self.cue_index].time - self.t < self.speed * BASE_SPEED * CLOSE_SECONDS
 
     def _switch_map(self, view: int, fade: str | None = "black") -> None:
         """Shows another map. fade: "black" (from black), "cross" (over the old picture) or None."""
@@ -690,7 +952,7 @@ class CinematicWindow(QWidget):
             scene.addPixmap(pixmap)
         else:
             scene.addRect(QRectF(0, 0, W, H), QPen(QColor(theme.BORDER)), QBrush(QColor(theme.PANEL)))
-        self.route_item = RouteItem(self.route.segments(view, self.start, self.end), self.colors)
+        self.route_item = RouteItem(self.route.segments(view, self.start, self.end), self.colors, self.ghost_spans)
         scene.addItem(self.route_item)
         self.pins = PinsItem(self._pins_for(view))
         scene.addItem(self.pins)
@@ -729,7 +991,7 @@ class CinematicWindow(QWidget):
 
     def _zone_camera(self, head: QPointF) -> QPointF:
         """Where a zone view centred on head really centres: the view stops at the map's edges."""
-        scale = min(self.view.viewport().width() / W, self.view.viewport().height() / H) * ZOOM
+        scale = self._scale()
         half_w, half_h = self.view.viewport().width() / scale / 2, self.view.viewport().height() / scale / 2
         x = min(max(head.x(), half_w), W - half_w) if W > 2 * half_w else W / 2
         y = min(max(head.y(), half_h), H - half_h) if H > 2 * half_h else H / 2
@@ -762,7 +1024,7 @@ class CinematicWindow(QWidget):
         new_head = QPointF(new_xy[0] * W, new_xy[1] * H)
         world = QRectF(0, 0, W, H)
         area = self.picture_area()
-        base = min(viewport.width() / W, viewport.height() / H) * ZOOM
+        base = self._scale()
         start, end = base * W / a.width(), base * W / b.width()
         over = min(area.width() / (world.width() * 0.96), area.height() / (world.height() * 0.96), start, end)
 
@@ -779,7 +1041,7 @@ class CinematicWindow(QWidget):
             zone, zone_rect = (old, a) if continent == ca else (new, b)
             if zone != continent:
                 details.append((self._placed_art(zone, zone_rect, 1), rect.width() / W))
-            route = RouteItem(self.route.segments(continent, self.start, self.end), self.colors)
+            route = RouteItem(self.route.segments(continent, self.start, self.end), self.colors, self.ghost_spans)
             pins = PinsItem(self._pins_for(continent))
             for item in (route, pins):
                 item.setPos(rect.topLeft())
@@ -906,9 +1168,9 @@ class CinematicWindow(QWidget):
 
     def _apply_zoom(self) -> None:
         vw, vh = self.view.viewport().width(), self.view.viewport().height()
-        if vw <= 0 or vh <= 0:
+        if vw <= 0 or vh <= 0 or self.voyage is not None:
             return
-        scale = min(vw / W, vh / H) * ZOOM
+        scale = self._scale()
         self.view.resetTransform()
         self.view.scale(scale, scale)
         if self.camera is not None:
@@ -952,7 +1214,16 @@ class CinematicWindow(QWidget):
             if self.sound.play("level_up"):
                 self.sound.music.duck(LEVEL_DUCK)
             return
-        self.sound.play("death" if cue.event_type == "player_died" else "event")
+        if cue.event_type == "player_died":
+            # A moment of silence: the replay holds on a dark red title while the colour drains away.
+            self._show_title(self.char_name or tr("cine.banner.player_died"), DEATH_SECONDS,
+                             heading=tr("cine.banner.player_died"), subtitle=cue.place, tone="death")
+            self.hold = DEATH_HOLD
+            self.ramp = 0.0
+            if self.sound.play("death"):
+                self.sound.music.duck(DEATH_HOLD + 1.5)
+            return
+        self.sound.play("event")
         if cue.has_screenshot:
             return                          # its picture follows, under a banner that says the same
         toast = AchievementToast(self, cue, TOAST_SECONDS)
@@ -975,11 +1246,11 @@ class CinematicWindow(QWidget):
                 parts.append(tr("cine.level_took", time=format_duration(took), level=self.levels.levels[i - 1]))
         return "  ·  ".join(parts)
 
-    def _show_title(self, text: str, life: float, heading: str = "", subtitle: str = "") -> None:
-        self.title.show_text(text, life, heading, subtitle)
+    def _show_title(self, text: str, life: float, heading: str = "", subtitle: str = "", tone: str = "gold") -> None:
+        self.title.show_text(text, life, heading, subtitle, tone)
 
     def _title_busy(self) -> bool:
-        """True while a level-up title has not been shown for LEVEL_HOLD seconds yet."""
+        """True while a level-up or death title has not been shown for LEVEL_HOLD seconds yet."""
         return self.title.isVisible() and self.title.age < LEVEL_HOLD and self.title.life <= LEVEL_SECONDS
 
     def _show_photo(self, cue: Cue) -> None:
@@ -1012,8 +1283,10 @@ class CinematicWindow(QWidget):
                 toast.deleteLater()
                 self._layout_toasts()
         self.title.advance(dt)
+        self._update_still(dt)
         if self.frame.advance(dt):
             self._layout_bars()
+            self._layout_still()
         self.marker.tick(dt)
         if self.route_item:
             self.route_item.advance_phase(dt)

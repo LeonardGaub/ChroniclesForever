@@ -186,6 +186,16 @@ class Route:
             return info["max_x"] - info["min_x"]
         return UNKNOWN_ZONE_SCALE
 
+    def distance(self, a: PositionPoint, b: PositionPoint) -> float | None:
+        """Distance between two points in continent widths, or None when it cannot be measured (no position, or
+        not on one map: b is projected onto a's map when that map contains it)."""
+        if a.x is None or b.x is None or a.map_id is None:
+            return None
+        xy = self.project(b.map_id, b.x, b.y, a.map_id)
+        if xy is None:
+            return None
+        return math.hypot(xy[0] - a.x, xy[1] - a.y) * self._continent_scale(a.map_id)
+
     def is_jump(self, prev: PositionPoint, p: PositionPoint) -> bool:
         """True when the step from prev to p (same map) is a teleport."""
         if prev.taxi or p.taxi or prev.x is None or p.x is None:

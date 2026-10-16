@@ -107,7 +107,7 @@ def test_cinematic_window_plays_with_screenshots(app, db, tmp_path, monkeypatch,
     painter.end()
     assert window.pins.shown, "events leave pins on the map"
     assert any(pin.thumb is not None for pin in window.pins.pins), "a screenshot leaves a small polaroid"
-    event = next((c for c in window.cues if c.kind == "event"), None)
+    event = next((c for c in window.cues if c.kind == "event" and c.event_type != "player_died"), None)
     if event:
         window._show_cue(dataclasses.replace(event, has_screenshot=True))
         assert not window.toasts, "no toast when the event's screenshot follows with the same banner"
@@ -119,6 +119,13 @@ def test_cinematic_window_plays_with_screenshots(app, db, tmp_path, monkeypatch,
         ctx.sound._clocks.clear()
         window._show_cue(level)
         assert list(ctx.sound.played) == ["level_up"] and ctx.sound.music.duck_left > 0,             "a level-up plays the fanfare and lowers the music under it"
+    death = next((c for c in window.cues if c.event_type == "player_died"), None)
+    if death:
+        window.toasts.clear()
+        window._show_cue(death)
+        assert window.title.tone == "death" and window.hold > 0 and not window.toasts, \
+            "a death holds the replay on a dark red title instead of a toast"
+        window.hold = 0.0
     window.seek(start)
     assert not window.ended and window.t == start
     assert not window.toasts and not window.pins.bursts, "a jump clears toasts and bursts of another moment"
@@ -146,6 +153,7 @@ def test_cinematic_window_plays_with_screenshots(app, db, tmp_path, monkeypatch,
     shot_cue = next(c for c in window.cues if c.kind == "screenshot")
     window.seek(shot_cue.time - 5)
     near = window.pace()
+    window.still_mode = "normal"            # far from it: full speed, unless standing still
     window.seek(shot_cue.time - 10 * 60 * 10)
     assert near < 0.5 and (window.pace() == 1.0 or window.t < start + 1), (near, window.pace())
 
@@ -230,3 +238,165 @@ def test_voyage_camera_and_crossing():
     v.age = v.life
     scale, center = v.camera()
     assert scale == pytest.approx(4.0) and center == QPointF(90, 80) and v.marker() == QPointF(200, 100),         "ends exactly where the new zone's view takes over"
+
+
+def test_deaths_from_the_route():
+    from forever_chronicle.domain.cinematic import NO_ROUTE_DEATH, SPIRIT_HEALER, death_spans
+
+    # Unknown zone geometry: one map unit is 0.1 continent widths (route.UNKNOWN_ZONE_SCALE).
+    corpse_run = [P(90, 0.49), P(100, 0.5), P(110, 0.5), P(128, 0.5),
+                  P(130, 0.8, 0.8),                                  # released: the graveyard, far away at once
+                  P(150, 0.7, 0.7), P(170, 0.6, 0.6), P(190, 0.52, 0.52), P(200, 0.45)]
+    d = death_spans([E(100, "player_died")], Route(corpse_run))[0]
+    assert (d.time, d.released, d.revived) == (100, 130, 190), "back to life on reaching the body"
+    assert d.dead(150) and d.ghost(150) and d.dead(110) and not d.ghost(110) and not d.dead(190)
+
+    rezzed = [P(290, 0.3), P(300, 0.3), P(320, 0.3), P(340, 0.35), P(350, 0.4)]
+    d = death_spans([E(300, "player_died")], Route(rezzed))[0]
+    assert (d.released, d.revived) == (None, 340), "brought back where the body lay: alive on moving on"
+
+    healer = [P(90, 0.5), P(100, 0.5), P(128, 0.5), P(130, 0.8, 0.8), P(200, 0.82, 0.8), P(400, 0.9, 0.8)]
+    d = death_spans([E(100, "player_died")], Route(healer))[0]
+    assert (d.released, d.revived) == (130, 130 + SPIRIT_HEALER), "never walked back: the spirit healer"
+
+    dungeon = [P(90, 0.5), PositionPoint(100, 120, None, None, None, 36, False), P(150, 0.5, 0.2),
+               PositionPoint(250, 300, None, None, None, 36, False)]
+    d = death_spans([E(110, "player_died")], Route(dungeon))[0]
+    assert (d.released, d.revived) == (150, 250), "out of the dungeon to the graveyard, and back in"
+
+    assert death_spans([E(5000, "player_died")], Route(corpse_run))[0].revived == 5000 + NO_ROUTE_DEATH
+
+
+def test_standstills():
+    from forever_chronicle.domain.cinematic import STILL_EDGE, still_spans
+
+    afk = [P(t, 0.5 + (0.0005 if t % 20 else 0)) for t in range(0, 302, 2)]       # 5 minutes on one spot
+    walk = [P(310 + t, 0.6 + t * 0.002) for t in range(0, 60, 2)]
+    short = [P(400 + t, 0.9) for t in range(0, 60, 2)]                                # a minute only
+    spans = still_spans(Route(afk + walk + short), 0, 1000)
+    assert spans == [(0 + STILL_EDGE, 300 - STILL_EDGE)], spans
+    assert still_spans(Route(afk), 100, 200) == [(100 + STILL_EDGE, 200 - STILL_EDGE)], "cut to the range"
+    long_point = [PositionPoint(0, 500, 1413, 0.5, 0.5, None, False), P(510, 0.6)]
+    assert still_spans(Route(long_point), 0, 600) == [(STILL_EDGE, 500 - STILL_EDGE)], "one point standing long"
+
+
+def test_ghost_route_and_grey_view(app):
+    from types import SimpleNamespace
+
+    from PySide6.QtWidgets import QGraphicsScene
+
+    from forever_chronicle.domain.route_colors import RouteColors
+    from forever_chronicle.ui.cinematic_fx import GHOST_COLOR, CinemaView, RouteItem
+
+    seg = SimpleNamespace(taxi=False, points=[(t, 0.1 * i, 0.1) for i, t in enumerate((0, 10, 20, 30, 40))])
+    item = RouteItem([seg], RouteColors("plain", Levels([]), []), ghost_spans=[(15, 30)])
+    times, _, _, runs, line_colors = item.segs[0]
+    assert [c == GHOST_COLOR for c in line_colors[1:]] == [False, True, True, False], \
+        "lines ending inside the ghost span are the corpse run"
+    assert [(a, b) for a, b, _ in runs] == [(0, 1), (1, 3), (3, 4)]
+
+    view = CinemaView()
+    scene = QGraphicsScene()
+    scene.addRect(0, 0, 400, 300, brush=QColor("#d02020"))
+    view.setScene(scene)
+    view.resize(200, 150)
+    view.show()
+    red = view.grab().toImage().pixelColor(100, 75)
+    view.set_grey(1.0)
+    grey = view.grab().toImage().pixelColor(100, 75)
+    assert red.saturation() > 200 and grey.saturation() < 90, (red.name(), grey.name())
+    assert grey.blue() >= grey.red(), "the spirit world's light is cold"
+    view.close()
+
+
+def test_zone_music_table_and_cache(tmp_path, monkeypatch):
+    from forever_chronicle.wow import zone_music
+
+    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
+    durotar = zone_music.entry(1411)
+    assert durotar and durotar["day"] and durotar["night"], "the table in git knows Durotar's music"
+    assert zone_music.entry(None, 36), "the Deadmines have their own"
+    assert zone_music.entry(1411, 99999) == durotar, "a dungeon without music keeps the zone's"
+    noon = 1760608800
+    assert zone_music.file_ids(1411, None, noon) in (tuple(durotar["day"]), tuple(durotar["night"]))
+    assert zone_music.file_ids(1455, None, noon) == (), "Ironforge has no zone music of its own"
+    files = zone_music.all_file_ids([(1411, None), (1412, None)])
+    assert len(files) == len(set(files)) and set(durotar["day"]) <= set(files)
+
+    cache = zone_music.cache_dir()
+    cache.mkdir(parents=True)
+    (cache / f"{files[0]}.mp3").write_bytes(b"ID3")
+    assert zone_music.paths(files[:2]) == [cache / f"{files[0]}.mp3"]
+    assert zone_music.missing(files[:2]) == [files[1]]
+    assert zone_music.extract_missing(None, files) == 0, "without the game nothing is taken"
+
+
+def test_cinematic_deaths_standstills_and_music(app, db, tmp_path, monkeypatch, addon_fixture):
+    from forever_chronicle.domain.cinematic import Cue, Death
+    from forever_chronicle.ui import cinematic as cine
+    from forever_chronicle.wow import zone_music
+
+    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
+    ctx = AppContext(AppConfig(client_dir=str(tmp_path / "missing")), db)
+    ctx._client_searched = True
+    ctx.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
+    cid = ctx.repo.list_characters()[0].character_id
+    points = ctx.repo.positions(cid)
+    start, end = points[0].time, max(p.end for p in points)
+    # Zone music files for every zone (the game is not there in tests).
+    cache = zone_music.cache_dir()
+    cache.mkdir(parents=True)
+    for fdid in zone_music.all_file_ids((p.map_id, p.instance_id) for p in points):
+        (cache / f"{fdid}.mp3").write_bytes(b"ID3")
+
+    window = CinematicWindow(ctx, cid, start, end, speed=4)
+    window.resize(900, 600)
+    window.show()
+    window.timer.stop()
+    assert window.music_now and all(p.parent == cache for p in window.music_now), "the zone's music from the game"
+    assert set(ctx.sound.music.tracks) == set(window.music_now)
+
+    # A death: the replay holds, the world turns grey, the marker lies as a headstone, then walks as a ghost.
+    t = int(window.t) + 200
+    window.deaths = [Death(t, t + 30, t + 120)]
+    window.cues = [Cue(t, "event", "x", "✝", "#ff3333", event_type="player_died")]
+    window.cue_times = [t]
+    window.seek(t - 100)
+    window.still_mode = "normal"
+    for _ in range(400):
+        window.advance(0.05)
+        if window.hold > 0:
+            break
+    assert window.hold > 0 and window.t == t and window.title.tone == "death"
+    for _ in range(int(cine.DEATH_HOLD / 0.05) - 2):
+        window.advance(0.05)
+    assert window.t == t and window.view.grey > 0.5, "held while the colour drains"
+    assert window.marker.mode in ("dead", "dungeon", "taxi")
+    window.seek(t + 60)
+    assert window.view.grey == 1.0 and window.marker.mode in ("ghost", "dungeon", "taxi")
+    window.seek(t + 200)
+    assert window.view.grey == 0.0, "alive again: colour back"
+
+    # Standstills: faster, skipped (up to the next moment), normal.
+    span = (window.t + 10, window.t + 3000)
+    window.still_spans, window.still_starts = [span], [span[0]]
+    window.cues, window.cue_times, window.cue_index = [], [], 0
+    window.seek(span[0] + 1)
+    window.still_mode = "fast"
+    fast = window.pace()
+    window.still_mode = "normal"
+    assert fast == pytest.approx(window.pace() * cine.STILL_FASTER)
+    window.still_mode = "skip"
+    window.paused = False
+    window.advance(0.05)
+    assert window.t >= span[1] and window.still_note > 0, "skipped, and named"
+    window.cycle_still()
+    assert window.still_mode == "normal" and ctx.config.extra["cine_still"] == "normal"
+    assert window.still_button.text() == tr("cine.still.normal")
+
+    # The camera zooms gently, never beyond its limits.
+    window.seek(start)
+    for _ in range(40):
+        window.advance(0.1)
+    assert cine.ZOOM_OUT_TAXI - 1e-6 <= window.zoom <= cine.ZOOM_IN_CLOSE + 1e-6
+    window.close()

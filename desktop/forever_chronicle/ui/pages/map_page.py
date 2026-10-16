@@ -7,7 +7,8 @@
 - The marker shows the nearest recorded point; inside dungeons there is no position, so a notice is shown.
 - Selecting an event in the Chronicle moves the map to that moment (AppContext.focus_time).
 - Without artwork for a map a schematic grid is drawn instead.
-- Cinematic mode plays the selected range full screen with events and screenshots (ui/cinematic.py).
+- Cinematic mode plays the selected range full screen with events and screenshots (ui/cinematic.py); "Video"
+  saves the same replay as an MP4 file (ui/cinematic_export.py).
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from ...i18n import format_datetime, format_duration, tr
 from ...wow.map_art import find_art
 from .. import icons, theme
 from ..cinematic import CinematicWindow
+from ..cinematic_export import ExportDialog
 from ..widgets import Page, muted
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
@@ -190,11 +192,14 @@ class MapPage(Page):
         self.time_label.setMinimumWidth(150)
         self.cinematic = QPushButton()
         self.cinematic.clicked.connect(self._open_cinematic)
+        self.export = QPushButton()
+        self.export.clicked.connect(self._export_video)
         bottom.addWidget(self.play)
         bottom.addWidget(self.speed)
         bottom.addWidget(self.slider, 1)
         bottom.addWidget(self.time_label)
         bottom.addWidget(self.cinematic)
+        bottom.addWidget(self.export)
         root.addLayout(bottom)
 
         self.timer = QTimer(self)
@@ -238,6 +243,8 @@ class MapPage(Page):
         self.speed.setToolTip(tr("map.speed_tip"))
         self.cinematic.setText(tr("map.cinematic"))
         self.cinematic.setToolTip(tr("map.cinematic_tip"))
+        self.export.setText(tr("cine.export"))
+        self.export.setToolTip(tr("cine.export_tip"))
         self.color_select.blockSignals(True)
         self.color_select.clear()
         for mode in MODES:
@@ -289,6 +296,7 @@ class MapPage(Page):
         self.slider.setEnabled(False)
         self.play.setEnabled(False)
         self.cinematic.setEnabled(False)
+        self.export.setEnabled(False)
         self.time_label.setText("")
         self._show_notice(notice)
 
@@ -303,6 +311,7 @@ class MapPage(Page):
         self.slider.setEnabled(True)
         self.play.setEnabled(True)
         self.cinematic.setEnabled(True)
+        self.export.setEnabled(True)
         self._updating = False
         self._last_zone = None
         self._set_view(self.route.view_for(self.route.point_at(start)) or self._first_view(), redraw=True)
@@ -500,6 +509,14 @@ class MapPage(Page):
         self._cinematic_window = CinematicWindow(self.ctx, self.character_id, self.range[0], self.range[1],
                                                  self.speed.currentData(), self._color_mode())
         self._cinematic_window.showFullScreen()
+
+    def _export_video(self) -> None:
+        if not self.route or not self.range or not self.character_id:
+            return
+        self.timer.stop()
+        self._set_play_text()
+        ExportDialog(self, self.ctx, self.character_id, self.range[0], self.range[1], self.speed.currentData(),
+                     self._color_mode()).exec()
 
     def _set_play_text(self) -> None:
         self.play.setText(tr("map.pause") if self.timer.isActive() else tr("map.play"))

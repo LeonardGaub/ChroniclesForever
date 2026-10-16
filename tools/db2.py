@@ -3,6 +3,8 @@
 Format: wowdev.wiki "DB2" (WDC3 layout with a version number and a 128-byte schema string in front).
 Each row comes back as {"id": int, "fields": [value or list of values per field], "parent": int | None};
 "parent" is the foreign key stored in the relationship map (e.g. UiMapArtTile -> UiMapArt).
+Sections encrypted with a TACT key (unreleased rows) are left out: read such files with
+casc.read_fdid(..., zero_encrypted=True), which fills their chunks with zeros.
 """
 
 from __future__ import annotations
@@ -52,7 +54,7 @@ def read_db2(data: bytes) -> list[dict]:
     rows = []
     for (key_hash, offset, count, strings, _end, id_list_size, rel_size, offset_map_count,
          copy_count) in sections:
-        if count == 0:
+        if count == 0 or key_hash != 0:
             continue
         records_at = offset
         p = offset + count * record_size + strings

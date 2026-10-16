@@ -4,7 +4,8 @@
   made by tools/generate_sounds.py; a file of the same name in %APPDATA%\\ForeverChronicle\\sounds replaces one.
 - Clicks: an application-wide event filter plays "click" when a button, tab, drop-down or menu entry is clicked.
 - Music: the built-in theme, or the player's own file, or a folder of files (shuffled), with fades and ducking
-  under big moments. QMediaPlayer plays MP3, OGG, FLAC, WAV and M4A.
+  under big moments. QMediaPlayer plays MP3, OGG, FLAC, WAV and M4A. The cinematic mode switches to the zone's
+  music from the game (MusicPlayer.play: the old music fades out, the new one in).
 - Settings are in AppConfig (click_sounds, event_sounds, music, effects_volume, music_volume, music_path).
 - FOREVER_CHRONICLE_SILENT=1 keeps everything quiet (tests); what would have played is still recorded in `played`.
 - QtMultimedia comes with PySide6-Addons. With PySide6-Essentials alone the app runs without sound (AUDIO is False).
@@ -38,6 +39,7 @@ DEFAULT_GAP = 0.35
 
 FADE_IN = 3.0                     # seconds
 FADE_OUT = 1.2
+SWITCH_OUT, SWITCH_IN = 1.6, 2.2  # seconds: other music (a zone change) fades the old one out, the new one in
 DUCK = 0.35                       # music level under a big moment
 DUCK_IN, DUCK_OUT = 0.25, 1.2
 STEP_MS = 30
@@ -160,13 +162,18 @@ def is_click_target(widget, pos) -> bool:
 
 
 class MusicPlayer(QObject):
-    """Background music with fade in/out and ducking. Plays only while someone asked for it (start/stop)."""
+    """Background music with fade in/out and ducking. Plays only while someone asked for it (start/stop).
+    audible=False keeps the same state (playlist, fades, ducking) without playing anything: the video export
+    records it frame by frame and mixes the music itself."""
 
-    def __init__(self, config: AppConfig, parent=None):
+    def __init__(self, config: AppConfig, parent=None, audible: bool = True):
         super().__init__(parent)
         self.config = config
+        self.audible = audible
         self.tracks: list[Path] = []
         self.index = 0
+        self.pending: list[Path] | None = None   # music to switch to once the current one has faded out
+        self.switched = False     # fading in after a switch (SWITCH_IN instead of FADE_IN)
         self.fade = 0.0           # 0..1, follows `target`
         self.target = 0.0
         self.duck_level = 1.0
@@ -175,25 +182,41 @@ class MusicPlayer(QObject):
         self._output = None
         self.timer = QTimer(self)
         self.timer.setInterval(STEP_MS)
-        self.timer.timeout.connect(lambda: self.step(STEP_MS / 1000))
+        if audible:                 # a silent player is stepped by its owner (the export, frame by frame)
+            self.timer.timeout.connect(lambda: self.step(STEP_MS / 1000))
 
     @property
     def active(self) -> bool:
         """Playing or fading in (not fading out or stopped)."""
         return self.target > 0
 
-    def start(self, force: bool = False) -> None:
-        """Fades the music in (from where it is). Does nothing if music is off, unless forced (preview)."""
+    def start(self, force: bool = False, tracks: list[Path] | None = None) -> None:
+        """Fades the music in (from where it is): the given tracks, else the music chosen in the settings. Does
+        nothing if music is off, unless forced (preview)."""
         if not (force or self.config.music):
             return
         if not self.active or not self.tracks:
-            self._load_tracks()
+            self.pending = None
+            self._use(self._playlist(tracks))
         self.target = 1.0
-        if not silent():
+        if not self._quiet():
             self._ensure_player()
             if self._player.playbackState() != self._player.PlaybackState.PlayingState:
                 self._player.play()
         self.timer.start()
+
+    def play(self, tracks: list[Path] | None) -> None:
+        """Switches to other music (None: the music chosen in the settings). While music plays, the current one
+        fades out and the new one fades in; otherwise the new one is only loaded for the next start."""
+        new = self._playlist(tracks)
+        if sorted(new) == sorted(self.pending if self.pending is not None else self.tracks):
+            return
+        if self.active and self.fade > 0:
+            self.pending = new
+            self.timer.start()
+        else:
+            self.pending = None
+            self._use(new)
 
     def stop(self) -> None:
         """Fades out, then stops."""
@@ -202,6 +225,7 @@ class MusicPlayer(QObject):
 
     def stop_now(self) -> None:
         self.target = self.fade = 0.0
+        self.pending = None
         self.timer.stop()
         if self._player:
             self._player.stop()
@@ -220,9 +244,21 @@ class MusicPlayer(QObject):
         duck_target = DUCK if self.duck_left > 0 else 1.0
         self.duck_level = _approach(self.duck_level, duck_target,
                                     dt * (1 - DUCK) / (DUCK_IN if duck_target < self.duck_level else DUCK_OUT))
-        self.fade = _approach(self.fade, self.target, dt / (FADE_IN if self.target > self.fade else FADE_OUT))
+        if self.pending is not None:
+            self.fade = _approach(self.fade, 0.0, dt / SWITCH_OUT)
+            if self.fade == 0:
+                new, self.pending = self.pending, None
+                self.switched = True
+                self._use(new)
+        elif self.target > self.fade:
+            self.fade = _approach(self.fade, self.target, dt / (SWITCH_IN if self.switched else FADE_IN))
+        else:
+            self.fade = _approach(self.fade, self.target, dt / FADE_OUT)
+        if self.fade >= self.target:
+            self.switched = False
         self._apply()
-        if self.fade == self.target and self.duck_level == duck_target and self.duck_left == 0:
+        if (self.pending is None and self.fade == self.target and self.duck_level == duck_target
+                and self.duck_left == 0):
             self.timer.stop()
             if self.target == 0 and self._player:
                 self._player.stop()
@@ -237,14 +273,24 @@ class MusicPlayer(QObject):
 
     # -- playlist -------------------------------------------------------------------------
 
-    def _load_tracks(self) -> None:
-        tracks = music_tracks(self.config.music_path)
-        if len(tracks) > 1:
-            random.shuffle(tracks)
+    def _quiet(self) -> bool:
+        return silent() or not self.audible
+
+    def _playlist(self, tracks: list[Path] | None) -> list[Path]:
+        """The tracks to play, shuffled: the given ones, else the music chosen in the settings."""
+        new = list(tracks) if tracks else music_tracks(self.config.music_path)
+        if len(new) > 1:
+            random.shuffle(new)
+        return new
+
+    def _use(self, tracks: list[Path]) -> None:
+        """Makes tracks the playlist, from its first track (playing on if the music is wanted)."""
         changed = tracks != self.tracks
         self.tracks, self.index = tracks, 0
         if changed and self._player:
             self._set_source()
+            if self.active:
+                self._player.play()
 
     def _ensure_player(self) -> None:
         if self._player:

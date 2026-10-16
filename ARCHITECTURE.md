@@ -152,11 +152,11 @@ Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `
 
 | Package | Role |
 |---|---|
-| `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`), game files (`casc.py`) and the event icons from them (`game_icons.py`) |
+| `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`), game files (`casc.py`) and the event icons from them (`game_icons.py`), the zones' music (`zone_music.py`, table `zone_music.json` from `tools/extract_zone_music.py`) |
 | `importing/` | SavedVariables → SQLite, validation, gaps, `.bak` fallback |
 | `storage/` | `database.py` (schema migrations + backups), `repository.py` (all SQL), `jsonl.py` (export/import) |
-| `domain/` | pure logic, no Qt: registries `event_types.py` (how events are shown) and `stats.py` (overview statistics); `route.py`, `route_colors.py`, `maps.py` (the map); `cinematic.py` (what a replay announces) |
-| `ui/` | `theme.py` (Classic look), `widgets.py` (page base class), `main_window.py`, `pages/` (one file per tab), `screenshots.py` (thumbnails, viewer), `cinematic.py` + `cinematic_fx.py` (cinematic mode), `sound.py` (clicks, alerts, music) |
+| `domain/` | pure logic, no Qt: registries `event_types.py` (how events are shown) and `stats.py` (overview statistics); `route.py`, `route_colors.py`, `maps.py` (the map); `cinematic.py` (what a replay announces, deaths and standstills) |
+| `ui/` | `theme.py` (Classic look), `widgets.py` (page base class), `main_window.py`, `pages/` (one file per tab), `screenshots.py` (thumbnails, viewer), `cinematic.py` + `cinematic_fx.py` (cinematic mode), `cinematic_export.py` (the replay as an MP4 video), `sound.py` (clicks, alerts, music) |
 | `i18n.py` | German (default) / English strings |
 
 ### Sound
@@ -164,7 +164,9 @@ Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `
 `ui/sound.py` holds `ctx.sound`: `play(name)` for effects (WAV via QSoundEffect), an app-wide click filter, and
 `ctx.sound.music` (QMediaPlayer with fades and `duck(seconds)`). Cinematic mode starts and stops the music and plays
 `level_up`, `screenshot`, `event` and `death`. The Settings tab holds the switches, volumes and the music choice
-(built-in theme, own file, or own folder as a shuffled playlist).
+(the game's zone music, else the built-in theme, own file, or own folder as a shuffled playlist). With zone music the
+cinematic mode switches playlists (`music.play(tracks)`: fade out, fade in) after a moment in a new zone. The video
+export drives a silent `MusicPlayer(audible=False)` frame by frame and mixes the logged music and effects itself.
 
 - Built-in sounds in `ui/assets/sounds` are synthesized by `tools/generate_sounds.py` (original, no third-party
   audio; needs `pip install -e .[tools]`). Change the script and rerun it rather than editing the files.

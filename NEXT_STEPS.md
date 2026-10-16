@@ -59,6 +59,31 @@ at the time (older entries may describe things that changed later). Architecture
 
 ## History
 
+### Cinematic mode: deaths, camera, zone music, standstills, video export (2026-10-16)
+- User requests after a brainstorm. Deaths: the replay slows down before a death and holds 1.4 s on a dark red
+  title (name, "Gestorben", place) while the world turns grey-blue (`CinemaView`, a QGraphicsColorizeEffect;
+  Qt has no saturation blend mode). The body is a headstone, the ghost a wisp, the corpse run a pale dotted line;
+  rising light at the graveyard and when coming back to life. The addon records only `player_died`, so
+  `domain/cinematic.death_spans` reads release (first teleport within 6 min, or leaving the dungeon) and revival
+  (back within ~60 yards of the body; spirit healer: 30 s; resurrected in place: when moving on) from the route.
+  On the user's data: release ~8 s after dying, back 20–80 s later.
+- Camera: calmer follow (time constant 0.45 s, marker kept within 30 % of the middle) and a slight automatic zoom
+  (0.86× on flight paths, ≤0.9× when racing, 1.07× near moments/standing/dead; 2.6 s time constant). The user
+  asked for "not too much".
+- Zone music from the game: `tools/extract_zone_music.py` writes `desktop/forever_chronicle/zone_music.json`
+  (UiMapAssignment → AreaTable[9] ZoneMusic → ZoneMusic.Sounds day/night → SoundKitEntry; fileDataIDs 1957219,
+  1353545, 1310254, 1237435). Those tables have encrypted sections of unreleased rows: `casc.read_fdid(...,
+  zero_encrypted=True)` and `db2.py` skip them. 52 zones, 34 dungeons, 125 MP3 files (~114 MB in total); the app
+  takes the ones a replay needs into `%APPDATA%\ForeverChronicle\music\` (background thread). Ironforge and
+  Undercity have no zone music in the table (keep the previous music). Switch after 2.5 s in a zone. Option in
+  Settings ("Musik der Gebiete aus dem Spiel", `extra.cine_music`). Rerun the tool after a client patch.
+- Standstills (`still_spans`: ≥90 s within ~25 yards): normal, 8× faster (default) or skipped; button and key S,
+  `extra.cine_still`. Moments inside them are always shown. The user's main character has 4.7 h of them.
+- Video export (`ui/cinematic_export.py`): "⤓ Video" in the cinematic controls and on the map page. Renders the
+  window off screen frame by frame (30 fps, 720p/1080p, ~25–30 ms per frame) into ffmpeg (H.264), mixes music and
+  effects with numpy (AAC). ffmpeg from `imageio-ffmpeg` (new dependency); the dialog offers to install it where
+  missing, since the friends' launcher was being changed by another session at the time.
+
 ### Game icons on the desktop (2026-10-16)
 - User request: the desktop shows events with the addon's icons. `EventType` got the addon's `icon`, `highlight`
   and `pin_icon`; `event_types.icon_of` prefers the fileDataID recorded with the event, as the addon's `getIcon`.

@@ -1,4 +1,5 @@
-"""Settings: sound effects, cinematic music (built-in theme, own file or folder) and own sound files."""
+"""Settings: sound effects, cinematic music (the game's zone music, else the built-in theme, own file or folder)
+and own sound files."""
 
 from __future__ import annotations
 
@@ -71,6 +72,8 @@ class SettingsPage(Page):
         ml = QGridLayout(self.music_box)
         self.music = QCheckBox()
         self.music.toggled.connect(self._set_music)
+        self.zone_music = QCheckBox()       # the game's zone music in the cinematic mode (wow/zone_music.py)
+        self.zone_music.toggled.connect(self._set_zone_music)
         self.music_label = QLabel()
         self.music_volume = slider()
         self.music_volume.valueChanged.connect(self._set_music_volume)
@@ -97,13 +100,14 @@ class SettingsPage(Page):
         buttons.addStretch(1)
         self.music_hint = muted()
         ml.addWidget(self.music, 0, 0, 1, 4, Qt.AlignmentFlag.AlignLeft)
-        ml.addWidget(self.music_label, 1, 0)
-        ml.addWidget(self.music_volume, 1, 1)
-        ml.addWidget(self.music_value, 1, 2)
-        ml.addWidget(self.source_label, 2, 0, Qt.AlignmentFlag.AlignTop)
-        ml.addWidget(self.source, 2, 1, 1, 3)
-        ml.addLayout(buttons, 3, 0, 1, 4)
-        ml.addWidget(self.music_hint, 4, 0, 1, 4)
+        ml.addWidget(self.zone_music, 1, 0, 1, 4, Qt.AlignmentFlag.AlignLeft)
+        ml.addWidget(self.music_label, 2, 0)
+        ml.addWidget(self.music_volume, 2, 1)
+        ml.addWidget(self.music_value, 2, 2)
+        ml.addWidget(self.source_label, 3, 0, Qt.AlignmentFlag.AlignTop)
+        ml.addWidget(self.source, 3, 1, 1, 3)
+        ml.addLayout(buttons, 4, 0, 1, 4)
+        ml.addWidget(self.music_hint, 5, 0, 1, 4)
         ml.setColumnStretch(3, 1)
         root.addWidget(self.music_box)
 
@@ -131,6 +135,11 @@ class SettingsPage(Page):
             button.setText(tr(f"settings.test.{name}"))
         self.music_box.setTitle(tr("settings.music_box"))
         self.music.setText(tr("settings.music"))
+        self.zone_music.setText(tr("settings.zone_music"))
+        self.zone_music.setToolTip(tr("settings.zone_music_tip"))
+        self.zone_music.blockSignals(True)
+        self.zone_music.setChecked(config.extra.get("cine_music", "zone") == "zone")
+        self.zone_music.blockSignals(False)
         self.music_label.setText(tr("settings.volume"))
         self.source_label.setText(tr("settings.source"))
         self.choose_file.setText(tr("settings.choose_file"))
@@ -192,6 +201,10 @@ class SettingsPage(Page):
 
     def _set_music(self, on: bool) -> None:
         self._set("music", on)
+
+    def _set_zone_music(self, on: bool) -> None:
+        self.ctx.config.extra["cine_music"] = "zone" if on else "chosen"
+        self.ctx.config.save()
 
     def _set_music_path(self, path: str | None) -> None:
         self._set("music_path", path)

@@ -111,3 +111,32 @@ def test_music_fades_and_ducks(app):
     assert not music.active
     music.step(FADE_OUT)
     assert music.fade == 0.0 and not music.timer.isActive()
+
+
+def test_music_switches_with_a_fade(app, tmp_path):
+    from forever_chronicle.ui.sound import SWITCH_IN, SWITCH_OUT
+    a, b = tmp_path / "a.mp3", tmp_path / "b.mp3"
+    music = MusicPlayer(AppConfig())
+    music.start(tracks=[a])
+    music.step(FADE_IN)
+    assert music.tracks == [a] and music.fade == 1.0
+    music.play([b])
+    assert music.pending == [b] and music.tracks == [a], "the old music fades out first"
+    music.step(SWITCH_OUT / 2)
+    assert 0 < music.fade < 1 and music.tracks == [a]
+    music.step(SWITCH_OUT)
+    assert music.tracks == [b] and music.pending is None and music.fade < 0.5, "then the new one starts"
+    music.step(SWITCH_IN)
+    assert music.fade == 1.0 and not music.switched
+    music.play([b])
+    assert music.pending is None, "the same music again changes nothing"
+    music.play(None)
+    assert music.pending == [BUILTIN_MUSIC], "None: the music chosen in the settings"
+
+    quiet = MusicPlayer(AppConfig(), audible=False)
+    quiet.start(tracks=[a])
+    assert quiet.active and quiet.tracks == [a]
+    assert not quiet.timer.receivers("2timeout()"), "a silent player is stepped by its owner (the export)"
+    quiet.stop_now()
+    quiet.play([b])
+    assert quiet.tracks == [b] and quiet.pending is None, "not playing: loaded for the next start"

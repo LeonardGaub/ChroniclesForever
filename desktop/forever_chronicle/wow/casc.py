@@ -47,7 +47,9 @@ def read_config(path: Path) -> dict[str, list[str]]:
     return result
 
 
-def blte_decode(data: bytes) -> bytes:
+def blte_decode(data: bytes, zero_encrypted: bool = False) -> bytes:
+    """Decodes BLTE data. Encrypted chunks raise EncryptedError, or with zero_encrypted come back as zero bytes of
+    their size (client tables keep unreleased rows in encrypted sections; the readable rest is still usable)."""
     if data[:4] != b"BLTE":
         raise CascError("not BLTE data")
     header_size = struct.unpack(">I", data[4:8])[0]
@@ -63,7 +65,7 @@ def blte_decode(data: bytes) -> bytes:
             chunks.append((comp, decomp))
         pos = header_size
     out = []
-    for comp, _ in chunks:
+    for comp, decomp in chunks:
         chunk = data[pos:pos + comp]
         pos += comp
         mode = chunk[:1]
@@ -74,7 +76,9 @@ def blte_decode(data: bytes) -> bytes:
         elif mode == b"F":
             out.append(blte_decode(chunk[1:]))
         elif mode == b"E":
-            raise EncryptedError("encrypted chunk")
+            if not (zero_encrypted and decomp):
+                raise EncryptedError("encrypted chunk")
+            out.append(b"\0" * decomp)
         else:
             raise CascError(f"unknown BLTE chunk mode {mode!r}")
     return b"".join(out)
@@ -150,7 +154,7 @@ class LocalStorage:
     def has(self, ekey: bytes) -> bool:
         return ekey[:9] in self.index
 
-    def read(self, ekey: bytes) -> bytes:
+    def read(self, ekey: bytes, zero_encrypted: bool = False) -> bytes:
         entry = self.index.get(ekey[:9])
         if entry is None:
             raise CascError(f"{ekey.hex()} is not in the local storage")
@@ -161,7 +165,7 @@ class LocalStorage:
             self._archives[archive] = f
         f.seek(offset)
         raw = f.read(length)
-        return blte_decode(raw[30:])
+        return blte_decode(raw[30:], zero_encrypted)
 
 
 class Encoding:
@@ -275,14 +279,14 @@ class Casc:
             raise CascError("root not found in encoding")
         self.root = Root(self.storage.read(root_ekey))
 
-    def read_fdid(self, fdid: int) -> bytes:
+    def read_fdid(self, fdid: int, zero_encrypted: bool = False) -> bytes:
         ckey = self.root.ckey(fdid)
         if ckey is None:
             raise CascError(f"fileDataID {fdid} is not in the root")
         ekey = self.encoding.ekey(ckey)
         if ekey is None:
             raise CascError(f"fileDataID {fdid} has no encoding entry")
-        return self.storage.read(ekey)
+        return self.storage.read(ekey, zero_encrypted)
 
     def read_name(self, path: str) -> bytes:
         fdid = self.root.fdid_by_name(path)

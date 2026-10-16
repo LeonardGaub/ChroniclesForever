@@ -5,6 +5,10 @@
   Toasts and screenshots carry a banner like the game's achievement alert (heading, title, place).
 - A screenshot cue pauses the replay and shows the picture taken at that moment. Only screenshots whose file
   was found are used.
+- Deaths (death_spans): when the character lay dead, ran back as a ghost and came back to life, found in the
+  route because the addon records only the death itself.
+- Standstills (still_spans): stretches in which the character stayed in one spot (AFK, waiting, trading), which
+  the replay can run through faster or skip.
 """
 
 from __future__ import annotations
@@ -15,8 +19,9 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from ..i18n import tr
-from ..storage.repository import EventRow
+from ..storage.repository import EventRow, PositionPoint
 from . import event_types
+from .route import TELEPORT_DISTANCE, TELEPORT_SPEED, Route
 
 # Event types the replay announces. Quests are left out: there are too many for a replay at speed.
 CUE_EVENT_TYPES = ("level_up", "player_died", "zone_discovered", "achievement_earned", "rare_killed",
@@ -128,3 +133,125 @@ class Levels:
         if self.levels:
             return self.levels[0] - 1
         return self.current
+
+
+# -- deaths ---------------------------------------------------------------------------------------------------
+
+RELEASE_WITHIN = 6 * 60    # a teleport this soon after dying is the release to the graveyard
+GHOST_WITHIN = 15 * 60     # longest corpse run looked for
+CORPSE_REACH = 0.004       # continent widths (~60 yards): close enough to the body to come back to life
+SPIRIT_HEALER = 30         # seconds at the graveyard when the ghost never walks back (the spirit healer)
+MOVED_ON = 0.001           # continent widths: brought back where the body lay once the player moves this far
+NO_ROUTE_DEATH = 20        # seconds shown as dead when the route says nothing about it
+
+
+@dataclass(frozen=True)
+class Death:
+    time: int                  # died
+    released: int | None       # the ghost appears at the graveyard (None: brought back where the body lay)
+    revived: int               # alive again
+
+    def dead(self, t: float) -> bool:
+        return self.time <= t < self.revived
+
+    def ghost(self, t: float) -> bool:
+        return self.released is not None and self.released <= t < self.revived
+
+
+def death_spans(events: Iterable[EventRow], route: Route) -> list[Death]:
+    """Each death of the events (player_died), with its ghost run read from the route: the release is the first
+    teleport (or the step out of a dungeon) within RELEASE_WITHIN; the ghost comes back to life on reaching the
+    body, or after SPIRIT_HEALER seconds at the graveyard when it never walks back. Without a release the player
+    was brought back where the body lay and is alive again on moving on."""
+    result: list[Death] = []
+    for e in sorted((e for e in events if e.event_type == "player_died"), key=lambda e: e.occurred_at):
+        t = e.occurred_at
+        body = route.point_at(t)
+        if body is None or abs(_gap(body, t)) > RELEASE_WITHIN:
+            result.append(Death(t, None, t + NO_ROUTE_DEATH))
+            continue
+        later = route.points[bisect.bisect_right(route.times, t):]
+        released, rest = _release(route, body, later, t)
+        if released is not None:
+            revived = next((p.time for p in rest if p.time - released <= GHOST_WITHIN and _at_body(route, body, p)),
+                           None)
+            result.append(Death(t, released, revived if revived is not None else released + SPIRIT_HEALER))
+            continue
+        moved = next((p.time for p in later if p.time - t <= RELEASE_WITHIN and _moved_on(route, body, p)), None)
+        result.append(Death(t, None, moved if moved is not None else t + NO_ROUTE_DEATH))
+    return result
+
+
+def _gap(p: PositionPoint, t: float) -> float:
+    return 0 if p.time <= t <= p.end else (p.time - t if p.time > t else t - p.end)
+
+
+def _release(route: Route, body: PositionPoint, later: list[PositionPoint], t: int):
+    """(time of the release, the points after it) or (None, [])."""
+    prev = body
+    for k, p in enumerate(later):
+        if p.time - t > RELEASE_WITHIN:
+            break
+        if body.instance_id is not None:
+            if p.instance_id is None:              # out of the dungeon: the graveyard outside
+                return p.time, later[k + 1:]
+        elif p.instance_id is None:
+            # A step faster than any mount (as Route.is_jump, across maps too), or onto a map that cannot be
+            # measured against the body's.
+            d = route.distance(prev, p)
+            fast = d is not None and d >= TELEPORT_DISTANCE and d / max(1, p.time - prev.end) > TELEPORT_SPEED
+            if fast or (d is None and p.map_id != prev.map_id):
+                return p.time, later[k + 1:]
+        prev = p
+    return None, []
+
+
+def _at_body(route: Route, body: PositionPoint, p: PositionPoint) -> bool:
+    if body.instance_id is not None:
+        return p.instance_id == body.instance_id   # ran back into the dungeon
+    d = route.distance(body, p)
+    return d is not None and d <= CORPSE_REACH
+
+
+def _moved_on(route: Route, body: PositionPoint, p: PositionPoint) -> bool:
+    if body.instance_id is not None or p.instance_id is not None:
+        return p.instance_id != body.instance_id
+    d = route.distance(body, p)
+    return d is None or d > MOVED_ON
+
+
+# -- standstills ----------------------------------------------------------------------------------------------
+
+STILL_SECONDS = 90         # staying in one spot at least this long is a standstill
+STILL_REACH = 0.0015       # continent widths (~25 yards) the player may move and still be standing
+STILL_EDGE = 6             # seconds at both ends that play normally (stopping and setting off)
+
+
+def still_spans(route: Route, start: float, end: float) -> list[tuple[float, float]]:
+    """(from, to) of the standstills within [start, end], in time order. Inside dungeons there are no positions,
+    so nothing there counts."""
+    spans: list[tuple[float, float]] = []
+    anchor: PositionPoint | None = None
+    prev: PositionPoint | None = None
+    began = until = 0.0
+
+    def close() -> None:
+        a, b = max(began, start) + STILL_EDGE, min(until, end) - STILL_EDGE
+        if anchor is not None and until - began >= STILL_SECONDS and b > a:
+            spans.append((a, b))
+
+    for p in route.points[max(0, bisect.bisect_right(route.times, start) - 1):]:
+        if p.time > end:
+            break
+        if p.end < start:
+            continue
+        d = route.distance(anchor, p) if anchor is not None and prev is not None and route.connected(prev, p) else None
+        if d is not None and d <= STILL_REACH:
+            until = p.end
+        else:
+            close()
+            anchor = p if p.x is not None and not p.taxi else None
+            began, until = p.time, p.end
+        prev = p
+    close()
+    return spans
