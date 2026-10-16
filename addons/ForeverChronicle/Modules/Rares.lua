@@ -32,12 +32,6 @@ FC:RegisterStat("rares_killed", { labelKey = "STAT_RARES", order = 20, icon = "I
 
 Rares.seen, Rares.seenOrder, Rares.killed = {}, {}, {}
 
--- NPC ID from a creature GUID: "Creature-0-<server>-<instance>-<zone>-<npcID>-<spawn>"
-local function npcID(guid)
-  local id = guid and guid:match("^%a+%-%d+%-%d+%-%d+%-%d+%-(%d+)%-")
-  return tonumber(id)
-end
-
 function Rares:Remember(unit)
   local guid = Util.SafeValue("string", UnitGUID, unit)
   local classification = Util.SafeValue("string", UnitClassification, unit)
@@ -62,7 +56,7 @@ end)
 function Rares:Record(guid, info)
   if self.killed[guid] then return end -- one event per rare, even if the kill is reported twice
   self.killed[guid] = true
-  FC:Record("rare_killed", { guid = guid, npcID = npcID(guid), name = info.name,
+  FC:Record("rare_killed", { guid = guid, npcID = Util.NpcID(guid), name = info.name,
     classification = info.classification, level = info.level })
   FC:IncrementStat("rares_killed")
   FC:ConfirmCapability("rares")

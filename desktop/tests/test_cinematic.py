@@ -400,3 +400,18 @@ def test_cinematic_deaths_standstills_and_music(app, db, tmp_path, monkeypatch, 
         window.advance(0.1)
     assert cine.ZOOM_OUT_TAXI - 1e-6 <= window.zoom <= cine.ZOOM_IN_CLOSE + 1e-6
     window.close()
+
+
+def test_death_cause_from_the_recap():
+    from forever_chronicle.domain import event_types
+    hogger = E(300, "player_died", killer="Hogger", damage=1234, overkill=37)
+    killed_by = tr("evt.player_died.killed_by", killer="Hogger")
+    assert event_types.death_cause(hogger) == killed_by and event_types.describe(hogger) == killed_by
+    assert event_types.detail(hogger) == tr("evt.player_died.blow_overkill", how=tr("evt.player_died.melee"),
+                                            damage=f"1{tr('common.thousands_sep')}234", overkill="37")
+    fall = E(400, "player_died", environment="falling", damage=900)
+    assert event_types.describe(fall) == tr("evt.player_died.env.falling")
+    plain = E(500, "player_died")
+    assert event_types.describe(plain) == tr("evt.player_died.text") and event_types.detail(plain) == ""
+    cues = build_cues([hogger, plain], [], 0, 1000)
+    assert [c.cause for c in cues] == [killed_by, ""], "the death title names the killer"

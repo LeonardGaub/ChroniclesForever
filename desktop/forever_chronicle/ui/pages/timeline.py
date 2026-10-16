@@ -133,7 +133,7 @@ class TimelinePage(Page):
             else:
                 et = event_types.get(obj.event_type)
                 title = event_types.describe(obj)
-                detail = "  ·  ".join(p for p in (clock, event_types.location_text(obj)) if p)
+                detail = "  ·  ".join(p for p in (clock, event_types.location_text(obj), event_types.detail(obj)) if p)
                 icon = icons.small(event_types.icon_of(obj), ICON_SIZE)
                 accent = et.highlight or None
             item = self.list.add_entry(title, detail, icon, accent=accent, thumb=shot is not None,

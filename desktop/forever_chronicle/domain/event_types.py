@@ -23,6 +23,7 @@ class EventType:
     icon: str = ""                      # the addon's icon of the type (its RegisterEventType icon)
     highlight: str = ""                 # "milestone" | "danger" | "": map pin look, as the addon's
     pin_icon: str = ""                  # map pins: this texture instead of the icon (the addon's pinIcon)
+    detail: Callable[[EventRow], str] | None = None  # extra detail (the addon's details tooltip lines)
 
 
 ICONS = "Interface\\Icons\\"
@@ -44,6 +45,15 @@ def describe(event: EventRow) -> str:
         return get(event.event_type).describe(event)
     except Exception:  # a malformed payload must never break the timeline
         return event.event_type
+
+
+def detail(event: EventRow) -> str:
+    """The type's extra detail for an event (a death's killing blow), or ""."""
+    try:
+        fn = get(event.event_type).detail
+        return fn(event) if fn else ""
+    except Exception:  # a malformed payload must never break the timeline
+        return ""
 
 
 def icon_of(event: EventRow, pin: bool = False) -> int | str:
@@ -78,9 +88,41 @@ def _quest(e: EventRow) -> str:
     return tr("evt.quest_completed.text", title=title)
 
 
+DEATH_ENVIRONMENTS = ("falling", "drowning", "fatigue", "fire", "lava", "slime")
+
+
+def death_cause(e: EventRow) -> str:
+    """What killed the character, from the game's death recap as the addon recorded it (since 0.15.0):
+    "Killed by Hogger", "Drowned", or "" when unknown."""
+    p = e.payload
+    env = p.get("environment")
+    if env in DEATH_ENVIRONMENTS:
+        return tr(f"evt.player_died.env.{env}")
+    who = p.get("killer") or p.get("spell")
+    return tr("evt.player_died.killed_by", killer=who) if who else ""
+
+
 def _died(e: EventRow) -> str:
     where = e.subzone_name or e.zone_name
+    cause = death_cause(e)
+    if cause:
+        return tr("evt.player_died.cause_in", cause=cause, where=where) if where else cause
     return tr("evt.player_died.text_in", where=where) if where else tr("evt.player_died.text")
+
+
+def _killing_blow(e: EventRow) -> str:
+    """The killing blow: "Uppercut: 412 damage (37 overkill)"."""
+    p = e.payload
+    damage, overkill = p.get("damage"), p.get("overkill")
+    if not isinstance(damage, int):
+        return ""
+    env = p.get("environment")
+    how = p.get("spell") or (tr(f"evt.player_died.env.{env}") if env in DEATH_ENVIRONMENTS
+                             else tr("evt.player_died.melee"))
+    num = lambda n: f"{n:,}".replace(",", tr("common.thousands_sep"))
+    if isinstance(overkill, int) and overkill > 0:
+        return tr("evt.player_died.blow_overkill", how=how, damage=num(damage), overkill=num(overkill))
+    return tr("evt.player_died.blow", how=how, damage=num(damage))
 
 
 def _achievement(e: EventRow) -> str:
@@ -95,7 +137,8 @@ register(EventType("level_up", "evt.level_up", "▲", "#ffd100",
                    ICONS + "Spell_Holy_InnerFire", highlight="milestone"))
 register(EventType("quest_completed", "evt.quest_completed", "!", "#ffd100", _quest, ICONS + "INV_Misc_Note_01"))
 register(EventType("player_died", "evt.player_died", "☠", "#ff3333", _died, ICONS + "INV_Misc_Bone_HumanSkull_01",
-                   highlight="danger", pin_icon="Interface\\TargetingFrame\\UI-TargetingFrame-Skull"))
+                   highlight="danger", pin_icon="Interface\\TargetingFrame\\UI-TargetingFrame-Skull",
+                   detail=_killing_blow))
 register(EventType("zone_discovered", "evt.zone_discovered", "⚑", "#73d9ff",
                    lambda e: tr("evt.zone_discovered.text", zone=e.payload.get("zone") or e.zone_name or "?"),
                    ICONS + "INV_Misc_Map_01"))

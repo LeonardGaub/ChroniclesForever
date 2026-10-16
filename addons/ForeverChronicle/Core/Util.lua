@@ -61,6 +61,12 @@ function Util.NewId()
     math.random(0, 0xFFFFFFF), math.random(0, 0xFFFFFFF))
 end
 
+-- NPC ID from a creature GUID ("Creature-0-<server>-<instance>-<zone>-<npcID>-<spawn>"), or nil.
+function Util.NpcID(guid)
+  local id = type(guid) == "string" and guid:match("^%a+%-%d+%-%d+%-%d+%-%d+%-(%d+)%-")
+  return tonumber(id)
+end
+
 -------------------------------------------------------------------------------
 -- Client
 -------------------------------------------------------------------------------

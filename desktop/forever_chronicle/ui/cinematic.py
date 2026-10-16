@@ -1219,7 +1219,8 @@ class CinematicWindow(QWidget):
         if cue.event_type == "player_died":
             # A moment of silence: the replay holds on a dark red title while the colour drains away.
             self._show_title(self.char_name or tr("cine.banner.player_died"), DEATH_SECONDS,
-                             heading=tr("cine.banner.player_died"), subtitle=cue.place, tone="death")
+                             heading=tr("cine.banner.player_died"),
+                             subtitle="  ·  ".join(p for p in (cue.cause, cue.place) if p), tone="death")
             self.hold = DEATH_HOLD
             self.ramp = 0.0
             if self.sound.play("death"):

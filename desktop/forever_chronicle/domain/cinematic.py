@@ -43,6 +43,7 @@ class Cue:
     place: str = ""             # ... and where
     event_type: str = ""        # the event's type ("" for a screenshot without its event)
     has_screenshot: bool = False  # an event whose screenshot is shown too (its banner says the same)
+    cause: str = ""             # a death's cause ("Killed by Hogger"), "" if unknown
 
 
 # Screenshot banner, like the game's achievement alert: a short heading and the name of what happened.
@@ -90,7 +91,8 @@ def build_cues(events: Iterable[EventRow], screenshots: Iterable[Any], start: in
         cues.append(Cue(e.occurred_at, "level" if isinstance(level, int) else "event", event_types.describe(e),
                         et.glyph, et.color, event_types.icon_of(e), level=level if isinstance(level, int) else None,
                         heading=heading, title=title, place=place, event_type=e.event_type,
-                        has_screenshot=e.event_id in with_shot))
+                        has_screenshot=e.event_id in with_shot,
+                        cause=event_types.death_cause(e) if e.event_type == "player_died" else ""))
     for row in shots:
         t = row["captured_at"] or row["requested_at"]
         path = row["file_path"]

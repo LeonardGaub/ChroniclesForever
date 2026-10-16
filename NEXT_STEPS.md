@@ -18,7 +18,7 @@ at the time (older entries may describe things that changed later). Architecture
 - Sharing with friends: the companion addon plus the cloud sync `sync/ForeverSync.ps1` (docs/Sharing_Design.md).
   The desktop share feature was removed. The OneDrive folder "Journey Forever Cloud" holds only `players\`; the
   addon and the sync script come from each PC's clone of the repository (setup: `sync\Einrichten.bat` there).
-- Tests: `tests/addon` (`npm test`: queue tests and phases 1-14, writes the fixtures) first, then `desktop`
+- Tests: `tests/addon` (`npm test`: queue tests and phases 1-15, writes the fixtures) first, then `desktop`
   (`pytest`, 119 tests). All pass.
 
 ## Open items
@@ -30,6 +30,11 @@ at the time (older entries may describe things that changed later). Architecture
 4. The friends' package is not yet tested end to end on a clean PC (Python install and pip download).
 5. Gear: test whether `SetCustomRace` / `TryOn` work in Forever, for a dressed model of other characters.
 6. Short in-game checks for the user: open each profession window once and look at the Berufe tab.
+7. Death cause (2026-10-16): the addon reads `C_DeathRecap.GetRecapEvents()` (no ID = newest recap) at
+   `PLAYER_DEAD`, retrying for 5 s, and stores the killing blow (killer, npcID, spell, spellID, environment,
+   damage, overkill) in the `player_died` event. Unverified in Forever: whether the recap exists there and is
+   readable (not secret). After the next death, check the Chronik entry; if it still says "Gestorben in ...",
+   the recap is missing or hidden.
 ## Confirmed client facts
 - Install: `C:\Program Files (x86)\World of Warcraft\_classic_beta_\` (`WowB.exe`, client 1.60.1). TOC Interface 16001.
 - SavedVariables: `WTF\Account\131324136#1\SavedVariables\` plus `.lua.bak`.

@@ -106,4 +106,5 @@ if (fs.existsSync(friendsFixture)) {
 
 // The main addon alone, as uploaded to CurseForge.
 runPhase(14, null, 0, null, true);
+runPhase(15, null, 0);
 console.log('ALL PHASES PASSED');

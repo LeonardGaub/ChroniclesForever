@@ -7,6 +7,9 @@ then turn "Unreleased" into the uploaded version and date.
 ## Unreleased (0.15.0)
 
 ### New
+- Deaths name their cause, read from the game's death recap: "Killed by Hogger in Elwynn Forest", or "Drowned",
+  "Fell to death" and so on. Hover the entry for the killing blow (spell and damage). Deaths without a recap
+  stay "Died in ...".
 - UI polish: the window and its pages fade in, and the tabs on the right edge look like the spellbook's tabs.
   The new "Animations" setting turns all animations off.
 - Chronicle: a search box finds entries by their text or place (for example a quest, a zone or a boss).

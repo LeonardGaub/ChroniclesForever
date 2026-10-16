@@ -36,7 +36,22 @@ FC:RegisterEventType("player_died", {
   pinIcon = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull",
   format = function(r)
     local where = r.location and (r.location.subzone or r.location.zone)
+    local d = r.data
+    local env = d.environment and L["DEATH_ENV_" .. d.environment:upper()]
+    local what = env or ((d.killer or d.spell) and string.format(L.EVT_KILLED_BY, d.killer or d.spell))
+    if what then return where and string.format(L.EVT_CAUSE_IN, what, where) or what end
     return where and string.format(L.EVT_DIED_IN, where) or L.EVT_DIED
+  end,
+  -- Tooltip: the killing blow ("Heroic Strike: 245 damage (37 overkill)").
+  details = function(r)
+    local d = r.data
+    if not d.damage then return nil end
+    local how = d.spell or (not d.environment and L.DEATH_MELEE) or (d.environment and L["DEATH_ENV_" .. d.environment:upper()])
+    local dmg = Util.FormatNumber(d.damage)
+    local line = d.overkill and d.overkill > 0
+      and string.format(L.DEATH_BLOW_OVERKILL, how or "?", dmg, Util.FormatNumber(d.overkill))
+      or string.format(L.DEATH_BLOW, how or "?", dmg)
+    return { line }
   end,
 })
 FC:RegisterEventType("achievement_earned", {
@@ -111,9 +126,67 @@ Progress:RegisterEvent("PLAYER_XP_UPDATE", function(self, _, unit)
   self.lastXP, self.lastMax = xp, max
 end)
 
-Progress:RegisterEvent("PLAYER_DEAD", function()
-  -- The cause of death is not exposed by the API and is never inferred (spec F-007).
-  FC:Record("player_died", {})
+-- Cause of death: the killing blow from the game's death recap (C_DeathRecap, called without an ID for the
+-- newest recap). Only what the recap says is stored, never inferred (spec F-007). The recap can lag behind
+-- PLAYER_DEAD, so it is read again a few times and the event's data is filled in when it arrives. A recap
+-- whose killing blow is the one already used belongs to an earlier death and is ignored.
+local RECAP_RETRIES = { 0.5, 1.5, 3 }
+
+function Progress:ReadDeathCause()
+  local api = C_DeathRecap
+  if not (api and type(api.GetRecapEvents) == "function") then return nil end
+  local ok, events = pcall(api.GetRecapEvents)
+  if not ok or type(Util.Plain(events)) ~= "table" then return nil end
+  -- The killing blow is the newest entry (the recap lists it first; the timestamps decide if present).
+  local blow, newest
+  for i, e in ipairs(events) do
+    if type(Util.Plain(e)) == "table" then
+      local ts = Util.Plain(e.timestamp)
+      ts = type(ts) == "number" and ts or nil
+      if not blow or (ts and (not newest or ts > newest)) then blow, newest = e, ts end
+    end
+  end
+  if not blow then return nil end
+  -- Combat log timestamps are epoch seconds: a killing blow from minutes ago is an earlier death's.
+  if newest and newest > 1e9 and math.abs(time() - newest) > 60 then return nil end
+  local function get(key, expected)
+    local v = Util.Plain(blow[key])
+    return type(v) == expected and v or nil
+  end
+  local env = get("environmentalType", "string")
+  local cause = {
+    killer = not env and get("sourceName", "string") or nil,
+    npcID = Util.NpcID(get("sourceGUID", "string")),
+    spell = get("spellName", "string"),
+    spellID = get("spellId", "number"),
+    environment = env and env:lower() or nil,
+    damage = get("amount", "number"),
+    overkill = get("overkill", "number"),
+  }
+  if cause.overkill and cause.overkill <= 0 then cause.overkill = nil end -- -1 or 0: no overkill
+  if not (cause.killer or cause.spell or cause.environment) then return nil end
+  local key = table.concat({ tostring(newest), tostring(cause.killer), tostring(cause.spellID),
+    tostring(cause.environment), tostring(cause.damage) }, "|")
+  if key == self.lastRecapKey then return nil end
+  return cause, key
+end
+
+function Progress:FillDeathCause(record, attempt)
+  local cause, key = self:ReadDeathCause()
+  if cause then
+    self.lastRecapKey = key
+    for k, v in pairs(cause) do record.data[k] = v end
+    return
+  end
+  local delay = RECAP_RETRIES[attempt]
+  if delay and C_Timer then
+    C_Timer.After(delay, function() self:FillDeathCause(record, attempt + 1) end)
+  end
+end
+
+Progress:RegisterEvent("PLAYER_DEAD", function(self)
+  local record = FC:Record("player_died", {})
+  if record then self:FillDeathCause(record, 1) end
   FC:IncrementStat("deaths")
   FC:ConfirmCapability("deaths")
 end)

@@ -34,6 +34,7 @@ def test_import_addon_fixture(db, data):
         "session_started", "quest_completed", "player_died", "level_up", "achievement_earned", "session_started"]
     death = next(e for e in events if e.event_type == "player_died")
     assert death.zone_name == "Ragefire Chasm" and death.map_id is None
+    assert death.payload["killer"] == "Taragaman the Hungerer" and death.payload["damage"] == 412  # the death recap
     quest = next(e for e in events if e.event_type == "quest_completed")
     assert quest.payload["title"] == "The Runaway Shipment" and quest.x == pytest.approx(0.4403)
 

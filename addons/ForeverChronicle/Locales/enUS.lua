@@ -101,6 +101,17 @@ FC:RegisterLocale("enUS", {
   EVT_QUEST_COMPLETED = "Quest completed: %s",
   EVT_DIED = "Died",
   EVT_DIED_IN = "Died in %s",
+  EVT_KILLED_BY = "Killed by %s",
+  EVT_CAUSE_IN = "%s in %s",
+  DEATH_ENV_FALLING = "Fell to death",
+  DEATH_ENV_DROWNING = "Drowned",
+  DEATH_ENV_FATIGUE = "Died of fatigue",
+  DEATH_ENV_FIRE = "Burned to death",
+  DEATH_ENV_LAVA = "Burned in lava",
+  DEATH_ENV_SLIME = "Died in slime",
+  DEATH_MELEE = "Melee",
+  DEATH_BLOW = "%s: %s damage",
+  DEATH_BLOW_OVERKILL = "%s: %s damage (%s overkill)",
   EVT_ACHIEVEMENT = "Achievement: %s",
 
   -- Stats

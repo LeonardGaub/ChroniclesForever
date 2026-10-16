@@ -14,7 +14,8 @@ end
 --   def = { labelKey, icon, format = function(record) -> text, order,
 --           category = key of an event category (Chronicle filter),
 --           highlight = "milestone" | "danger" (stands out in the Chronicle and on the map),
---           pinIcon = texture for map pins instead of the icon }
+--           pinIcon = texture for map pins instead of the icon,
+--           details = function(record) -> extra tooltip lines or nil }
 -- Event categories group event types for the Chronicle's filter buttons:
 --   def = { labelKey, icon, order }
 -------------------------------------------------------------------------------
@@ -53,6 +54,14 @@ function FC:DescribeEvent(record)
     if ok and text then return text, icon end
   end
   return record.type, icon
+end
+
+-- Extra tooltip lines for a recorded event (def.details), or nil.
+function FC:EventDetails(record)
+  local def = self.eventTypes[record.type]
+  if not (def and def.details) then return nil end
+  local ok, lines = pcall(def.details, record)
+  return ok and type(lines) == "table" and lines or nil
 end
 
 -------------------------------------------------------------------------------

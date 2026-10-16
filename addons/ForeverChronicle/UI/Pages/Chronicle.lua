@@ -163,6 +163,9 @@ local function createRow(row)
     if not r.time then return end
     GameTooltip:SetOwner(r, "ANCHOR_CURSOR")
     GameTooltip:SetText(r.title or "", 1, 0.82, 0)
+    for _, line in ipairs(r.record and FC:EventDetails(r.record) or {}) do
+      GameTooltip:AddLine(line, 1, 1, 1, true)
+    end
     local shot = r.shotRecord
     if shot then
       GameTooltip:AddLine(string.format(L.CHRONICLE_SHOT_LINE, L["SHOT_STATUS_" .. shot.status:upper()]), 1, 1, 1)
@@ -181,7 +184,7 @@ local function updateHeader(row, item, st)
   for _, r in ipairs({ row.icon, row.iconFrame, row.text, row.sub, row.shot, row.shotStatus, row.accent, row.stripe }) do
     r:Hide()
   end
-  row.time, row.title, row.shotRecord = nil, nil, nil
+  row.time, row.title, row.shotRecord, row.record = nil, nil, nil, nil
   row.hl:SetColorTexture(0, 0, 0, 0)
   applyFont(row.header, st.header, st)
   row.header:SetText(item.text)
@@ -257,7 +260,7 @@ local function updateRow(row, item)
   local whenText = date(L.TIME_FORMAT, when or 0)
   row.sub:SetText(where and (whenText .. UI.SEP .. where) or whenText)
   row.sub:Show()
-  row.time, row.title, row.shotRecord = when, text, item.shot
+  row.time, row.title, row.shotRecord, row.record = when, text, item.shot, item.event
 
   local shot = item.shot
   row.shot:SetShown(shot ~= nil)

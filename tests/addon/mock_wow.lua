@@ -202,6 +202,8 @@ C_Map = {
   end,
 }
 C_QuestLog = { GetTitleForQuestID = function(id) return id == 3513 and "The Runaway Shipment" or nil end }
+-- The newest death recap (a list of combat log entries), or nil before the client has one.
+C_DeathRecap = { GetRecapEvents = function(recapID) return MOCK.deathRecap end }
 function GetAchievementInfo(id) return id, "Level 10", 10, true, 10, 14, 26, "Reach level 10", 0, 236565 end
 MOCK.screenshots = {}
 function IsShiftKeyDown() return false end

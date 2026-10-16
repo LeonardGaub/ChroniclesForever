@@ -101,6 +101,17 @@ FC:RegisterLocale("deDE", {
   EVT_QUEST_COMPLETED = "Quest abgeschlossen: %s",
   EVT_DIED = "Gestorben",
   EVT_DIED_IN = "Gestorben in %s",
+  EVT_KILLED_BY = "Getötet von %s",
+  EVT_CAUSE_IN = "%s in %s",
+  DEATH_ENV_FALLING = "Zu Tode gestürzt",
+  DEATH_ENV_DROWNING = "Ertrunken",
+  DEATH_ENV_FATIGUE = "An Erschöpfung gestorben",
+  DEATH_ENV_FIRE = "Verbrannt",
+  DEATH_ENV_LAVA = "In Lava verbrannt",
+  DEATH_ENV_SLIME = "Im Schleim gestorben",
+  DEATH_MELEE = "Nahkampf",
+  DEATH_BLOW = "%s: %s Schaden",
+  DEATH_BLOW_OVERKILL = "%s: %s Schaden (%s Überschaden)",
   EVT_ACHIEVEMENT = "Erfolg: %s",
 
   -- Statistik

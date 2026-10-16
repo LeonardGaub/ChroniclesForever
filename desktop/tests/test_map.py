@@ -142,7 +142,7 @@ def test_map_page_replay_and_timeline_focus(db, tmp_path, monkeypatch, addon_fix
     timeline = next(p for p in window.pages if p.title_key == "tab.timeline")
     window.show_page(timeline)
     from forever_chronicle.ui.cards import DATA, TITLE
-    death = next(item for item in timeline.list.entries() if "Gestorben" in item.data(TITLE))
+    death = next(item for item in timeline.list.entries() if "Getötet von" in item.data(TITLE))
     death_time = death.data(DATA)[0]
     timeline.list.setCurrentItem(death)
     window.show_page(page)

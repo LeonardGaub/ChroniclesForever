@@ -84,6 +84,12 @@ if PHASE == 1 then
   MOCK.fire("QUEST_TURNED_IN", 3513, 2550, 0)
   MOCK.advance(30)
   MOCK.instance = true; MOCK.zone = "Ragefire Chasm"
+  MOCK.deathRecap = { -- the older hit first: the newest timestamp is the killing blow
+    { timestamp = time() - 2.5, event = "SWING_DAMAGE", sourceName = "Taragaman the Hungerer", amount = 180 },
+    { timestamp = time() - 0.2, event = "SPELL_DAMAGE", sourceName = "Taragaman the Hungerer",
+      sourceGUID = "Creature-0-4619-389-1-11520-00000ABC", spellName = "Uppercut", spellId = 10966,
+      amount = 412, overkill = 37 },
+  }
   MOCK.fire("PLAYER_DEAD")
   MOCK.instance = nil; MOCK.zone = nil
   MOCK.advance(30)
@@ -103,6 +109,11 @@ if PHASE == 1 then
   local death = events()[3]
   check(death.location.zone == "Ragefire Chasm" and death.location.mapID == nil and death.location.instanceID == 389
     and death.location.quality == "zone_only", "death in instance is zone-only with instance ID")
+  check(death.data.killer == "Taragaman the Hungerer" and death.data.npcID == 11520 and death.data.spell == "Uppercut"
+    and death.data.spellID == 10966 and death.data.damage == 412 and death.data.overkill == 37,
+    "death cause from the recap's killing blow")
+  check(FC:DescribeEvent(death) == "Getötet von Taragaman the Hungerer in Ragefire Chasm", "death text names the killer")
+  check(FC:EventDetails(death)[1] == "Uppercut: 412 Schaden (37 Überschaden)", "death tooltip: the killing blow")
   check(events()[5].seq == 5, "seq numbers assigned")
   local stats = ForeverChronicleDB.characters["Player-4619-0112A417"].stats
   check(stats.quests_completed == 1 and stats.deaths == 1 and stats.levels_gained == 1 and stats.sessions == 1, "stats counted")
@@ -1324,6 +1335,56 @@ if PHASE == 14 then
   local errors = 0
   for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
   check(errors == 0, "no errors logged")
+end
+
+if PHASE == 15 then
+  print("phase 15: causes of death")
+  local FC = startClient(true, false)
+  local char = ForeverChronicleDB.characters["Player-4619-0112A417"]
+  local function lastDeath()
+    local records = S(char.streams.events).records
+    for i = #records, 1, -1 do if records[i].type == "player_died" then return records[i] end end
+  end
+  MOCK.advance(2)
+
+  -- The recap arrives a moment after the death: the event is filled in then.
+  MOCK.deathRecap = nil
+  MOCK.fire("PLAYER_DEAD")
+  check(lastDeath().data.killer == nil and FC:DescribeEvent(lastDeath()):find("^Gestorben"), "no recap yet: plain death")
+  MOCK.deathRecap = { { timestamp = time(), event = "SWING_DAMAGE", sourceName = "Hogger",
+    sourceGUID = "Creature-0-4619-0-1-448-00000001", amount = 96, overkill = 0 } }
+  MOCK.advance(1)
+  local hogger = lastDeath()
+  check(hogger.data.killer == "Hogger" and hogger.data.npcID == 448 and hogger.data.spell == nil
+    and hogger.data.overkill == nil, "late recap fills in the killer")
+  check(FC:EventDetails(hogger)[1] == "Nahkampf: 96 Schaden", "melee blow in the tooltip")
+
+  -- The next death while the client still holds the old recap: it is not used again.
+  MOCK.advance(30)
+  MOCK.fire("PLAYER_DEAD")
+  MOCK.advance(5)
+  check(lastDeath() ~= hogger and lastDeath().data.killer == nil, "an earlier death's recap is not reused")
+
+  -- Environmental damage, with the location.
+  MOCK.travel(1413, "The Barrens")
+  MOCK.deathRecap = { { timestamp = time(), event = "ENVIRONMENTAL_DAMAGE", environmentalType = "Falling", amount = 1200 } }
+  MOCK.fire("PLAYER_DEAD")
+  local fall = lastDeath()
+  check(fall.data.environment == "falling" and fall.data.killer == nil, "falling recorded as environment")
+  check(FC:DescribeEvent(fall) == "Zu Tode gestürzt in Crossroads", "falling text")
+
+  -- Secret values (Midnight rules) are left out.
+  MOCK.advance(30)
+  MOCK.deathRecap = { { timestamp = time(), sourceName = MOCK.SECRET, spellName = "Shadow Bolt", amount = MOCK.SECRET } }
+  MOCK.fire("PLAYER_DEAD")
+  check(lastDeath().data.killer == nil and lastDeath().data.spell == "Shadow Bolt" and lastDeath().data.damage == nil
+    and FC:DescribeEvent(lastDeath()) == "Getötet von Shadow Bolt in Crossroads", "secret killer: the spell only")
+  MOCK.deathRecap = MOCK.SECRET
+  MOCK.advance(30)
+  MOCK.fire("PLAYER_DEAD")
+  MOCK.advance(5)
+  check(lastDeath().data.spell == nil, "secret recap is ignored")
+  check(char.stats.deaths == 5, "every death counted")
 end
 
 print("PHASE " .. PHASE .. " PASSED")
