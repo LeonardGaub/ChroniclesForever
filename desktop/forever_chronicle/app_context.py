@@ -13,6 +13,7 @@ from .storage.database import Database
 from .storage.jsonl import ExportResult, JsonlImportResult, export_jsonl, import_jsonl
 from .storage.repository import Repository
 from .ui.sound import Sound
+from .wow import game_icons
 from .wow.paths import ClientInstall, SavedVariablesFile, client_from_path, find_forever_installs, find_saved_variables
 
 
@@ -57,9 +58,15 @@ class AppContext(QObject):
         results = [self.importer.import_file(sv.path, sv.account, skip_unchanged=skip_unchanged)
                    for sv in self.saved_variables()]
         matched = self.match_screenshots()
-        if matched or any(r.status != "unchanged" for r in results):
+        new_icons = self.extract_icons()
+        if matched or new_icons or any(r.status != "unchanged" for r in results):
             self.data_changed.emit()
         return results
+
+    def extract_icons(self) -> int:
+        """Takes the icons recorded with events that have no picture yet out of the local game (wow/game_icons.py).
+        Opens the game files only when one is missing; returns how many were added."""
+        return game_icons.extract_missing(self.client(), self.repo.event_icons())
 
     # -- backups and JSONL transfer (spec F-011) ------------------------------------------
 
@@ -71,6 +78,7 @@ class AppContext(QObject):
         result = import_jsonl(self.db, path)
         if result.status in ("ok", "partial"):
             self.match_screenshots()
+            self.extract_icons()
             self.data_changed.emit()
         return result
 

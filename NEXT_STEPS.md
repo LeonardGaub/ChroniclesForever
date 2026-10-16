@@ -19,7 +19,7 @@ at the time (older entries may describe things that changed later). Architecture
   The desktop share feature was removed. The OneDrive folder "Journey Forever Cloud" holds only `players\`; the
   addon and the sync script come from each PC's clone of the repository (setup: `sync\Einrichten.bat` there).
 - Tests: `tests/addon` (`npm test`: queue tests and phases 1-14, writes the fixtures) first, then `desktop`
-  (`pytest`, 110 tests). All pass.
+  (`pytest`, 119 tests). All pass.
 
 ## Open items
 1. Dungeon maps: after the user's next dungeon, read `FC.db.dungeonProbe` from the saved file and decide the
@@ -29,9 +29,7 @@ at the time (older entries may describe things that changed later). Architecture
 3. Spec v1.4: the updates listed below are not written yet.
 4. The friends' package is not yet tested end to end on a clean PC (Python install and pip download).
 5. Gear: test whether `SetCustomRace` / `TryOn` work in Forever, for a dressed model of other characters.
-6. Open question for the user: real WoW icons for the desktop. `desktop/forever_chronicle/wow/casc.py` can now read them from the local
-   client (icons are BLP files by fileDataID; the addon already records icon IDs).
-7. Short in-game checks for the user: open each profession window once and look at the Berufe tab.
+6. Short in-game checks for the user: open each profession window once and look at the Berufe tab.
 ## Confirmed client facts
 - Install: `C:\Program Files (x86)\World of Warcraft\_classic_beta_\` (`WowB.exe`, client 1.60.1). TOC Interface 16001.
 - SavedVariables: `WTF\Account\131324136#1\SavedVariables\` plus `.lua.bak`.
@@ -60,6 +58,19 @@ at the time (older entries may describe things that changed later). Architecture
   format and `snapshots` area.
 
 ## History
+
+### Game icons on the desktop (2026-10-16)
+- User request: the desktop shows events with the addon's icons. `EventType` got the addon's `icon`, `highlight`
+  and `pin_icon`; `event_types.icon_of` prefers the fileDataID recorded with the event, as the addon's `getIcon`.
+- Shown in Chronik and Übersicht (20 px), as round map pins with the addon's looks (`ui/icons.py` PIN_LOOKS) and
+  in the replay's pins and achievement banner. Map pins grow on hover and show a small card (icon, event, place,
+  time; `map_page.event_tooltip`). The symbols stay as the fallback.
+- The 13 type icons are PNGs in `desktop/forever_chronicle/icons/` (`tools/extract_icons.py`). Per-event icons
+  go to `%APPDATA%\ForeverChronicle\icons\` after each import (`AppContext.extract_icons`, `wow/game_icons.py`);
+  the user's 7 took 1.6 s, including Forever's own recipe icon 7808148.
+- `casc.py` moved from `tools/` into `desktop/forever_chronicle/wow/`. numpy and Pillow are now main dependencies;
+  `Journey Forever starten.bat` installs them once on friends' existing setups (marker `.ready2`), and starts the
+  app anyway if that download fails.
 
 ### Map images from the game client (2026-10-16)
 - Cause of the offset routes (Dorgar's Mulgore, 2026-10-15): the coordinates were right, the desktop art was

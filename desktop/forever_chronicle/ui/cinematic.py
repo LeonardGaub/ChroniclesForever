@@ -40,7 +40,7 @@ from ..domain.route import Route, Timeline
 from ..domain.route_colors import RouteColors, zone_colors
 from ..i18n import format_datetime, format_duration, tr
 from ..wow.map_art import find_art
-from . import theme
+from . import icons, theme
 from .cinematic_fx import (FADE_SECONDS, AchievementToast, CinemaFrame, MarkerItem, PhotoOverlay, Pin, PinsItem,
                            RouteItem, TitleCard, clamp, ease_in_out,
                            load_thumbnail)
@@ -863,7 +863,7 @@ class CinematicWindow(QWidget):
                 continue
             tilt = ((cue.time * 2654435761) & 0xFF) / 255 * 16 - 8
             pins.append(Pin(cue.time, QPointF(xy[0] * W, xy[1] * H), cue.glyph or "•", QColor(cue.color), thumb,
-                            tilt))
+                            tilt, icons.of_event(cue.icon, cue.event_type) if thumb is None else None))
         return pins
 
     def _thumb(self, path: str | None) -> QPixmap | None:

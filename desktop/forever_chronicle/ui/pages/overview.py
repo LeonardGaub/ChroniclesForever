@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QFormLayout, QGroupBox, QHBoxLayout, QLabel, QList
 
 from ...domain import event_types, stats
 from ...i18n import format_datetime, tr
-from .. import theme
+from .. import icons, theme
 from ..widgets import Page, muted, value_label
 
 RECENT_EVENTS = 12
@@ -88,8 +88,10 @@ class OverviewPage(Page):
         if not rows:
             self.gear.addItem(QListWidgetItem(tr("overview.gear_none")))
         for event in self.ctx.repo.events(self.character_id, limit=RECENT_EVENTS):
-            et = event_types.get(event.event_type)
-            item = QListWidgetItem(f"{et.glyph}  {event_types.describe(event)}")
+            icon, text = icons.event_small(event), event_types.describe(event)
+            item = QListWidgetItem(text if icon else f"{event_types.get(event.event_type).glyph}  {text}")
+            if icon:
+                item.setData(Qt.ItemDataRole.DecorationRole, icon)
             item.setToolTip(f"{format_datetime(event.occurred_at)}\n{event_types.location_text(event)}")
             item.setForeground(Qt.GlobalColor.white)
             self.recent.addItem(item)

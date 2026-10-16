@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QComboBox, QHBoxLayout, QHeaderView, QLineEdit, QP
 
 from ...domain import event_types
 from ...i18n import format_datetime, tr
-from .. import theme
+from .. import icons, theme
 from ..screenshots import THUMB, ScreenshotViewer, Shot, ThumbnailLoader, file_exists, placeholder
 from ..widgets import Page, muted, table
 
@@ -115,20 +115,25 @@ class TimelinePage(Page):
 
         self.table.setRowCount(len(rows))
         for i, (ts, kind, obj, shot) in enumerate(rows):
+            icon = None
             if kind == "gap":
                 n = obj["to_seq"] - obj["from_seq"] + 1
                 cells = ["", tr("timeline.gap", n=n), ""]
                 color = QColor(theme.RED)
             elif kind == "shot":
-                cells = [format_datetime(ts), f"{SHOT_GLYPH}  {obj}", ""]
+                icon = icons.small(event_types.SCREENSHOT_ICON)
+                cells = [format_datetime(ts), str(obj) if icon else f"{SHOT_GLYPH}  {obj}", ""]
                 color = None
             else:
-                et = event_types.get(obj.event_type)
-                cells = [format_datetime(ts), f"{et.glyph}  {event_types.describe(obj)}",
+                icon = icons.event_small(obj)
+                text = event_types.describe(obj)
+                cells = [format_datetime(ts), text if icon else f"{event_types.get(obj.event_type).glyph}  {text}",
                          event_types.location_text(obj)]
                 color = None
             for col, text in enumerate(cells):
                 item = QTableWidgetItem(text)
+                if col == 1 and icon:
+                    item.setData(Qt.ItemDataRole.DecorationRole, icon)
                 if col == 0:
                     item.setForeground(QColor(theme.MUTED))
                     item.setData(Qt.ItemDataRole.UserRole, ts if kind != "gap" else None)

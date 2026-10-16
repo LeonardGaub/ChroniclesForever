@@ -12,13 +12,14 @@
 
 from __future__ import annotations
 
+import html
 import time
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, QUrl
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QGraphicsEllipseItem, QGraphicsItem, QGraphicsPathItem,
-                               QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel, QPushButton, QSlider,
-                               QVBoxLayout)
+                               QGraphicsPixmapItem, QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel, QPushButton,
+                               QSlider, QVBoxLayout)
 
 from ...domain import event_types, maps
 from ...domain.cinematic import Levels
@@ -26,7 +27,7 @@ from ...domain.route import Route
 from ...domain.route_colors import MODES, SEGMENT_END, RouteColors, hex_color
 from ...i18n import format_datetime, format_duration, tr
 from ...wow.map_art import find_art
-from .. import theme
+from .. import icons, theme
 from ..cinematic import CinematicWindow
 from ..widgets import Page, muted
 
@@ -34,6 +35,7 @@ W, H = maps.ART_WIDTH, maps.ART_HEIGHT
 BASE_SPEED = 60          # game seconds per real second at 1x
 TICK_MS = 50
 SPEEDS = (1, 2, 4, 10)
+TIP_ICON = 32            # icon size in a map pin's tooltip
 
 
 def _marker(radius: float, fill: str, outline: str = "#000000") -> QGraphicsEllipseItem:
@@ -42,6 +44,47 @@ def _marker(radius: float, fill: str, outline: str = "#000000") -> QGraphicsElli
     item.setPen(QPen(QColor(outline), 1.5))
     item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
     return item
+
+
+class EventPin(QGraphicsPixmapItem):
+    """An event on the map as the addon's pin: same size at every zoom, a little larger and on top under the mouse."""
+
+    HOVER_SCALE = 1.3  # the addon's pins grow by the same factor (UI/MapCanvas.lua createPin)
+
+    def __init__(self, pixmap: QPixmap, z: float):
+        super().__init__(pixmap)
+        ratio = pixmap.devicePixelRatio()
+        self.setOffset(-pixmap.width() / ratio / 2, -pixmap.height() / ratio / 2)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
+        self.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        self.setAcceptHoverEvents(True)
+        self.z = z
+
+    def hoverEnterEvent(self, event) -> None:
+        self.setScale(self.HOVER_SCALE)
+        self.setZValue(self.z + 1)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event) -> None:
+        self.setScale(1)
+        self.setZValue(self.z)
+        super().hoverLeaveEvent(event)
+
+
+def event_tooltip(event) -> str:
+    """A small card like the addon's pin tooltip: the icon, what happened (gold), where and when."""
+    path = icons.event_file(event)
+    lines = [f'<span style="color:{theme.GOLD}; font-weight:600">{html.escape(event_types.describe(event))}</span>']
+    place = event_types.location_text(event)
+    if place:
+        lines.append(f'<span style="color:{theme.TEXT}">{html.escape(place)}</span>')
+    lines.append(f'<span style="color:{theme.MUTED}">{html.escape(format_datetime(event.occurred_at))}</span>')
+    text = "<br>".join(lines)
+    if not path:
+        return text
+    image = f'<img src="{QUrl.fromLocalFile(str(path)).toString()}" width="{TIP_ICON}" height="{TIP_ICON}">'
+    return (f'<table cellspacing="0" cellpadding="0"><tr><td valign="middle">{image}</td>'
+            f'<td valign="middle" style="padding-left:8px">{text}</td></tr></table>')
 
 
 class MapView(QGraphicsView):
@@ -439,10 +482,12 @@ class MapPage(Page):
             if xy is None:
                 continue
             et = event_types.get(e.event_type)
-            dot = _marker(5, et.color)
+            pin = icons.event_pin(e)
+            z = 5 + icons.PIN_ORDER.get(et.highlight, 0) / 10
+            dot = EventPin(pin, z) if pin else _marker(5, et.color)  # the addon's pin: the icon in a ring
             dot.setPos(QPointF(xy[0] * W, xy[1] * H))
-            dot.setToolTip(f"{et.glyph} {event_types.describe(e)}\n{format_datetime(e.occurred_at)}")
-            dot.setZValue(5)
+            dot.setToolTip(event_tooltip(e))
+            dot.setZValue(z)
             scene.addItem(dot)
 
     # -- playback --------------------------------------------------------------------------

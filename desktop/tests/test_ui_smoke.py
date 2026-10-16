@@ -6,6 +6,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from forever_chronicle import i18n  # noqa: E402
@@ -41,8 +42,9 @@ def test_main_window_with_data(app, db, tmp_path, monkeypatch, addon_fixture):
         window.tabs.setCurrentIndex(i)
     timeline = window.pages[1]
     assert timeline.table.rowCount() == 6
-    assert "Quest abgeschlossen: The Runaway Shipment" in [timeline.table.item(r, 1).text().split("  ", 1)[1]
-                                                          for r in range(6)]
+    entries = [timeline.table.item(r, 1) for r in range(6)]
+    quest = next(e for e in entries if e.text() == "Quest abgeschlossen: The Runaway Shipment")
+    assert not quest.data(Qt.ItemDataRole.DecorationRole).isNull(), "the event type's game icon (bundled in forever_chronicle/icons)"
     overview = window.pages[0]
     assert overview.rows["quests"][1].text() == "1"
     assert overview.rows["kills"][1].text() == "2" and overview.rows["xp_earned"][1].text() == "4.200"

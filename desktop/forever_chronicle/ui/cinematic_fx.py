@@ -32,7 +32,7 @@ from ..domain import maps
 from ..domain.cinematic import Cue
 from ..domain.route_colors import RouteColors
 from ..i18n import format_datetime
-from . import theme
+from . import icons, theme
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
 FADE_SECONDS = 0.45
@@ -383,6 +383,7 @@ class Pin:
     color: QColor
     thumb: QPixmap | None = None  # screenshots: a small picture
     tilt: float = 0.0
+    icon: QPixmap | None = None   # events: the game icon, shown instead of the glyph
 
 
 @dataclass
@@ -478,6 +479,9 @@ class PinsItem(QGraphicsItem):
         painter.setPen(QPen(TRIM, 1.6))
         painter.setBrush(fill)
         painter.drawEllipse(QPointF(0, 0), r, r)
+        if pin.icon is not None:
+            draw_round_icon(painter, QPointF(0, 0), r - 1.6, pin.icon)
+            return
         painter.setFont(pixel_font(12, True, SYMBOL_FONTS))
         painter.setPen(pin.color)
         painter.drawText(QRectF(-r, -r, 2 * r, 2 * r), Qt.AlignmentFlag.AlignCenter, pin.glyph)
@@ -706,20 +710,35 @@ class TitleCard(_Overlay):
 
 # -- achievement banner -------------------------------------------------------------------------------------
 
-def banner_parts(cue: Cue, with_time: bool = True) -> tuple[str, str, str, str, QColor]:
-    """(heading, title, place, badge, badge colour) of a cue's achievement banner."""
+def banner_parts(cue: Cue, with_time: bool = True) -> tuple[str, str, str, str, QColor, QPixmap | None]:
+    """(heading, title, place, badge, badge colour, badge icon) of a cue's achievement banner. The level reached
+    is shown as a number; otherwise the event's game icon, or its symbol where the icon is missing."""
     title = cue.title or cue.text
     where = cue.place if cue.place != title else ""       # a discovered zone would name itself twice
     place = "  ·  ".join(p for p in (where, format_datetime(cue.time) if with_time else "") if p)
     badge = str(cue.level) if cue.level is not None else (cue.glyph or "📷")
     color = QColor(theme.GOLD if cue.level is not None else cue.color)
-    return cue.heading, title, place, badge, color
+    icon = icons.of_event(cue.icon, cue.event_type) if cue.level is None else None
+    return cue.heading, title, place, badge, color, icon
+
+
+def draw_round_icon(painter: QPainter, center: QPointF, radius: float, icon: QPixmap) -> None:
+    """A game icon cut to a circle (without the dark frame drawn into each icon)."""
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    clip = QPainterPath()
+    clip.addEllipse(center, radius, radius)
+    painter.setClipPath(clip, Qt.ClipOperation.IntersectClip)
+    cut = icons.CROP * icon.width()
+    painter.drawPixmap(QRectF(center.x() - radius, center.y() - radius, 2 * radius, 2 * radius), icon,
+                       QRectF(cut, cut, icon.width() - 2 * cut, icon.height() - 2 * cut))
+    painter.restore()
 
 
 def draw_banner(painter: QPainter, rect: QRectF, heading: str, title: str, place: str, badge: str,
-                badge_color: QColor) -> None:
-    """The game's achievement alert: a dark plate with gold trim, a round medallion with the event's symbol
-    (or the level reached) and the heading, name and place."""
+                badge_color: QColor, badge_icon: QPixmap | None = None) -> None:
+    """The game's achievement alert: a dark plate with gold trim, a round medallion with the event's icon
+    (or symbol, or the level reached) and the heading, name and place."""
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     r = rect.adjusted(3, 3, -3, -3)
@@ -749,14 +768,17 @@ def draw_banner(painter: QPainter, rect: QRectF, heading: str, title: str, place
     painter.setPen(QPen(TRIM, 3))
     painter.setBrush(glow)
     painter.drawEllipse(center, radius, radius)
+    if badge_icon is not None:
+        draw_round_icon(painter, center, radius - 6, badge_icon)
     painter.setPen(QPen(TRIM_DARK, 1.5))
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawEllipse(center, radius - 6, radius - 6)
-    families = None if badge.isdigit() else SYMBOL_FONTS
-    painter.setFont(pixel_font(h * (0.42 if len(badge) < 3 else 0.3), True, families))
-    painter.setPen(badge_color)
-    painter.drawText(QRectF(center.x() - radius, center.y() - radius, 2 * radius, 2 * radius),
-                     Qt.AlignmentFlag.AlignCenter, badge)
+    if badge_icon is None:
+        families = None if badge.isdigit() else SYMBOL_FONTS
+        painter.setFont(pixel_font(h * (0.42 if len(badge) < 3 else 0.3), True, families))
+        painter.setPen(badge_color)
+        painter.drawText(QRectF(center.x() - radius, center.y() - radius, 2 * radius, 2 * radius),
+                         Qt.AlignmentFlag.AlignCenter, badge)
 
     # Heading, name (large, gold, with a shadow) and place, centred on the plate right of the medallion.
     left = center.x() + radius + 12
@@ -949,7 +971,7 @@ class PhotoOverlay(_Overlay):
         # The banner drops in once the picture has landed and leaves before it flies back.
         drop = ease_out((age - self.FLY * 0.8) / 0.35) * (1 - ease_in((age - (life - self.FLY * 1.4)) / 0.3))
         if drop > 0:
-            heading, title, _, badge, color = banner_parts(shot.cue, with_time=False)
+            heading, title, _, badge, color, icon = banner_parts(shot.cue, with_time=False)
             painter.setOpacity(drop)
-            draw_banner(painter, banner.translated(0, -18 * (1 - drop)), heading, title, "", badge, color)
+            draw_banner(painter, banner.translated(0, -18 * (1 - drop)), heading, title, "", badge, color, icon)
         painter.end()

@@ -1,4 +1,4 @@
-"""wow/casc.py (game file reader for tools/extract_maps.py): name hash and BLTE decoding."""
+"""wow/casc.py (game file reader for the event icons and tools/extract_maps.py): name hash and BLTE decoding."""
 
 import struct
 import zlib

@@ -17,10 +17,16 @@ from ..storage.repository import EventRow
 class EventType:
     key: str
     label_key: str                      # i18n key: name of the type (filters, legends)
-    glyph: str                          # small symbol for the timeline
+    glyph: str                          # small symbol, where the game icon is missing (wow/game_icons.py)
     color: str                          # glyph colour (as the addon's timeline ticks, UI/Pages/Map.lua)
     describe: Callable[[EventRow], str]  # one-line description
+    icon: str = ""                      # the addon's icon of the type (its RegisterEventType icon)
+    highlight: str = ""                 # "milestone" | "danger" | "": map pin look, as the addon's
+    pin_icon: str = ""                  # map pins: this texture instead of the icon (the addon's pinIcon)
 
+
+ICONS = "Interface\\Icons\\"
+SCREENSHOT_ICON = ICONS + "INV_Misc_Spyglass_02"  # the addon's chronicle shows screenshots with it
 
 REGISTRY: dict[str, EventType] = {}
 
@@ -38,6 +44,26 @@ def describe(event: EventRow) -> str:
         return get(event.event_type).describe(event)
     except Exception:  # a malformed payload must never break the timeline
         return event.event_type
+
+
+def icon_of(event: EventRow, pin: bool = False) -> int | str:
+    """The event's icon as the addon shows it: the one recorded with the event (a fileDataID: achievement,
+    profession, recipe), else its type's. pin: the type's map pin texture wins (the death skull)."""
+    et = get(event.event_type)
+    if pin and et.pin_icon:
+        return et.pin_icon
+    own = event.payload.get("icon")
+    if isinstance(own, int) and not isinstance(own, bool) and own > 0:
+        return own
+    return et.icon
+
+
+def all_icons() -> list[str]:
+    """Every texture the event types use (the icons kept in git, tools/extract_icons.py)."""
+    found = [SCREENSHOT_ICON]
+    for et in REGISTRY.values():
+        found += [p for p in (et.icon, et.pin_icon) if p and p not in found]
+    return found
 
 
 def location_text(event: EventRow) -> str:
@@ -63,16 +89,21 @@ def _achievement(e: EventRow) -> str:
 
 
 register(EventType("session_started", "evt.session_started", "◷", "#9d8f75",
-                   lambda e: tr("evt.session_started.text")))
+                   lambda e: tr("evt.session_started.text"), ICONS + "INV_Misc_PocketWatch_01"))
 register(EventType("level_up", "evt.level_up", "▲", "#ffd100",
-                   lambda e: tr("evt.level_up.text", level=e.payload.get("level", "?"))))
-register(EventType("quest_completed", "evt.quest_completed", "!", "#ffd100", _quest))
-register(EventType("player_died", "evt.player_died", "☠", "#ff3333", _died))
+                   lambda e: tr("evt.level_up.text", level=e.payload.get("level", "?")),
+                   ICONS + "Spell_Holy_InnerFire", highlight="milestone"))
+register(EventType("quest_completed", "evt.quest_completed", "!", "#ffd100", _quest, ICONS + "INV_Misc_Note_01"))
+register(EventType("player_died", "evt.player_died", "☠", "#ff3333", _died, ICONS + "INV_Misc_Bone_HumanSkull_01",
+                   highlight="danger", pin_icon="Interface\\TargetingFrame\\UI-TargetingFrame-Skull"))
 register(EventType("zone_discovered", "evt.zone_discovered", "⚑", "#73d9ff",
-                   lambda e: tr("evt.zone_discovered.text", zone=e.payload.get("zone") or e.zone_name or "?")))
-register(EventType("achievement_earned", "evt.achievement_earned", "★", "#ff8c1a", _achievement))
+                   lambda e: tr("evt.zone_discovered.text", zone=e.payload.get("zone") or e.zone_name or "?"),
+                   ICONS + "INV_Misc_Map_01"))
+register(EventType("achievement_earned", "evt.achievement_earned", "★", "#ff8c1a", _achievement,
+                   ICONS + "INV_Misc_Book_09", highlight="milestone"))
 register(EventType("rare_killed", "evt.rare_killed", "◆", "#cc73ff",
-                   lambda e: tr("evt.rare_killed.text", name=e.payload.get("name") or "?")))
+                   lambda e: tr("evt.rare_killed.text", name=e.payload.get("name") or "?"),
+                   ICONS + "INV_Misc_Head_Dragon_01"))
 
 
 def _boss(e: EventRow) -> str:
@@ -80,10 +111,11 @@ def _boss(e: EventRow) -> str:
     return tr("evt.boss_killed.text_in", name=name, instance=where) if where else tr("evt.boss_killed.text", name=name)
 
 
-register(EventType("boss_killed", "evt.boss_killed", "⚔", "#cc8c4d", _boss))
+register(EventType("boss_killed", "evt.boss_killed", "⚔", "#cc8c4d", _boss, ICONS + "INV_Sword_04"))
 register(EventType("dungeon_completed", "evt.dungeon_completed", "♛", "#ffffff",
                    lambda e: tr("evt.dungeon_completed.text", instance=e.payload.get("instance") or "?",
-                                boss=e.payload.get("boss") or "?")))
+                                boss=e.payload.get("boss") or "?"),
+                   ICONS + "INV_Misc_Key_03", highlight="milestone"))
 
 
 def rank_name(max_rank: int | None) -> str:
@@ -98,8 +130,10 @@ def _recipe(e: EventRow) -> str:
 
 
 register(EventType("profession_learned", "evt.profession_learned", "⚒", "#40c040",
-                   lambda e: tr("evt.profession_learned.text", name=e.payload.get("name") or "?")))
+                   lambda e: tr("evt.profession_learned.text", name=e.payload.get("name") or "?"),
+                   ICONS + "Trade_BlackSmithing", highlight="milestone"))
 register(EventType("profession_rank", "evt.profession_rank", "⚒", "#40c040",
                    lambda e: tr("evt.profession_rank.text", name=e.payload.get("name") or "?",
-                                rank=rank_name(e.payload.get("maxRank")))))
-register(EventType("recipe_learned", "evt.recipe_learned", "✎", "#40c040", _recipe))
+                                rank=rank_name(e.payload.get("maxRank"))),
+                   ICONS + "Trade_BlackSmithing"))
+register(EventType("recipe_learned", "evt.recipe_learned", "✎", "#40c040", _recipe, ICONS + "INV_Scroll_03"))

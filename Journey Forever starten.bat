@@ -19,11 +19,19 @@ if not defined PY goto :nopython
 if errorlevel 1 goto :fail
 
 :deps
-if exist "%VENV%\.ready" goto :addon
+if exist "%VENV%\.ready2" goto :addon
+if exist "%VENV%\.ready" goto :extras
 echo Programmteile werden installiert (Qt fuer Python, einmalig, ca. 100 MB) ...
 "%VPY%" -m pip install --disable-pip-version-check --quiet "PySide6-Essentials>=6.6"
 if errorlevel 1 goto :fail
 echo ok> "%VENV%\.ready"
+
+:extras
+rem numpy and Pillow read the event icons from the game (desktop/pyproject.toml). Optional: if the download
+rem fails, the app starts anyway with symbols instead, and the next start tries again.
+echo Programmteile fuer die Spiel-Icons werden installiert (einmalig, ca. 30 MB) ...
+"%VPY%" -m pip install --disable-pip-version-check --quiet "numpy>=1.26" "pillow>=10"
+if not errorlevel 1 echo ok> "%VENV%\.ready2"
 
 :addon
 echo.

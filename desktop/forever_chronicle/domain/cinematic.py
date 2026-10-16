@@ -30,6 +30,7 @@ class Cue:
     text: str
     glyph: str = ""
     color: str = "#ffd100"
+    icon: int | str = ""        # game icon (event_types.icon_of; the screenshot icon for a screenshot alone)
     path: str | None = None     # screenshot file
     level: int | None = None    # level reached (kind "level"; also on a level-up's screenshot)
     heading: str = ""           # banner (toast, screenshot): what happened ("Achievement earned") ...
@@ -82,8 +83,8 @@ def build_cues(events: Iterable[EventRow], screenshots: Iterable[Any], start: in
         level = e.payload.get("level") if e.event_type == "level_up" else None
         heading, title, place = banner(e, None)
         cues.append(Cue(e.occurred_at, "level" if isinstance(level, int) else "event", event_types.describe(e),
-                        et.glyph, et.color, level=level if isinstance(level, int) else None, heading=heading,
-                        title=title, place=place, event_type=e.event_type,
+                        et.glyph, et.color, event_types.icon_of(e), level=level if isinstance(level, int) else None,
+                        heading=heading, title=title, place=place, event_type=e.event_type,
                         has_screenshot=e.event_id in with_shot))
     for row in shots:
         t = row["captured_at"] or row["requested_at"]
@@ -93,7 +94,8 @@ def build_cues(events: Iterable[EventRow], screenshots: Iterable[Any], start: in
         heading, title, place = banner(event, row["trigger_type"])
         et = event_types.get(event.event_type) if event else None
         level = event.payload.get("level") if event and event.event_type == "level_up" else None
-        cues.append(Cue(t, "screenshot", text, et.glyph if et else "", et.color if et else "#ffd100", path=path,
+        cues.append(Cue(t, "screenshot", text, et.glyph if et else "", et.color if et else "#ffd100",
+                        event_types.icon_of(event) if event else event_types.SCREENSHOT_ICON, path=path,
                         level=level if isinstance(level, int) else None, heading=heading, title=title, place=place,
                         event_type=event.event_type if event else ""))
     # At the same second the event comes first, then its screenshot.

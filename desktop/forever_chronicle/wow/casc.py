@@ -1,6 +1,7 @@
 """Read-only access to the local WoW game files (CASC storage), enough to take files out by fileDataID.
 
-Used by tools/extract_maps.py. Reads only the user's own install: the build config of one product (.build.info), the local index files, the data archives, the encoding file and the root file.
+Used by wow/game_icons.py (event icons) and tools/extract_maps.py. Reads only the user's own install: the build
+config of one product (.build.info), the local index files, the data archives, the encoding file and the root file.
 Nothing is written into the game folder.
 
 Format notes (wowdev.wiki "CASC", "TACT", "BLTE"):

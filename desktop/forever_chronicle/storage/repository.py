@@ -290,6 +290,13 @@ class Repository:
                              detected_at) VALUES (?,?,?,?,?,?,?)""",
                           (character_id, stream, from_seq, to_seq, before_time, import_id, int(time.time())))
 
+    def event_icons(self) -> list[int]:
+        """The icons recorded with events (fileDataIDs: achievements, professions, recipes), all characters."""
+        rows = self.conn.execute("""SELECT DISTINCT json_extract(payload_json, '$.icon') FROM events
+                                    WHERE json_valid(payload_json)
+                                    AND json_type(payload_json, '$.icon') = 'integer'""").fetchall()
+        return [r[0] for r in rows if r[0] > 0]
+
     def gaps(self, character_id: str | None = None) -> list[sqlite3.Row]:
         if character_id:
             return self.conn.execute("SELECT * FROM data_gaps WHERE character_id = ? ORDER BY before_time DESC",

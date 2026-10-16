@@ -152,7 +152,7 @@ Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `
 
 | Package | Role |
 |---|---|
-| `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`) |
+| `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`), game files (`casc.py`) and the event icons from them (`game_icons.py`) |
 | `importing/` | SavedVariables → SQLite, validation, gaps, `.bak` fallback |
 | `storage/` | `database.py` (schema migrations + backups), `repository.py` (all SQL), `jsonl.py` (export/import) |
 | `domain/` | pure logic, no Qt: registries `event_types.py` (how events are shown) and `stats.py` (overview statistics); `route.py`, `route_colors.py`, `maps.py` (the map); `cinematic.py` (what a replay announces) |
@@ -172,9 +172,25 @@ Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `
 - QtMultimedia ships in PySide6-Addons. Without it (`PySide6-Essentials` only) `sound.AUDIO` is False and the app
   runs silently. Tests set `FOREVER_CHRONICLE_SILENT=1`; `ctx.sound.played` still records what would have played.
 
+### Event icons
+
+The desktop shows events with the addon's icons: in the Chronik and Übersicht lists, as round pins on the map
+(the addon's pin looks: milestone, danger, normal; they grow on hover and show a small card with the icon, event,
+place and time) and in the replay's pins and achievement banner.
+`event_types.icon_of(event)` picks the icon as the addon does: the fileDataID recorded with the event
+(achievements, professions, recipes), else the type's `icon`. `wow/game_icons.py` finds its PNG in two folders:
+- `forever_chronicle/icons/`: the event types' icons, kept in git. `tools/extract_icons.py` writes them from the
+  local game.
+- `%APPDATA%\ForeverChronicle\icons\`: the per-event icons. After each import `AppContext.extract_icons` takes the
+  missing ones out of the local game (`wow/casc.py`, about 2 s, only when one is missing).
+
+`ui/icons.py` turns them into pixmaps. Without numpy and Pillow, or without the game, the per-event icons fall back
+to the type's icon and unknown types to their symbol (`EventType.glyph`).
+
 - **New statistic:** call `stats.register(Stat(key, label_key, order, compute, kind, group))` and add the label to
   `i18n.py`.
-- **New event type:** call `event_types.register(EventType(...))`.
+- **New event type:** call `event_types.register(EventType(...))` with the addon's icon of the type, then run
+  `tools/extract_icons.py` so the icon is in `forever_chronicle/icons/` (`tests/test_icons.py` checks it).
 - **New page** (for example the map): subclass `ui.widgets.Page`, then add it to `ui/pages/__init__.py: PAGES`.
 - **Database change:** append SQL to `MIGRATIONS` in `storage/database.py`. Never edit a released migration.
   A backup is made before every migration.
