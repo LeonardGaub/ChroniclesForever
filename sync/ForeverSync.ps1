@@ -1,7 +1,7 @@
 <#
 Journey Forever - cloud sync (docs/Sharing_Design.md, version 3). Uses only what Windows brings along.
 
-The shared cloud folder holds only player data (<cloud>\players). The addon and this script come from a local
+The shared cloud folder holds only player data (<cloud>\players, <cloud>\screenshots). The addon and this script come from a local
 clone of the git repository and run from there: after a git pull, the next run uses the new versions.
 The sync runs only when asked (since 2026-10-16; before, a hidden loop ran it every 10 minutes from Windows login).
 
@@ -14,7 +14,8 @@ Each run:
   1. turns the old automation off (Startup entry, running loop, the script copies it ran from), if still there
   2. installs a newer addon from <repo>\addons (only while WoW is not running; keeps Friends\FriendsData.lua)
   3. uploads this PC's ForeverChronicle_Share.lua (per WoW account) to <cloud>\players\<name>-<id>-<account hash>.lua
-     (name: the one friends see; id: the first 8 characters of the shareId); renamed when the name changes
+     (name: the one friends see; id: the first 8 characters of the shareId); renamed when the name changes;
+     and the shared characters' screenshots, scaled down, to <cloud>\screenshots\<same name>\<character>-<realm>\
   4. downloads all other players' files, accepts only pure data, writes ForeverChronicle_Share\Friends\FriendsData.lua
   5. daily backup of the addon's SavedVariables (newest 10 days kept)
 Settings and log: %LOCALAPPDATA%\ForeverChronicle\sync (config.json, sync.log, state.json).
@@ -286,6 +287,136 @@ function Send-Own($Config, $State) {
   }
 }
 
+# -- screenshots ------------------------------------------------------------------------------------------
+
+# The pictures of my shared characters, for friends' desktop apps (the game cannot show them):
+#   <cloud>\screenshots\<name>-<id>-<account hash>\<character>-<realm>\WoWScrnShot_<stamp>.jpg
+# The share file's screenshotFiles ({ [stamp] = "<character>-<realm>" }, written by the companion addon) says which
+# pictures and whose. Each picture is found in the game's Screenshots folder like the desktop app does (the file is
+# written a moment after the stamp: up to 2 s later or earlier, the nearest wins), scaled down to 1920 px wide and
+# uploaded once under the addon's stamp. Pictures no longer shared (category off, character unticked, dropped by the
+# addon's cap) are removed from the cloud.
+$ShotPrefix = 'WoWScrnShot_'
+$ShotExtensions = @('.jpg', '.jpeg', '.png')
+$ShotWidth = 1920
+$ShotQuality = 85
+$ShotTolerance = 2
+$MaxShotBytes = 64MB
+
+function Get-ShotIndex([string]$Text) {
+  $index = @{}
+  if ($Text -notmatch '\["screenshotFiles"\]\s*=\s*\{([^{}]*)\}') { return $index }
+  foreach ($m in [regex]::Matches($matches[1], '\["(\d{6}_\d{6})"\]\s*=\s*"((?:[^"\\\r\n]|\\.)*)"')) {
+    $index[$m.Groups[1].Value] = $m.Groups[2].Value -replace '\\(.)', '$1'
+  }
+  return $index
+}
+
+# A character's folder name: the addon's "<character>-<realm>" without characters Windows forbids.
+function Get-SafeFolderName([string]$Name) {
+  $name = ($Name -replace '[\\/:*?"<>|\x00-\x1f]+', '_').Trim(' ', '.')
+  if ($name.Length -gt 60) { $name = $name.Substring(0, 60).Trim(' ', '.') }
+  if (-not $name) { $name = 'Charakter' }
+  return $name
+}
+
+function Find-ShotFile([hashtable]$Files, [string]$Stamp, [hashtable]$Claimed) {
+  try { $base = [datetime]::ParseExact($Stamp, 'MMddyy_HHmmss', [Globalization.CultureInfo]::InvariantCulture) } catch { return $null }
+  for ($distance = 0; $distance -le $ShotTolerance; $distance++) {
+    $offsets = if ($distance -eq 0) { @(0) } else { @($distance, -$distance) }
+    $found = @()
+    foreach ($offset in $offsets) {
+      $key = $base.AddSeconds($offset).ToString('MMddyy_HHmmss', [Globalization.CultureInfo]::InvariantCulture)
+      if ($Files.ContainsKey($key)) { $found += @($Files[$key] | Where-Object { -not $Claimed.ContainsKey($_.FullName) }) }
+    }
+    if ($found.Count -eq 1) { return $found[0] }
+    if ($found.Count -gt 1) { return $null }  # two pictures equally near: not guessed
+  }
+  return $null
+}
+
+function Convert-Shot([string]$From, [string]$To) {
+  Add-Type -AssemblyName System.Drawing
+  $stream = New-Object IO.MemoryStream (, [IO.File]::ReadAllBytes($From))
+  $image = $null; $bitmap = $null; $graphics = $null; $out = $null
+  try {
+    $image = [Drawing.Image]::FromStream($stream)
+    $width = [Math]::Min($ShotWidth, $image.Width)
+    $height = [int][Math]::Round($image.Height * $width / $image.Width)
+    $bitmap = New-Object Drawing.Bitmap $width, $height
+    $graphics = [Drawing.Graphics]::FromImage($bitmap)
+    $graphics.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $graphics.PixelOffsetMode = [Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $graphics.DrawImage($image, 0, 0, $width, $height)
+    $codec = [Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
+    $params = New-Object Drawing.Imaging.EncoderParameters 1
+    $params.Param[0] = New-Object Drawing.Imaging.EncoderParameter ([Drawing.Imaging.Encoder]::Quality, [long]$ShotQuality)
+    $out = New-Object IO.MemoryStream
+    $bitmap.Save($out, $codec, $params)
+    Write-FileAtomic $To $out.ToArray()
+  } finally {
+    foreach ($d in $graphics, $bitmap, $image, $out, $stream) { if ($d) { $d.Dispose() } }
+  }
+}
+
+function Send-Screenshots($Config, $State) {
+  $root = Join-Path $Config.cloud 'screenshots'
+  $source = Join-Path $Config.client 'Screenshots'
+  $files = @{}
+  foreach ($f in Get-ChildItem -LiteralPath $source -File -ErrorAction SilentlyContinue) {
+    if ($f.Name.StartsWith($ShotPrefix) -and $ShotExtensions -contains $f.Extension.ToLowerInvariant()) {
+      $files[[IO.Path]::GetFileNameWithoutExtension($f.Name).Substring($ShotPrefix.Length)] += @($f)
+    }
+  }
+  foreach ($share in Get-ShareFiles $Config) {
+    $text = [IO.File]::ReadAllText($share.Path, [Text.Encoding]::UTF8)
+    $accountId = (Get-Sha ([Text.Encoding]::UTF8.GetBytes($share.Account))).Substring(0, 8)
+    $player = Join-Path $root ('{0}-{1}-{2}' -f (Get-PlayerName $text), $Config.shareId.Substring(0, 8), $accountId)
+    # The same account under an older name: its folder moves along (the pictures are not uploaded again).
+    foreach ($old in Get-ChildItem -LiteralPath $root -Directory -Filter "*-$accountId" -ErrorAction SilentlyContinue) {
+      if ($old.FullName -eq $player -or -not (Test-OwnFile $Config "$($old.Name).lua")) { continue }
+      if (Test-Path -LiteralPath $player) { Remove-Item -Recurse -Force -LiteralPath $old.FullName }
+      else { Move-Item -LiteralPath $old.FullName -Destination $player }
+      Write-Log "screenshots: folder $($old.Name) -> $(Split-Path $player -Leaf)"
+    }
+    $index = Get-ShotIndex $text
+    $wanted = @{}
+    $claimed = @{}
+    $uploaded = 0; $missing = 0
+    foreach ($stamp in $index.Keys | Sort-Object) {
+      $target = Join-Path (Join-Path $player (Get-SafeFolderName $index[$stamp])) "$ShotPrefix$stamp.jpg"
+      $wanted[$target.ToLowerInvariant()] = $true
+      if (Test-Path -LiteralPath $target) { continue }
+      $file = Find-ShotFile $files $stamp $claimed
+      if (-not $file -or $file.Length -gt $MaxShotBytes) { $missing++; continue }
+      $claimed[$file.FullName] = $true
+      try {
+        Convert-Shot $file.FullName $target
+        $uploaded++
+      } catch { Write-Log "screenshot $($file.Name) not uploaded: $($_.Exception.Message)"; $missing++ }
+    }
+    # What is no longer shared goes (also files left half-written), then empty character folders.
+    $removed = 0
+    if (Test-Path -LiteralPath $player) {
+      foreach ($f in Get-ChildItem -LiteralPath $player -Recurse -File) {
+        if (-not $wanted.ContainsKey($f.FullName.ToLowerInvariant())) { Remove-Item -Force -LiteralPath $f.FullName; $removed++ }
+      }
+      foreach ($d in Get-ChildItem -LiteralPath $player -Directory) {
+        if (-not (Get-ChildItem -LiteralPath $d.FullName -Force)) { Remove-Item -Force -LiteralPath $d.FullName }
+      }
+      if (-not (Get-ChildItem -LiteralPath $player -Force)) { Remove-Item -Force -LiteralPath $player }
+    }
+    if ($uploaded -or $removed) {
+      Write-Log ("screenshots {0}: {1} uploaded, {2} removed, {3} shared" -f (Split-Path $player -Leaf), $uploaded, $removed, $index.Count)
+    }
+    if ($missing) {
+      $key = "shotsMissing:$accountId"
+      if ($State.$key -ne $missing) { Write-Log "screenshots: $missing picture(s) not found in $source" }
+      $State | Add-Member -Force -NotePropertyName $key -NotePropertyValue $missing
+    }
+  }
+}
+
 function Get-LongBracketLevel([string]$Text) {
   $level = 1
   while ($Text.Contains(']' + ('=' * $level) + ']')) { $level++ }
@@ -384,7 +515,7 @@ function Invoke-Sync {
   $state = Read-Json $StatePath
   if (-not $state) { $state = [pscustomobject]@{} }
   $script:ForceFriends = $false
-  foreach ($step in 'Update-Addon', 'Send-Own', 'Receive-Friends', 'Backup-SavedVariables') {
+  foreach ($step in 'Update-Addon', 'Send-Own', 'Send-Screenshots', 'Receive-Friends', 'Backup-SavedVariables') {
     try {
       if ($step -eq 'Update-Addon') { & $step $config } else { & $step $config $state }
     } catch {

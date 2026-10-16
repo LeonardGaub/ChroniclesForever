@@ -14,7 +14,11 @@ files and the desktop share dialog are no longer needed.
   already reads (info, stats, gear, professions, last 200 events, the route of all sessions (newest 20,000 points), sessions, the maps,
   instances and entrances used), plus the sender's name and addon version.
 - **Sharing settings in game:** "Teilen" settings section with the name for friends (free text), per character
-  on/off, and per category on/off. Default: everything on. Screenshots are not shared (the game cannot show images).
+  on/off, and per category on/off. Default: everything on. Screenshots (since 2026-10-16): the addon
+  shares the records and `screenshotFiles` ({ [stamp] = "<character>-<realm>" }); the sync script uploads the
+  pictures, scaled to 1920 px wide, to `<cloud>\screenshots\<player file name>\<character>-<realm>\` and removes
+  the ones no longer shared. Friends' desktop apps copy them to `%APPDATA%\ForeverChronicle\friend_screenshots\`
+  (same folders) and link them to the records, so the cinematic, Chronik and gallery show them (the game cannot).
 - **Sync script** (`ForeverSync.ps1`, PowerShell, built into Windows, no extra app). It runs from the repository
   clone and only when asked (user decision 2026-10-16, version 3): the desktop app's "Jetzt abgleichen" (Import
   page, also File menu / F5) or `sync\Abgleichen.bat`. Until then a Startup entry started a hidden loop every

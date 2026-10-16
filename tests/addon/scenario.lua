@@ -1217,6 +1217,11 @@ if PHASE == 13 then
   -- Some play: a route over two sessions, events.
   for i = 1, 8 do MOCK.x = 0.30 + i * 0.01; MOCK.advance(2) end
   MOCK.fire("PLAYER_DEAD")
+  -- Screenshots: one taken (shared, its picture goes up with the sync), one failed (not shared).
+  FC.Storage:Append("screenshots", { id = "shot-share-1", trigger = "level_up", events = {}, requestedAt = 1791800000,
+    capturedAt = 1791800005, fileStamp = "100726_101005", status = "confirmed", error = "kept at home" })
+  FC.Storage:Append("screenshots", { id = "shot-share-2", trigger = "zone", events = {}, requestedAt = 1791800100,
+    status = "failed", error = "no file" })
   ForeverChronicleDB.characters["Player-4619-0ALT0001"] = {
     info = { name = "Altie", level = 10, classFile = "MAGE", lastSeenAt = 1791900000 }, stats = { kills = 5 },
     streams = {}, snapshots = {}, state = {} }
@@ -1237,7 +1242,11 @@ if PHASE == 13 then
   check(#S(mine.streams.events).records >= 2 and #S(mine.streams.positions).records >= 8, "chronicle and route")
   check(mine.snapshots.gear and #mine.snapshots.gear.slots == 2, "gear")
   check(data.maps["1413"] and data.maps["1414"], "maps of the route and their continent")
-  check(mine.streams.screenshots == nil, "no screenshots")
+  local shared = S(mine.streams.screenshots).records
+  check(#shared == 1 and shared[1].id == "shot-share-1" and shared[1].fileStamp == "100726_101005"
+    and shared[1].error == nil, "only taken screenshots are shared, without their error text")
+  check(data.screenshotFiles["100726_101005"] == mine.info.name .. "-" .. mine.info.realm,
+    "the sync script learns which character took the picture")
   SAVED_OUT = shareText
 
   -- Limits: only the newest events and route points (the route of all sessions, not only the newest).
@@ -1265,6 +1274,11 @@ if PHASE == 13 then
   check(mine.streams.events ~= nil and mine.streams.sessions ~= nil and mine.snapshots.professions ~= nil,
     "the other categories stay on")
   s.cats.routes, s.cats.gear, s.cats.stats = true, true, true
+  s.cats.screenshots = false
+  data = Share:Build()
+  check(data.characters[1].streams.screenshots == nil and next(data.screenshotFiles) == nil,
+    "screenshots off: no records, no pictures for the sync script")
+  s.cats.screenshots = true
   s.chars["Player-4619-0ALT0001"] = nil
 
   -- Settings page: the name field and one check box per character.

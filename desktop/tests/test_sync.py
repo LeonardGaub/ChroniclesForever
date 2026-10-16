@@ -236,3 +236,47 @@ def test_old_automation_is_turned_off(world):
     assert not link.exists() and not (data / "ForeverSync.ps1").exists() and not (data / "ForeverSync.vbs").exists()
     assert "automatic sync turned off: Startup entry removed" in log(world)
     assert "automatic sync turned off: background run stopped" in log(world)
+
+
+def test_screenshots_uploaded_per_character_scaled_down(world):
+    r"""The share file says which pictures are shared and whose (screenshotFiles): each goes up once, scaled to
+    1920 px, into <cloud>\screenshots\<player>\<character>-<realm>\ under the addon's stamp; renamed players keep
+    their folder, pictures no longer shared go."""
+    from PySide6.QtGui import QColor, QImage
+    shots = world["client"] / "Screenshots"
+    shots.mkdir()
+    picture = QImage(3840, 2160, QImage.Format.Format_RGB32)
+    picture.fill(QColor(120, 80, 40))
+    assert picture.save(str(shots / "WoWScrnShot_100726_101006.jpg"))   # written a second after the stamp
+    assert picture.save(str(shots / "WoWScrnShot_100726_120000.jpg"))   # not shared
+    setup(world)
+    config = json.loads((world["data"] / "config.json").read_text(encoding="utf-8-sig"))
+    [player] = (world["cloud"] / "screenshots").iterdir()
+    assert player.name == (list((world["cloud"] / "players").glob(f"*-{config['shareId'][:8]}-*.lua"))[0].stem)
+    [character] = player.iterdir()
+    assert character.name == "Blind-Classic Beta PvP"
+    [uploaded] = character.iterdir()
+    assert uploaded.name == "WoWScrnShot_100726_101005.jpg"
+    image = QImage(str(uploaded))
+    assert (image.width(), image.height()) == (1920, 1080)
+    assert uploaded.stat().st_size < (shots / "WoWScrnShot_100726_101006.jpg").stat().st_size
+    assert "screenshots " in log(world) and "1 uploaded" in log(world)
+
+    # Unchanged: nothing uploaded again.
+    stamp = uploaded.stat().st_mtime_ns
+    once(world)
+    assert uploaded.stat().st_mtime_ns == stamp
+
+    # Renamed in game: the folder moves along.
+    share = world["saved"] / "ForeverChronicle_Share.lua"
+    text = share.read_text(encoding="utf-8")
+    share.write_text(text.replace('\n\t["name"] = "Blind",', '\n\t["name"] = "Leon",', 1), encoding="utf-8")
+    once(world)
+    [player] = (world["cloud"] / "screenshots").iterdir()
+    assert player.name.startswith("Leon-") and (player / character.name / uploaded.name).stat().st_mtime_ns == stamp
+
+    # Screenshots no longer shared (category off in game): removed from the cloud.
+    share.write_text(text.replace('["100726_101005"] = "Blind-Classic Beta PvP",', ""), encoding="utf-8")
+    once(world)
+    assert list((world["cloud"] / "screenshots").iterdir()) == []
+    assert "failed" not in log(world)

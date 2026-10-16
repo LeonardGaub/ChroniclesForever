@@ -16,8 +16,11 @@ at the time (older entries may describe things that changed later). Architecture
   package built by `tools/package_for_friend.py`. The user is moving away from the desktop app: fixes and features
   go into the addon, except features that need the screenshot files (cinematic replay).
 - Sharing with friends: the companion addon plus the cloud sync `sync/ForeverSync.ps1` (docs/Sharing_Design.md).
-  The desktop share feature was removed. The OneDrive folder "Journey Forever Cloud" holds only `players\`; the
-  addon and the sync script come from each PC's clone of the repository (setup: `sync\Einrichten.bat` there).
+  The desktop share feature was removed. The OneDrive folder "Journey Forever Cloud" holds only player data:
+  `players\` and, since 2026-10-16, `screenshots\<player>\<character>-<realm>\` (pictures scaled to 1920 px by the
+  sync's Send-Screenshots step; friends' desktop apps copy them to `%APPDATA%\ForeverChronicle\friend_screenshots\`
+  and link them, `importing/friend_screenshots.py`); the addon and the sync script come from each PC's clone of
+  the repository (setup: `sync\Einrichten.bat` there).
 - Tests: `tests/addon` (`npm test`: queue tests and phases 1-15, writes the fixtures) first, then `desktop`
   (`pytest`, 119 tests). All pass.
 

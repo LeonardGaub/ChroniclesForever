@@ -379,6 +379,7 @@ ForeverChronicleDB = {
 					["gear"] = true,
 					["professions"] = true,
 					["routes"] = true,
+					["screenshots"] = true,
 					["sessions"] = true,
 					["stats"] = true,
 				},

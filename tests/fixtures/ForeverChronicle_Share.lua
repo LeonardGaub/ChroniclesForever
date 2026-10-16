@@ -125,6 +125,17 @@ ForeverChronicleShareDB = {
 					["records"] = {
 					},
 				},
+				["screenshots"] = {
+					["packed"] = {
+						["chunks"] = {
+							"{id=\"shot-share-1\",seq=1,trigger=\"level_up\",events={},requestedAt=1791800000,capturedAt=1791800005,fileStamp=\"100726_101005\",status=\"confirmed\",},", -- [1]
+						},
+						["format"] = 1,
+						["kind"] = "tables",
+					},
+					["records"] = {
+					},
+				},
 				["sessions"] = {
 					["packed"] = {
 						["chunks"] = {
@@ -188,4 +199,7 @@ ForeverChronicleShareDB = {
 		},
 	},
 	["name"] = "Blind",
+	["screenshotFiles"] = {
+		["100726_101005"] = "Blind-Classic Beta PvP",
+	},
 }

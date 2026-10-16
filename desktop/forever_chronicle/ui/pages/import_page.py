@@ -222,6 +222,9 @@ class ImportPage(Page):
             lines.append(tr("sync.app_friends", names=", ".join(friends.imported)))
         if friends.removed:
             lines.append(tr("sync.app_removed", names=", ".join(friends.removed)))
+        shots = self.ctx.last_friend_screenshots
+        if shots.copied or shots.removed:
+            lines.append(tr("sync.app_shots", copied=shots.copied, removed=shots.removed))
         if friends.failed:
             lines.append(tr("sync.app_failed", message="; ".join(friends.failed)))
         self.sync_message.setText("\n".join(lines))

@@ -6,10 +6,13 @@
 --
 -- ForeverChronicleShareDB = { format = 1, addonVersion, name, generatedAt,
 --   characters = { <character record in the addon's own shape, trimmed> },
---   maps = { [mapID] = geometry }, instances = { [id] = name }, entrances = { [id] = { mapID, x, y } } }
+--   maps = { [mapID] = geometry }, instances = { [id] = name }, entrances = { [id] = { mapID, x, y } },
+--   screenshotFiles = { [fileStamp] = "<name>-<realm>" } }
 --
 -- Settings ("Teilen" section): the name friends see, per character on/off, per category on/off.
--- Default: everything shared. Screenshots are never shared (the game cannot show images).
+-- Default: everything shared. The screenshots category shares the screenshot records; the pictures themselves
+-- (the game cannot show them) are uploaded by the sync script, which finds each picture and its character through
+-- screenshotFiles, and friends see them in the desktop app.
 
 local FC = ForeverChronicle -- the main addon (dependency, loaded first)
 local L = FC.L
@@ -17,14 +20,16 @@ local L = FC.L
 local Share = FC:NewModule("Share", { order = 60, defaults = {
   name = "",
   chars = {},          -- [characterKey] = false to exclude a character
-  cats = { stats = true, chronicle = true, routes = true, sessions = true, professions = true, gear = true },
+  cats = { stats = true, chronicle = true, routes = true, sessions = true, professions = true, gear = true,
+    screenshots = true },
 } })
 
 Share.FORMAT = 2               -- 2: streams packed (FC.Storage.Pack)
 Share.SHARE_ADDON = "ForeverChronicle_Share"
 Share.EVENTS = 200               -- newest chronicle entries per character
 Share.MAX_POINTS = 20000         -- newest route points per character (all sessions; about 1 MB at most)
-Share.CATEGORIES = { "stats", "chronicle", "routes", "sessions", "professions", "gear" }
+Share.CATEGORIES = { "stats", "chronicle", "routes", "sessions", "professions", "gear", "screenshots" }
+local SHOT_FIELDS = { "id", "seq", "trigger", "events", "requestedAt", "capturedAt", "fileStamp", "status" }
 
 local INFO_FIELDS = { "key", "guid", "name", "nameSuffix", "realm", "className", "classFile", "raceName", "raceFile",
   "faction", "level", "firstSeenAt", "lastSeenAt" }
@@ -44,6 +49,19 @@ local function routes(char)
     if type(text) == "string" and text:match("^%d+,") then out[#out + 1] = text end
   end
   return newest(out, Share.MAX_POINTS)
+end
+
+-- Screenshots that were taken (a file exists): their records without the error text.
+local function shots(char)
+  local out = {}
+  for _, r in ipairs(char.streams and char.streams.screenshots and char.streams.screenshots.records or {}) do
+    if type(r) == "table" and r.fileStamp and (r.status == "confirmed" or r.status == "api_called") then
+      local copy = {}
+      for _, field in ipairs(SHOT_FIELDS) do copy[field] = r[field] end
+      out[#out + 1] = copy
+    end
+  end
+  return out
 end
 
 -- One character's record for friends, limited to the shared categories.
@@ -74,6 +92,10 @@ function Share:BuildCharacter(key, char)
   local snapshots = char.snapshots or {}
   if cats.professions then record.snapshots.professions = snapshots.professions end
   if cats.gear then record.snapshots.gear = snapshots.gear end
+  if cats.screenshots then
+    local list = shots(char)
+    if #list > 0 then record.streams.screenshots = { records = list } end
+  end
   return record
 end
 
@@ -121,9 +143,17 @@ function Share:Build()
   end
   table.sort(characters, function(a, b) return (a.info.lastSeenAt or 0) > (b.info.lastSeenAt or 0) end)
   local maps, instances, entrances = places(characters)
+  -- Which character took which picture, for the sync script (the character records are packed in the file).
+  local files = {}
+  for _, char in ipairs(characters) do
+    local folder = char.info.realm and (char.info.name .. "-" .. char.info.realm) or char.info.name
+    for _, r in ipairs(char.streams.screenshots and char.streams.screenshots.records or {}) do
+      files[r.fileStamp] = folder
+    end
+  end
   local name = s.name ~= "" and s.name or (FC.char and FC.char.info.name) or "?"
   return { format = self.FORMAT, addonVersion = FC.VERSION, name = name, generatedAt = time(),
-    characters = characters, maps = maps, instances = instances, entrances = entrances }
+    characters = characters, maps = maps, instances = instances, entrances = entrances, screenshotFiles = files }
 end
 
 function Share:IsShareAddonLoaded()

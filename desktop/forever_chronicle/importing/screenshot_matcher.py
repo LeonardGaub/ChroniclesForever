@@ -43,11 +43,13 @@ def match_screenshots(repo: Repository, folder: Path | None) -> int:
     """Matches all unlinked screenshot records. Returns the number of newly matched files."""
     if folder is None or not folder.is_dir():
         return 0
-    index = index_folder(folder)
-    claimed = repo.claimed_files()
+    return link_rows(repo, repo.unmatched_screenshots(), index_folder(folder), repo.claimed_files())
+
+
+def link_rows(repo: Repository, rows, index: dict[str, list[Path]], claimed: set[str]) -> int:
+    """Links each row to its nearest unclaimed file in index (see the module doc). Returns how many got a file."""
     matched = 0
-    rows = sorted(repo.unmatched_screenshots(), key=lambda r: (r["captured_at"] or 0, r["seq"]))
-    for row in rows:
+    for row in sorted(rows, key=lambda r: (r["captured_at"] or 0, r["seq"])):
         base = parse_stamp(row["file_stamp"])
         if base is None:
             continue

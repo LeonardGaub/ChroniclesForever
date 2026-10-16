@@ -9,6 +9,7 @@ from PySide6.QtCore import QObject, Signal
 from . import cloud_sync
 from .config import AppConfig
 from .importing.friend_importer import FriendImportResult, import_friends
+from .importing.friend_screenshots import FriendScreenshotsResult, sync_friend_screenshots
 from .importing.screenshot_matcher import match_screenshots
 from .importing.sv_importer import ImportResult, SavedVariablesImporter
 from .storage.database import Database
@@ -35,6 +36,7 @@ class AppContext(QObject):
         self._client: ClientInstall | None = None
         self._client_searched = False
         self.last_friend_import = FriendImportResult()
+        self.last_friend_screenshots = FriendScreenshotsResult()
 
     def client(self) -> ClientInstall | None:
         if self._client or self._client_searched:
@@ -65,7 +67,7 @@ class AppContext(QObject):
         friends = self.import_friends(notify=False)
         matched = self.match_screenshots()
         new_icons = self.extract_icons()
-        if matched or new_icons or friends.changed or any(r.status != "unchanged" for r in results):
+        if matched or new_icons or friends.changed or self.last_friend_screenshots.changed or any(r.status != "unchanged" for r in results):
             self.data_changed.emit()
         return results
 
@@ -73,7 +75,9 @@ class AppContext(QObject):
         """Friends' characters from the cloud folder of this PC's sync (importing/friend_importer.py)."""
         setup = cloud_sync.find_setup()
         self.last_friend_import = import_friends(self.db, setup) if setup else FriendImportResult()
-        if notify and self.last_friend_import.changed:
+        # Their pictures, sorted per character (importing/friend_screenshots.py), linked to the records just read.
+        self.last_friend_screenshots = sync_friend_screenshots(self.db, setup) if setup else FriendScreenshotsResult()
+        if notify and (self.last_friend_import.changed or self.last_friend_screenshots.changed):
             self.data_changed.emit()
         return self.last_friend_import
 
