@@ -172,7 +172,9 @@ export drives a silent `MusicPlayer(audible=False)` frame by frame and mixes the
   audio; needs `pip install -e .[tools]`). Change the script and rerun it rather than editing the files.
 - Players can replace an effect with a WAV of the same name in `%APPDATA%\ForeverChronicle\sounds`.
 - QtMultimedia ships in PySide6-Addons. Without it (`PySide6-Essentials` only) `sound.AUDIO` is False and the app
-  runs silently. Tests set `FOREVER_CHRONICLE_SILENT=1`; `ctx.sound.played` still records what would have played.
+  runs silently. `Journey Forever starten.bat` installs PySide6-Addons of the installed PySide6 version once
+  (marker `.ready_sound`, optional like the icon packages); if that failed, the app offers the same download at
+  start and in Settings (`ui/audio_setup.py`) and restarts itself afterwards. Tests set `FOREVER_CHRONICLE_SILENT=1`; `ctx.sound.played` still records what would have played.
 
 ### Event icons
 

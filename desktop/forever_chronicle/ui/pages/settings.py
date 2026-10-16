@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout, QGroupBox, Q
                                QSlider, QVBoxLayout)
 
 from ...i18n import tr
+from ..audio_setup import AudioInstallDialog
 from ..sound import AUDIO, EFFECTS, MUSIC_SUFFIXES, music_tracks, user_sounds_dir
 from ..widgets import Page, muted, value_label
 
@@ -34,9 +35,15 @@ class SettingsPage(Page):
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(10)
-        self.no_audio = muted()             # QtMultimedia missing (PySide6-Essentials only)
-        self.no_audio.setVisible(not AUDIO)
-        root.addWidget(self.no_audio)
+        no_audio = QHBoxLayout()            # QtMultimedia missing (PySide6-Essentials only)
+        self.no_audio = muted()
+        self.install_audio = QPushButton()
+        self.install_audio.clicked.connect(lambda: AudioInstallDialog(self.window(), ctx).exec())
+        no_audio.addWidget(self.no_audio, 1)
+        no_audio.addWidget(self.install_audio, 0, Qt.AlignmentFlag.AlignTop)
+        for w in (self.no_audio, self.install_audio):
+            w.setVisible(not AUDIO)
+        root.addLayout(no_audio)
 
         # Effects
         self.effects_box = QGroupBox()
@@ -127,6 +134,7 @@ class SettingsPage(Page):
     def refresh(self) -> None:
         config = self.ctx.config
         self.no_audio.setText(tr("settings.no_audio"))
+        self.install_audio.setText(tr("settings.install_audio"))
         self.effects_box.setTitle(tr("settings.effects"))
         self.clicks.setText(tr("settings.clicks"))
         self.events.setText(tr("settings.events"))

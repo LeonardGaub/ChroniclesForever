@@ -30,6 +30,7 @@ class AppConfig:
     effects_volume: int = 70
     music_volume: int = 50
     music_path: str | None = None
+    ask_audio_install: bool = True     # offer the missing sound part at start (ui/audio_setup.py)
     extra: dict = field(default_factory=dict)
 
     @property

@@ -19,7 +19,7 @@ if not defined PY goto :nopython
 if errorlevel 1 goto :fail
 
 :deps
-if exist "%VENV%\.ready2" goto :addon
+if exist "%VENV%\.ready2" goto :sound
 if exist "%VENV%\.ready" goto :extras
 echo Programmteile werden installiert (Qt fuer Python, einmalig, ca. 100 MB) ...
 "%VPY%" -m pip install --disable-pip-version-check --quiet "PySide6-Essentials>=6.6"
@@ -32,6 +32,14 @@ rem fails, the app starts anyway with symbols instead, and the next start tries 
 echo Programmteile fuer die Spiel-Icons werden installiert (einmalig, ca. 30 MB) ...
 "%VPY%" -m pip install --disable-pip-version-check --quiet "numpy>=1.26" "pillow>=10"
 if not errorlevel 1 echo ok> "%VENV%\.ready2"
+
+:sound
+rem Qt Multimedia (PySide6-Addons, of exactly the installed PySide6 version) plays the sounds and the music.
+rem Optional like the icons: without it the app runs silent and offers the same download (ui/audio_setup.py).
+if exist "%VENV%\.ready_sound" goto :addon
+echo Programmteil fuer Ton und Musik wird installiert (einmalig, ca. 40 MB) ...
+"%VPY%" -c "import importlib.util as u, subprocess, sys, PySide6; sys.exit(0 if u.find_spec('PySide6.QtMultimedia') else subprocess.call([sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check', '--quiet', 'PySide6-Addons==' + PySide6.__version__]))"
+if not errorlevel 1 echo ok> "%VENV%\.ready_sound"
 
 :addon
 echo.

@@ -3,23 +3,33 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from . import i18n
 from .app_context import AppContext
 from .config import AppConfig
 from .storage.database import Database
-from .ui import theme
+from .ui import audio_setup, theme
 from .ui.main_window import MainWindow
 
 DAILY = 24 * 3600
 
 
+ICON = Path(__file__).with_name("app.ico")   # the addon's icon (icons/inv_misc_book_09.png), 16-256 px
+APP_ID = "JourneyForever.Desktop"
+
+
 def main(argv: list[str] | None = None) -> int:
+    if sys.platform == "win32":   # own taskbar entry with the app's icon, not grouped under pythonw.exe
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     app = QApplication(argv if argv is not None else sys.argv)
     app.setApplicationName("Journey Forever")
+    app.setWindowIcon(QIcon(str(ICON)))
     theme.apply(app)
 
     config = AppConfig.load()
@@ -36,8 +46,11 @@ def main(argv: list[str] | None = None) -> int:
     window.show()
     if config.auto_import:
         QTimer.singleShot(200, lambda: ctx.import_all(skip_unchanged=True))
+    QTimer.singleShot(800, lambda: audio_setup.offer_at_start(window, ctx))
     code = app.exec()
     db.close()
+    if audio_setup.RESTART:                  # the sound part was just installed: it loads in a new process
+        audio_setup.start_again()
     return code
 
 
