@@ -152,11 +152,11 @@ Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `
 
 | Package | Role |
 |---|---|
-| `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`), game files (`casc.py`) and the event icons from them (`game_icons.py`), the zones' music (`zone_music.py`, table `zone_music.json` from `tools/extract_zone_music.py`) |
+| `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`), game files (`casc.py`), the event, profession and recipe icons (`game_icons.py`) and fonts (`game_fonts.py`: Friz Quadrata, Morpheus; never in git) from them, the zones' music (`zone_music.py`, table `zone_music.json` from `tools/extract_zone_music.py`) |
 | `importing/` | SavedVariables → SQLite, validation, gaps, `.bak` fallback |
 | `storage/` | `database.py` (schema migrations + backups), `repository.py` (all SQL), `jsonl.py` (export/import) |
 | `domain/` | pure logic, no Qt: registries `event_types.py` (how events are shown) and `stats.py` (overview statistics); `route.py`, `route_colors.py`, `maps.py` (the map); `cinematic.py` (what a replay announces, deaths and standstills) |
-| `ui/` | `theme.py` (Classic look), `widgets.py` (page base class), `main_window.py`, `pages/` (one file per tab), `screenshots.py` (thumbnails, viewer), `cinematic.py` + `cinematic_fx.py` (cinematic mode), `cinematic_export.py` (the replay as an MP4 video), `sound.py` (clicks, alerts, music) |
+| `ui/` | `theme.py` (Classic look, the game's fonts first), `widgets.py` (page base class), `cards.py` (home cards and the card list of Chronik and Berufe), `main_window.py` (page stack, tabs at the bottom, gear menu), `pages/` (one file per page; `home.py` is the start page, `gallery.py` the screenshots), `screenshots.py` (thumbnails, Shot, the viewer with banner, favourite and replay), `cinematic.py` + `cinematic_fx.py` (cinematic mode), `cinematic_export.py` (the replay as an MP4 video), `sound.py` (clicks, alerts, music) |
 | `i18n.py` | German (default) / English strings |
 
 ### Sound
@@ -193,7 +193,8 @@ to the type's icon and unknown types to their symbol (`EventType.glyph`).
   `i18n.py`.
 - **New event type:** call `event_types.register(EventType(...))` with the addon's icon of the type, then run
   `tools/extract_icons.py` so the icon is in `forever_chronicle/icons/` (`tests/test_icons.py` checks it).
-- **New page** (for example the map): subclass `ui.widgets.Page`, then add it to `ui/pages/__init__.py: PAGES`.
+- **New page** (for example the map): subclass `ui.widgets.Page`, then add it to `ui/pages/__init__.py`: `MAIN_PAGES`
+  (a tab at the bottom) or `MENU_PAGES` (the gear menu). Other pages open it with `ctx.navigate.emit(title_key)`.
 - **Database change:** append SQL to `MIGRATIONS` in `storage/database.py`. Never edit a released migration.
   A backup is made before every migration.
 

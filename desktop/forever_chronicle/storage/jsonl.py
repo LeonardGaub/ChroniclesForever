@@ -57,6 +57,7 @@ RECORD_TYPES: list[RecordType] = [
     RecordType("screenshot", "screenshots", ("screenshot_id",), merge="newer", compare="captured_at",
                local=("file_path", "file_match")),
     RecordType("screenshot_event", "screenshot_events", ("event_id",)),
+    RecordType("screenshot_favorite", "screenshot_favorites", ("screenshot_id",)),
     RecordType("position", "positions", ("occurred_at",), merge="newer", compare="until_at"),
     RecordType("profession", "professions", ("skill_line",), merge="newer", compare="updated_at"),
     RecordType("recipe_category", "recipe_categories", ("skill_line", "category_id"), merge="replace"),
@@ -139,7 +140,7 @@ def iter_records(db: Database, flt: ExportFilter | None = None) -> Iterator[dict
                     wanted = flt.characters.get(cid)
                     if wanted is None or (rt.per_character and rt.name not in wanted):
                         continue
-                if flt.screenshots is not None and rt.name in ("screenshot", "screenshot_event") \
+                if flt.screenshots is not None and rt.name in ("screenshot", "screenshot_event", "screenshot_favorite") \
                         and (cid, row["screenshot_id"]) not in flt.screenshots:
                     continue
             rec: dict[str, Any] = {"record_type": rt.name}

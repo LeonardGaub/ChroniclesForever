@@ -1,6 +1,9 @@
-"""Pages shown as tabs in the main window, in this order. Add new pages here."""
+"""Pages of the main window. MAIN_PAGES get a tab at the bottom, in this order (the first one is shown at start);
+MENU_PAGES are opened from the gear menu next to the tabs. Add new pages here."""
 
 from .diagnostics import DiagnosticsPage
+from .gallery import GalleryPage
+from .home import HomePage
 from .import_page import ImportPage
 from .map_page import MapPage
 from .overview import OverviewPage
@@ -8,4 +11,6 @@ from .professions import ProfessionsPage
 from .settings import SettingsPage
 from .timeline import TimelinePage
 
-PAGES = [OverviewPage, TimelinePage, MapPage, ProfessionsPage, ImportPage, SettingsPage, DiagnosticsPage]
+MAIN_PAGES = [HomePage, OverviewPage, TimelinePage, GalleryPage, MapPage, ProfessionsPage]
+MENU_PAGES = [ImportPage, SettingsPage, DiagnosticsPage]
+PAGES = MAIN_PAGES + MENU_PAGES

@@ -1,19 +1,26 @@
-"""Main window: character list on the left, character header and bottom tabs on the right."""
+"""Main window: character list on the left; on the right the character header, the shown page and, at the bottom
+like the game's panels, a tab per main page (Start, Übersicht, Chronik, Galerie, Karte, Berufe) and a gear menu
+with Import, Einstellungen and Diagnose. The app starts on the home screen. Ctrl+1 ... Ctrl+6 switch the tabs.
+
+Pages ask for another page or character through AppContext.navigate / select_character (home screen cards).
+The game's fonts (wow/game_fonts.py) are taken from the install and loaded before anything is built.
+"""
 
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QTabWidget,
-                               QVBoxLayout, QWidget)
+from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence, QShortcut
+from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMenu,
+                               QPushButton, QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import i18n
 from ..app_context import AppContext
 from ..i18n import format_datetime, tr
 from ..storage.repository import Character
+from ..wow import game_fonts
 from . import theme
-from .pages import PAGES
-from .widgets import heading, muted, panel
+from .pages import MAIN_PAGES, MENU_PAGES
+from .widgets import Page, heading, muted, panel
 
 
 class CharacterItem(QWidget):
@@ -26,8 +33,7 @@ class CharacterItem(QWidget):
         layout.setContentsMargins(8, 5, 8, 5)
         layout.setSpacing(1)
         name = QLabel(char.full_name)
-        name.setFont(theme.heading_font(12))
-        name.setStyleSheet(f"color: {theme.class_color(char.class_file)}; background: transparent;")
+        name.setStyleSheet(theme.font_css(12, theme.class_color(char.class_file)))
         details = muted()
         details.setText(tr("sidebar.char_line", level=char.level or "?", realm=char.realm or ""))
         details.setStyleSheet("background: transparent;")
@@ -39,8 +45,12 @@ class MainWindow(QMainWindow):
     def __init__(self, ctx: AppContext):
         super().__init__()
         self.ctx = ctx
-        self.resize(1100, 720)
-        self.setMinimumSize(960, 560)
+        try:
+            game_fonts.install(ctx.client())
+        except Exception:  # the game's fonts are a nicety: the app keeps its fallback fonts
+            pass
+        self.resize(1180, 780)
+        self.setMinimumSize(980, 600)
 
         central = QWidget()
         root = QHBoxLayout(central)
@@ -62,35 +72,104 @@ class MainWindow(QMainWindow):
         sl.addWidget(self.side_empty)
         root.addWidget(side)
 
-        # Character header and pages
+        # Character header, the page, the tabs
         right = QVBoxLayout()
-        right.setSpacing(8)
+        right.setSpacing(0)
         header = panel()
         hl = QVBoxLayout(header)
-        hl.setContentsMargins(14, 10, 14, 10)
-        hl.setSpacing(2)
+        hl.setContentsMargins(14, 8, 14, 8)
+        hl.setSpacing(0)
         self.char_name = QLabel()
         self.char_name.setObjectName("Title")
         self.char_details = muted()
         hl.addWidget(self.char_name)
         hl.addWidget(self.char_details)
         right.addWidget(header)
+        right.addSpacing(8)
 
-        self.tabs = QTabWidget()
-        self.tabs.setTabPosition(QTabWidget.TabPosition.South)
-        self.tabs.setDocumentMode(False)
-        self.pages = [page_cls(ctx) for page_cls in PAGES]
+        self.pages: list[Page] = [page_cls(ctx) for page_cls in MAIN_PAGES + MENU_PAGES]
+        self.menu_pages = self.pages[len(MAIN_PAGES):]
+        self.stack = QStackedWidget()
+        self.stack.setObjectName("Panel")
         for page in self.pages:
-            self.tabs.addTab(page, "")
-        self.tabs.currentChanged.connect(lambda _: self._refresh_current())
-        right.addWidget(self.tabs, 1)
+            self.stack.addWidget(page)
+        right.addWidget(self.stack, 1)
+
+        nav = QHBoxLayout()
+        nav.setContentsMargins(6, 0, 6, 0)
+        nav.setSpacing(3)
+        self.nav_group = QButtonGroup(self)
+        self.nav_buttons: dict[Page, QPushButton] = {}
+        for i, page in enumerate(self.pages[:len(MAIN_PAGES)]):
+            button = QPushButton()
+            button.setObjectName("NavTab")
+            button.setCheckable(True)
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            button.clicked.connect(lambda _=False, p=page: self.show_page(p))
+            self.nav_group.addButton(button)
+            self.nav_buttons[page] = button
+            nav.addWidget(button)
+            QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self, lambda p=page: self.show_page(p))
+        nav.addStretch(1)
+        self.gear = QPushButton("⚙")
+        self.gear.setObjectName("NavGear")
+        self.gear.setCheckable(True)
+        self.gear.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.gear_menu = QMenu(self)
+        self.gear_actions: dict[Page, QAction] = {}
+        for page in self.menu_pages:
+            action = self.gear_menu.addAction("")
+            action.triggered.connect(lambda _=False, p=page: self.show_page(p))
+            self.gear_actions[page] = action
+        self.gear.clicked.connect(self._open_gear)
+        nav.addWidget(self.gear)
+        right.addLayout(nav)
         root.addLayout(right, 1)
 
         self._build_menu()
         ctx.data_changed.connect(self.reload)
+        ctx.navigate.connect(self._navigate)
+        ctx.select_character.connect(self.select_character)
         i18n.on_language_changed(self.retranslate)
         self.retranslate()
         self.reload()
+        self.show_page(self.pages[0])
+
+    # -- pages ------------------------------------------------------------------------
+
+    def page(self, title_key: str) -> Page | None:
+        return next((p for p in self.pages if p.title_key == title_key), None)
+
+    def current_page(self) -> Page | None:
+        return self.stack.currentWidget()
+
+    def show_page(self, page: Page | None) -> None:
+        """Shows a page (a tab's or the gear menu's) and loads its data."""
+        if page is None:
+            return
+        self.stack.setCurrentWidget(page)
+        button = self.nav_buttons.get(page)
+        if button is not None:
+            button.setChecked(True)
+        else:                                # a gear page: no tab is selected
+            self.nav_group.setExclusive(False)
+            for b in self.nav_buttons.values():
+                b.setChecked(False)
+            self.nav_group.setExclusive(True)
+        self.gear.setChecked(page in self.menu_pages)
+        page.refresh()
+
+    def _navigate(self, title_key: str) -> None:
+        self.show_page(self.page(title_key))
+
+    def _open_gear(self) -> None:
+        """The gear menu opens above its button (the tabs sit at the bottom of the window)."""
+        pos = self.gear.mapToGlobal(self.gear.rect().topRight())
+        hint = self.gear_menu.sizeHint()
+        pos.setX(pos.x() - hint.width())
+        pos.setY(pos.y() - hint.height())
+        self.gear_menu.exec(pos)
+        self.gear.setChecked(self.current_page() in self.menu_pages)
 
     # -- menu -------------------------------------------------------------------------
 
@@ -122,8 +201,8 @@ class MainWindow(QMainWindow):
         i18n.set_language(code)
 
     def _import_now(self) -> None:
-        import_page = next(p for p in self.pages if p.title_key == "tab.import")
-        self.tabs.setCurrentWidget(import_page)
+        import_page = self.page("tab.import")
+        self.show_page(import_page)
         import_page.run_import()
 
     # -- data -------------------------------------------------------------------------
@@ -176,6 +255,13 @@ class MainWindow(QMainWindow):
         char = item.data(Qt.ItemDataRole.UserRole) if item else None
         return char.character_id if char else None
 
+    def select_character(self, character_id: str) -> None:
+        for i in range(self.characters.count()):
+            char = self.characters.item(i).data(Qt.ItemDataRole.UserRole)
+            if char and char.character_id == character_id:
+                self.characters.setCurrentRow(i)
+                return
+
     def _character_selected(self, item: QListWidgetItem | None, _previous=None) -> None:
         char = item.data(Qt.ItemDataRole.UserRole) if item else None
         if char:
@@ -200,7 +286,7 @@ class MainWindow(QMainWindow):
         self._refresh_current()
 
     def _refresh_current(self) -> None:
-        page = self.tabs.currentWidget()
+        page = self.current_page()
         if page:
             page.refresh()
 
@@ -218,8 +304,11 @@ class MainWindow(QMainWindow):
         self.lang_menu.setTitle(tr("menu.language"))
         self.side_heading.setText(tr("sidebar.characters"))
         self.side_empty.setText(tr("sidebar.empty"))
-        for i, page in enumerate(self.pages):
-            self.tabs.setTabText(i, tr(page.title_key))
+        for page, button in self.nav_buttons.items():
+            button.setText(tr(page.title_key))
+        for page, action in self.gear_actions.items():
+            action.setText(tr(page.title_key))
+        self.gear.setToolTip(tr("nav.gear_tip"))
         if not self.current_character_id():
             self._show_character(None)
         else:

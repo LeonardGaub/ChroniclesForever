@@ -11,8 +11,8 @@ at the time (older entries may describe things that changed later). Architecture
   both together: since 0.15.0 the saved data is packed (see History).
 - Addon window tabs: Übersicht, Chronik (screenshots shown with their entries), Karte, Berufe, Einstellungen,
   Diagnose. Slash commands `/fj` and `/fjshot`.
-- Desktop app tabs: Übersicht, Chronik, Karte (with the cinematic mode), Berufe, Import, Einstellungen (sound),
-  Diagnose. Start it with `desktop/Forever Chronicle.bat`; friends use `Journey Forever starten.bat` from the
+- Desktop app: starts on the home screen (Start). Tabs at the bottom: Start, Übersicht, Chronik, Galerie, Karte
+  (with the cinematic mode), Berufe; the gear menu next to them opens Import, Einstellungen (sound), Diagnose. Start it with `desktop/Forever Chronicle.bat`; friends use `Journey Forever starten.bat` from the
   package built by `tools/package_for_friend.py`. The user is moving away from the desktop app: fixes and features
   go into the addon, except features that need the screenshot files (cinematic replay).
 - Sharing with friends: the companion addon plus the cloud sync `sync/ForeverSync.ps1` (docs/Sharing_Design.md).
@@ -58,6 +58,25 @@ at the time (older entries may describe things that changed later). Architecture
   format and `snapshots` area.
 
 ## History
+
+### Desktop UI: home screen, gallery, card lists, the game's fonts (2026-10-16)
+- User request after the brainstorm. Home screen (`ui/pages/home.py`) with four cards: last session (time, levels,
+  a game icon with a count per kind of moment, its screenshots, ▶ Rückblick and ⤓ Video), gallery (newest
+  pictures, favourites first), map & replay (the last session's route drawn on its zone map, ▶ everything),
+  characters (mine and friends'; a click shows that character). The tab wall became a page stack: tabs Start,
+  Übersicht, Chronik, Galerie, Karte, Berufe at the bottom (Ctrl+1 ... 6), Import/Einstellungen/Diagnose in the
+  gear menu (the Import tab was mostly redundant with auto-import). Cards use `ctx.navigate` / `select_character`.
+- Gallery (`ui/pages/gallery.py`): tiles grouped by session (default), zone, level or type; stars for favourites
+  (new table `screenshot_favorites`, database migration 10, also in JSONL exports); only-favourites filter. The
+  viewer (`ui/screenshots.py`) is shared with the Chronik: full picture under the cinematic's achievement banner,
+  ← →, F star, Enter / "Wiedergabe ab hier" (cinematic from 2 min before the picture to the end of its session).
+- Chronik and Berufe are card lists (`ui/cards.py`, a delegate-drawn QListWidget): day headings, game icon, gold
+  title, grey detail, thumbnail on the right, gold/red bar for milestones/deaths. Berufe: a card per profession
+  (icon, skill bar, rank, recipe status; click filters), recipes grouped by profession and category with their
+  game icons (profession and recipe icons are now extracted after each import too).
+- Fonts: `wow/game_fonts.py` takes Fonts\FRIZQT__.TTF and MORPHEUS.TTF (named in the root file) into
+  `%APPDATA%\ForeverChronicle\fonts` and loads them at start; Friz Quadrata for headings, buttons, tabs, lists;
+  Morpheus for titles. Labels need `theme.font_css` (the app style sheet wins over setFont).
 
 ### Cinematic mode: deaths, camera, zone music, standstills, video export (2026-10-16)
 - User requests after a brainstorm. Deaths: the replay slows down before a death and holds 1.4 s on a dark red

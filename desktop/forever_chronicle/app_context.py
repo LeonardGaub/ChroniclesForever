@@ -20,6 +20,8 @@ from .wow.paths import ClientInstall, SavedVariablesFile, client_from_path, find
 class AppContext(QObject):
     data_changed = Signal()
     focus_time = Signal(str, int)  # (character_id, epoch seconds): show this moment, e.g. on the map
+    navigate = Signal(str)         # show a page (its title_key), e.g. from a card on the home screen
+    select_character = Signal(str)  # make this character the shown one (character_id)
 
     def __init__(self, config: AppConfig, db: Database):
         super().__init__()
@@ -64,9 +66,9 @@ class AppContext(QObject):
         return results
 
     def extract_icons(self) -> int:
-        """Takes the icons recorded with events that have no picture yet out of the local game (wow/game_icons.py).
-        Opens the game files only when one is missing; returns how many were added."""
-        return game_icons.extract_missing(self.client(), self.repo.event_icons())
+        """Takes the icons recorded with events, professions and recipes that have no picture yet out of the local
+        game (wow/game_icons.py). Opens the game files only when one is missing; returns how many were added."""
+        return game_icons.extract_missing(self.client(), self.repo.event_icons() + self.repo.profession_icons())
 
     # -- backups and JSONL transfer (spec F-011) ------------------------------------------
 

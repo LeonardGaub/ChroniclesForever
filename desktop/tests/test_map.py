@@ -122,7 +122,7 @@ def test_map_page_replay_and_timeline_focus(db, tmp_path, monkeypatch, addon_fix
     ctx.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
     window = MainWindow(ctx)
     page = next(p for p in window.pages if p.title_key == "tab.map")
-    window.tabs.setCurrentWidget(page)
+    window.show_page(page)
 
     assert page.route and page.view_map == 1413
     assert page.map_select.count() == 2                      # The Barrens and its continent
@@ -140,11 +140,12 @@ def test_map_page_replay_and_timeline_focus(db, tmp_path, monkeypatch, addon_fix
 
     # Selecting the death (in Ragefire Chasm, no position) in the timeline moves the map there.
     timeline = next(p for p in window.pages if p.title_key == "tab.timeline")
-    window.tabs.setCurrentWidget(timeline)
-    death_row = next(r for r in range(timeline.table.rowCount()) if "Gestorben" in timeline.table.item(r, 1).text())
-    death_time = timeline.table.item(death_row, 0).data(0x0100)
-    timeline.table.setCurrentCell(death_row, 1)
-    window.tabs.setCurrentWidget(page)
+    window.show_page(timeline)
+    from forever_chronicle.ui.cards import DATA, TITLE
+    death = next(item for item in timeline.list.entries() if "Gestorben" in item.data(TITLE))
+    death_time = death.data(DATA)[0]
+    timeline.list.setCurrentItem(death)
+    window.show_page(page)
     assert page.current_t == death_time
     window.close()
 

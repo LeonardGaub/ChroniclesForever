@@ -6,12 +6,14 @@ from conftest import unpack_all
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtGui import QColor, QImage  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from forever_chronicle.importing.screenshot_matcher import STAMP_FORMAT, match_screenshots  # noqa: E402
 from forever_chronicle.importing.sv_importer import SavedVariablesImporter  # noqa: E402
 from forever_chronicle.storage.repository import Repository  # noqa: E402
+from forever_chronicle.ui.cards import THUMB, TITLE  # noqa: E402
 from forever_chronicle.wow.lua_parser import parse_saved_variables  # noqa: E402
 
 GUID = "Player-4619-0112A417"
@@ -107,37 +109,67 @@ def test_chronicle_shows_screenshots_inline(db, data, tmp_path, monkeypatch):
     assert ctx.match_screenshots() == 1
     window = MainWindow(ctx)
 
-    assert not any(p.title_key == "tab.gallery" for p in window.pages), "no separate screenshots tab"
-    timeline = next(p for p in window.pages if p.title_key == "tab.timeline")
-    window.tabs.setCurrentWidget(timeline)
-    table = timeline.table
-    with_shot = [r for r in range(table.rowCount()) if table.item(r, 3) is not None]
-    texts = [table.item(r, 1).text() for r in with_shot]
+    timeline = window.page("tab.timeline")
+    window.show_page(timeline)
+    cards = timeline.list
+    with_shot = [item for item in cards.entries() if item.data(THUMB) is not None]
+    texts = [item.data(TITLE) for item in with_shot]
     assert len(with_shot) == 2  # level-up and achievement share the screenshot
     assert any("Stufe 23 erreicht" in t for t in texts)
     assert timeline.count.text().endswith("2 Screenshots")
+    loading = with_shot[0].data(THUMB).toImage()
     timeline.thumbnails.load_batch()
     assert timeline.thumbnails.cache, "thumbnail loaded"
-    assert not table.item(with_shot[0], 3).icon().isNull()
+    assert with_shot[0].data(THUMB).toImage() != loading, "the picture replaces the placeholder"
 
-    viewer = timeline.open_screenshot(with_shot[0])
+    viewer = timeline.open_screenshot(cards.row(with_shot[0]))
     assert viewer is not None and not viewer._pixmap.isNull()
     assert "Stufe 23 erreicht" in viewer.caption.text() or "Erfolg" in viewer.caption.text()
+    assert viewer.picture.cue is not None and viewer.picture.cue.heading, "the picture comes with its banner"
     assert viewer.position.text() == "1 von 2"
     viewer.step(1)
     assert viewer.position.text() == "2 von 2" and not viewer.next_button.isEnabled()
     viewer.close()
-    assert timeline.open_screenshot(next(r for r in range(table.rowCount()) if r not in with_shot)) is None
+    assert timeline.open_screenshot(cards.row(next(i for i in cards.entries() if i not in with_shot))) is None
+
+    # Favourites: the viewer's star is kept in the database; the gallery shows it.
+    viewer = timeline.open_screenshot(cards.row(with_shot[0]))
+    shot = viewer.current
+    viewer.star.setChecked(True)
+    viewer.toggle_favorite()
+    assert ctx.repo.favorite_screenshots(shot.character_id) == {shot.screenshot_id}
+    gallery = window.page("tab.gallery")
+    window.show_page(gallery)
+    assert len(gallery.tiles) == 1 and gallery.tiles[0].favorite, "one picture (shared by two events), starred"
+    assert gallery.count.text() == "1 Bilder  ·  1 Favoriten"
+    gallery.thumbnails.load_batch()
+    assert gallery.tiles[0].pixmap is not None
+    for key in ("zone", "level", "type", "session"):
+        gallery.group_by.setCurrentIndex(gallery.group_by.findData(key))
+        assert len(gallery.sections) == 1 and len(gallery.tiles) == 1, key
+    assert ctx.config.extra["gallery_group"] == "session", "the grouping is kept"
+    gallery._star_tile(gallery.tiles[0], False)
+    gallery.only_favorites.setChecked(True)
+    assert not gallery.tiles and gallery.empty.isVisible() is not None
+    gallery.only_favorites.setChecked(False)
+    big = gallery.open_viewer(0)
+    assert big is not None and big.isVisible() and big.replay.isEnabled()
+    cinematic = big.play_replay()
+    assert cinematic is not None and cinematic.start <= shot.time <= cinematic.end, "the replay starts before it"
+    cinematic.close()
+    viewer.close()
 
     # Filter: only entries with a screenshot. A test screenshot (no entry) is an entry of its own.
+    window.show_page(timeline)
     timeline.type_filter.setCurrentIndex(timeline.type_filter.findData("__screenshots__"))
-    assert table.rowCount() == 2
+    assert len(cards.entries()) == 2
     db.conn.execute("""INSERT INTO screenshots (character_id, screenshot_id, seq, trigger_type, status, requested_at,
                        captured_at, file_stamp) SELECT character_id, 'test-1', seq + 1, 'manual', 'confirmed',
                        captured_at + 60, captured_at + 60, NULL FROM screenshots""")
     timeline.refresh()
-    assert table.rowCount() == 3 and table.item(0, 1).text().endswith("Test-Screenshot")
-    assert table.item(0, 3).toolTip().startswith("Keine Datei")  # no file: placeholder
+    first = cards.entries()[0]
+    assert len(cards.entries()) == 3 and first.data(TITLE).endswith("Test-Screenshot")
+    assert first.toolTip().startswith("Keine Datei")  # no file: placeholder
     timeline.type_filter.setCurrentIndex(0)
-    assert any(table.item(r, 1).text().endswith("Test-Screenshot") for r in range(table.rowCount()))
+    assert any(item.data(TITLE).endswith("Test-Screenshot") for item in cards.entries())
     window.close()

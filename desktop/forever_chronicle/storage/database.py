@@ -260,6 +260,15 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (character_id, slot)
     );
     """,
+    # 10: favourite screenshots (gallery stars; the player's own choice, kept apart from the addon's records)
+    """
+    CREATE TABLE screenshot_favorites (
+        character_id   TEXT NOT NULL REFERENCES characters(character_id),
+        screenshot_id  TEXT NOT NULL,
+        added_at       INTEGER,
+        PRIMARY KEY (character_id, screenshot_id)
+    );
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

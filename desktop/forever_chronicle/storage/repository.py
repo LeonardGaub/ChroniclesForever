@@ -297,6 +297,12 @@ class Repository:
                                     AND json_type(payload_json, '$.icon') = 'integer'""").fetchall()
         return [r[0] for r in rows if r[0] > 0]
 
+    def profession_icons(self) -> list[int]:
+        """The icons of professions and recipes (fileDataIDs), all characters."""
+        rows = self.conn.execute("""SELECT icon FROM professions WHERE icon > 0 UNION
+                                    SELECT icon FROM recipes WHERE icon > 0""").fetchall()
+        return [r[0] for r in rows]
+
     def gaps(self, character_id: str | None = None) -> list[sqlite3.Row]:
         if character_id:
             return self.conn.execute("SELECT * FROM data_gaps WHERE character_id = ? ORDER BY before_time DESC",
@@ -381,6 +387,20 @@ class Repository:
                                     ORDER BY s.file_path IS NOT NULL, COALESCE(s.captured_at, s.requested_at)""",
                                  (character_id,)).fetchall()
         return {r["event_id"]: r for r in rows}  # later rows (better ones) overwrite earlier ones
+
+    def favorite_screenshots(self, character_id: str) -> set[str]:
+        rows = self.conn.execute("SELECT screenshot_id FROM screenshot_favorites WHERE character_id = ?",
+                                 (character_id,)).fetchall()
+        return {r[0] for r in rows}
+
+    def set_favorite(self, character_id: str, screenshot_id: str, favorite: bool) -> None:
+        if favorite:
+            self.conn.execute("""INSERT OR IGNORE INTO screenshot_favorites (character_id, screenshot_id, added_at)
+                                 VALUES (?, ?, strftime('%s', 'now'))""", (character_id, screenshot_id))
+        else:
+            self.conn.execute("DELETE FROM screenshot_favorites WHERE character_id = ? AND screenshot_id = ?",
+                              (character_id, screenshot_id))
+        self.conn.commit()          # a click in the gallery: kept at once, outside any import
 
     def event(self, character_id: str, event_id: str) -> EventRow | None:
         row = self.conn.execute("SELECT * FROM events WHERE character_id = ? AND event_id = ?",
