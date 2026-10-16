@@ -17,6 +17,15 @@ def own_maps_folder(tmp_path, monkeypatch):
     monkeypatch.setattr(map_art, "maps_dir", lambda: tmp_path / "maps")
 
 
+@pytest.fixture(autouse=True)
+def own_sync_folder(tmp_path, monkeypatch):
+    """Tests never see or start this PC's real cloud sync: its folder is tmp_path/sync, empty unless a test fills it,
+    and there is no sync script unless a test gives a stand-in."""
+    from forever_chronicle import cloud_sync
+    monkeypatch.setattr(cloud_sync, "sync_dir", lambda: tmp_path / "sync")
+    monkeypatch.setattr(cloud_sync, "sync_script", lambda: None)
+
+
 @pytest.fixture
 def addon_fixture() -> Path:
     if not ADDON_FIXTURE.exists():

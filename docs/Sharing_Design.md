@@ -15,11 +15,14 @@ files and the desktop share dialog are no longer needed.
   instances and entrances used), plus the sender's name and addon version.
 - **Sharing settings in game:** "Teilen" settings section with the name for friends (free text), per character
   on/off, and per category on/off. Default: everything on. Screenshots are not shared (the game cannot show images).
-- **Sync script** (`ForeverSync.ps1`, PowerShell, built into Windows, no extra app). It is set up once by
-  `sync\Einrichten.bat` in the repository clone: remember the clone, find the shared cloud folder ("Journey Forever
-  Cloud" in OneDrive, else asked; any synced folder works), find the game folder (Battle.net records, then the
-  usual folders), and register a hidden start at logon, repeating every 10 minutes. Each run:
-  1. updates itself from `<repo>/sync/`;
+- **Sync script** (`ForeverSync.ps1`, PowerShell, built into Windows, no extra app). It runs from the repository
+  clone and only when asked (user decision 2026-10-16, version 3): the desktop app's "Jetzt abgleichen" (Import
+  page, also File menu / F5) or `sync\Abgleichen.bat`. Until then a Startup entry started a hidden loop every
+  10 minutes; the first run of version 3 removes that entry, stops the loop and deletes the script copies it ran
+  from. The setup (the app's "Einrichten und abgleichen" or `sync\Einrichten.bat`) remembers the clone, finds the
+  shared cloud folder ("Journey Forever Cloud" in OneDrive, else asked; any synced folder works) and the game folder
+  (Battle.net records, then the usual folders), then syncs once. Each run:
+  1. turns the old automation off, if still there;
   2. addon update: if `<repo>/addons/` holds a newer version (after a `git pull`), mirrors it into the game's
      AddOns folder (keeps
      `Friends\FriendsData.lua`); only while WoW is not running, otherwise next run;
@@ -30,16 +33,17 @@ files and the desktop share dialog are no longer needed.
   4. download: reads all other players' files, accepts them only if they are pure data (strict literal-only
      check, size limit), and writes `Friends\FriendsData.lua` (one function per friend); visible after `/reload`;
   5. backup: once a day copies the addon's SavedVariables to a local backup folder (newest 10 kept);
-  6. log file `%LOCALAPPDATA%\ForeverChronicle\sync.log`.
+  6. log file `%LOCALAPPDATA%\ForeverChronicle\sync\sync.log`. The desktop app shows from it and from the cloud
+     folder what is where: my uploads, friends' files and how many of them the game's friends file holds.
 - **Releases:** a new addon version is published by pushing it to the repository; after a `git pull` everyone's
-  script installs it, also on the developer's own PC. The cloud folder holds only `players/` (2026-10-15; until
+  next sync installs it, also on the developer's own PC. The cloud folder holds only `players/` (2026-10-15; until
   then it also had `addon/` and `tools/`).
 - **Desktop app:** optional (long history beyond the SavedVariables caps, screenshot gallery). It stops writing
   `FriendsData.lua` (the script owns it); share files and the share dialog are removed.
 - **Postponed:** addon messages between online friends (cloud sync already brings all data, also offline; maybe
   later for live info such as who is online where).
-- **Limits:** new data arrives after the sender's logout or `/reload` plus the sync interval and is shown after
-  the receiver's `/reload`. History in game is limited by the SavedVariables caps; daily backups keep older states.
+- **Limits:** new data arrives after the sender's logout or `/reload` and their sync, then the receiver's sync, and
+  is shown after the receiver's `/reload` (OneDrive must be running on both PCs). History in game is limited by the SavedVariables caps; daily backups keep older states.
 
 ---
 

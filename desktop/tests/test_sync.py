@@ -1,6 +1,6 @@
 """The cloud sync script (sync/ForeverSync.ps1), run for real with PowerShell against temporary folders:
 setup, addon install from the repository clone, upload, download with the pure-data check, the friends file in a
-real Lua VM, backups and addon updates."""
+real Lua VM, backups, addon updates and turning off the old automation (versions 1 and 2 ran by themselves)."""
 
 import json
 import shutil
@@ -33,7 +33,7 @@ def world(tmp_path):
         pytest.skip("run npm test in tests/addon first (writes tests/fixtures/ForeverChronicle_Share.lua)")
     repo = tmp_path / "repo"
     (repo / "sync").mkdir(parents=True)
-    for name in ("ForeverSync.ps1", "ForeverSync.vbs", "Einrichten.bat"):
+    for name in ("ForeverSync.ps1", "Einrichten.bat", "Abgleichen.bat"):
         shutil.copy(REPO / "sync" / name, repo / "sync" / name)
     for addon in ("ForeverChronicle", "ForeverChronicle_Share"):
         shutil.copytree(REPO / "addons" / addon, repo / "addons" / addon)
@@ -58,17 +58,20 @@ def world(tmp_path):
     (cloud / "players" / "Mallory-dddddddd-00000002.lua").write_text(
         'ForeverChronicleShareDB = { ["name"] = ("Mallory"):rep(3) }', encoding="utf-8")
     (cloud / "players" / "readme.lua").write_text("ForeverChronicleShareDB = {}", encoding="utf-8")
-    return {"repo": repo, "cloud": cloud, "client": client, "data": tmp_path / "data", "saved": saved}
+    startup = tmp_path / "Startup"
+    startup.mkdir()
+    return {"repo": repo, "cloud": cloud, "client": client, "data": tmp_path / "data", "saved": saved,
+            "startup": startup}
 
 
 def setup(world):
     return ps("-File", world["repo"] / "sync" / "ForeverSync.ps1", "-Setup", "-CloudFolder", world["cloud"],
-              "-ClientFolder", world["client"], "-DataDir", world["data"], "-NoStartup")
+              "-ClientFolder", world["client"], "-DataDir", world["data"], "-StartupFolder", world["startup"])
 
 
 def once(world):
-    return ps("-File", world["data"] / "ForeverSync.ps1", "-Once", "-DataDir", world["data"])
-
+    return ps("-File", world["repo"] / "sync" / "ForeverSync.ps1", "-Once", "-DataDir", world["data"],
+              "-StartupFolder", world["startup"])
 
 def log(world):
     return (world["data"] / "sync.log").read_text(encoding="utf-8-sig")
@@ -87,7 +90,9 @@ def test_setup_installs_shares_and_receives(world):
     config = json.loads((world["data"] / "config.json").read_text(encoding="utf-8-sig"))
     assert config["cloud"] == str(world["cloud"]) and config["client"] == str(world["client"])
     assert config["repo"] == str(world["repo"])
-    assert len(config["shareId"]) == 32 and (world["data"] / "ForeverSync.ps1").is_file()
+    assert len(config["shareId"]) == 32 and config["scriptVersion"] == 3 and "interval" not in config
+    assert not (world["data"] / "ForeverSync.ps1").exists(), "runs from the repository, no copy"
+    assert list(world["startup"].iterdir()) == [], "no Startup entry: the sync runs only when asked"
 
     # 1. addon installed from the repository clone (both addons), friends file written
     addons = world["client"] / "Interface" / "AddOns"
@@ -155,15 +160,10 @@ def test_second_run_changes_nothing_then_updates(world):
     assert "## Version: 9" in installed.read_text(encoding="utf-8") and friends.is_file()
     assert "addon installed" in log(world)
 
-    # A newer script in the repository replaces the installed one.
-    script = world["repo"] / "sync" / "ForeverSync.ps1"
-    script.write_text(script.read_text(encoding="utf-8") + "\n# new version\n", encoding="utf-8")
-    once(world)
-    assert "# new version" in (world["data"] / "ForeverSync.ps1").read_text(encoding="utf-8")
 
 
 def test_pure_data_check_is_fast_on_big_files(world, tmp_path):
-    """A friend file of several MB is checked in well under the sync interval."""
+    """A friend file of several MB is checked in well under a minute."""
     setup(world)
     rows = ",\n".join(f'"{1791961000 + i},1413,0.{i % 9999:04d},0.5000,,,"' for i in range(120000))
     big = 'ForeverChronicleShareDB = {\n["name"] = "Big",\n["characters"] = {{["info"] = {["name"] = "B"}, ' \
@@ -176,20 +176,52 @@ def test_pure_data_check_is_fast_on_big_files(world, tmp_path):
     assert '"Big"' in friends.read_text(encoding="utf-8")
 
 
-def test_setup_before_version_2_keeps_syncing_without_updates(world):
-    """An older setup has no repository in its config: player data still syncs, no update is looked for."""
+
+
+def test_setup_before_version_2_gets_this_repository(world):
+    """A version 1 setup has no repository in its settings: the first run from the repository adds it, so addon
+    updates come with the next sync after a git pull."""
     setup(world)
     config_path = world["data"] / "config.json"
     config = json.loads(config_path.read_text(encoding="utf-8-sig"))
     del config["repo"]
+    config["scriptVersion"] = 1
     config_path.write_text(json.dumps(config), encoding="utf-8")
     toc = world["repo"] / "addons" / "ForeverChronicle" / "ForeverChronicle.toc"
     toc.write_text(toc.read_text(encoding="utf-8").replace("## Version: ", "## Version: 9", 1), encoding="utf-8")
-    (world["cloud"] / "players" / f"{'b' * 32}-0000000c.lua").write_text(
-        SHARE_FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
     once(world)
+    config = json.loads(config_path.read_text(encoding="utf-8-sig"))
+    assert config["repo"] == str(world["repo"]) and config["scriptVersion"] == 3
     addons = world["client"] / "Interface" / "AddOns"
-    assert "## Version: 9" not in (addons / "ForeverChronicle" / "ForeverChronicle.toc").read_text(encoding="utf-8")
-    assert f"{'b' * 32}-0000000c.lua" in (addons / "ForeverChronicle_Share" / "Friends" / "FriendsData.lua").read_text(
-        encoding="utf-8")
+    assert "## Version: 9" in (addons / "ForeverChronicle" / "ForeverChronicle.toc").read_text(encoding="utf-8")
     assert "failed" not in log(world)
+
+
+def shortcut(path, arguments):
+    ps("-Command", f"$l = (New-Object -ComObject WScript.Shell).CreateShortcut('{path}'); "
+                   rf"$l.TargetPath = 'C:\Windows\System32\wscript.exe'; $l.Arguments = '{arguments}'; $l.Save()")
+
+
+def test_old_automation_is_turned_off(world):
+    """Versions 1 and 2 ran by themselves: a Startup entry started a hidden loop from copies of the script in the
+    data folder. A run turns exactly that off; another setup's Startup entry stays."""
+    setup(world)
+    data, link = world["data"], world["startup"] / "Journey Forever Sync.lnk"
+    shortcut(link, f'"{world["repo"] / "elsewhere" / "ForeverSync.vbs"}"')
+    once(world)
+    assert link.exists(), "an entry for another data folder is not ours"
+
+    shortcut(link, f'"{data / "ForeverSync.vbs"}"')
+    (data / "ForeverSync.vbs").write_text("' old launcher\n", encoding="utf-8")
+    (data / "ForeverSync.ps1").write_text("param([switch]$Loop)\nStart-Sleep -Seconds 120\n", encoding="utf-8")
+    loop = subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                             str(data / "ForeverSync.ps1"), "-Loop"])
+    try:
+        time.sleep(2)                                   # until its command line is visible
+        once(world)
+        assert loop.wait(timeout=30) is not None, "the background loop was stopped"
+    finally:
+        loop.kill()
+    assert not link.exists() and not (data / "ForeverSync.ps1").exists() and not (data / "ForeverSync.vbs").exists()
+    assert "automatic sync turned off: Startup entry removed" in log(world)
+    assert "automatic sync turned off: background run stopped" in log(world)

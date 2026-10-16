@@ -1,18 +1,17 @@
 <#
-Journey Forever - cloud sync (docs/Sharing_Design.md, version 2). Uses only what Windows brings along.
+Journey Forever - cloud sync (docs/Sharing_Design.md, version 3). Uses only what Windows brings along.
 
 The shared cloud folder holds only player data (<cloud>\players). The addon and this script come from a local
-clone of the git repository: after a git pull, the next run installs the new version.
+clone of the git repository and run from there: after a git pull, the next run uses the new versions.
+The sync runs only when asked (since 2026-10-16; before, a hidden loop ran it every 10 minutes from Windows login).
 
-  Setup (sync\Einrichten.bat in the repository clone):
+  Setup and a first run (desktop app "Einrichten und abgleichen", or sync\Einrichten.bat):
       powershell -ExecutionPolicy Bypass -File ForeverSync.ps1 -Setup
-  Background (started hidden at Windows login by ForeverSync.vbs from the Startup folder):
-      powershell -ExecutionPolicy Bypass -File ForeverSync.ps1 -Loop
-  One run (tests, troubleshooting):
+  One run (desktop app "Jetzt abgleichen" / F5, or sync\Abgleichen.bat):
       powershell -ExecutionPolicy Bypass -File ForeverSync.ps1 -Once
 
 Each run:
-  1. updates this script from <repo>\sync
+  1. turns the old automation off (Startup entry, running loop, the script copies it ran from), if still there
   2. installs a newer addon from <repo>\addons (only while WoW is not running; keeps Friends\FriendsData.lua)
   3. uploads this PC's ForeverChronicle_Share.lua (per WoW account) to <cloud>\players\<name>-<id>-<account hash>.lua
      (name: the one friends see; id: the first 8 characters of the shareId); renamed when the name changes
@@ -23,18 +22,17 @@ Settings and log: %LOCALAPPDATA%\ForeverChronicle\sync (config.json, sync.log, s
 [CmdletBinding()]
 param(
   [switch]$Setup,
-  [switch]$Loop,
   [switch]$Once,
+  [switch]$Loop,            # the old background start (versions 1 and 2): now one run, which turns the loop off
   [string]$CloudFolder,     # setup: the shared folder (default: the last one, else found in OneDrive, else asked)
   [string]$RepoFolder,      # setup: the repository clone (default: the parent of the folder this script is in)
   [string]$ClientFolder,    # setup: the WoW Forever client folder (default: found automatically)
   [string]$DataDir,         # where settings, log and backups live (default: %LOCALAPPDATA%\ForeverChronicle\sync)
-  [switch]$NoStartup,       # setup: do not add the Startup entry (tests)
-  [int]$IntervalMinutes = 10
+  [string]$StartupFolder    # where the old Startup entry may be (default: this user's Startup folder; tests)
 )
 
 $ErrorActionPreference = 'Stop'
-$ScriptVersion = 2
+$ScriptVersion = 3
 $CloudName = 'Journey Forever Cloud'
 $AddonNames = @('ForeverChronicle', 'ForeverChronicle_Share')
 $ShareFile = 'ForeverChronicle_Share.lua'
@@ -183,16 +181,32 @@ function Test-PureData([string]$Text) {
 
 # -- steps --------------------------------------------------------------------------------------------
 
-function Update-Self($Config) {
-  if (-not $Config.repo) { return }  # set up before version 2: run sync\Einrichten.bat from the repository
-  $src = Join-Path $Config.repo 'sync'
+# Versions 1 and 2 ran by themselves: a Startup entry started a hidden loop from copies of this script in the
+# data folder. Turns that off: only this data folder's entry, loops and copies (another setup's stay untouched).
+function Remove-Automation {
+  $copy = (Join-Path $DataDir 'ForeverSync.ps1').ToLowerInvariant()
+  $vbs = (Join-Path $DataDir 'ForeverSync.vbs').ToLowerInvariant()
+  $folder = if ($StartupFolder) { $StartupFolder } else { [Environment]::GetFolderPath('Startup') }
+  $link = Join-Path $folder 'Journey Forever Sync.lnk'
+  if (Test-Path -LiteralPath $link) {
+    $arguments = (New-Object -ComObject WScript.Shell).CreateShortcut($link).Arguments
+    if ($arguments -and $arguments.ToLowerInvariant().Contains($vbs)) {
+      Remove-Item -Force -LiteralPath $link
+      Write-Log 'automatic sync turned off: Startup entry removed'
+    }
+  }
+  foreach ($p in Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue) {
+    $line = if ($p.CommandLine) { $p.CommandLine.ToLowerInvariant() } else { '' }
+    if ($p.ProcessId -ne $PID -and $line.Contains($copy) -and $line.Contains('-loop')) {
+      Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+      Write-Log "automatic sync turned off: background run stopped (process $($p.ProcessId))"
+    }
+  }
   foreach ($name in 'ForeverSync.ps1', 'ForeverSync.vbs') {
-    $from = Join-Path $src $name
-    $to = Join-Path $DataDir $name
-    if ((Test-Path $from) -and (-not (Test-Path $to) -or (Get-FileHash $from).Hash -ne (Get-FileHash $to).Hash)) {
-      Copy-Item -Force $from $to
-      Write-Log "updated $name"
-      if ($name -eq 'ForeverSync.ps1') { $script:Restart = $true }
+    $old = Join-Path $DataDir $name
+    if ((Test-Path -LiteralPath $old) -and $old -ne $PSCommandPath) {
+      Remove-Item -Force -LiteralPath $old
+      Write-Log "removed the old copy $name"
     }
   }
 }
@@ -352,14 +366,23 @@ function Backup-SavedVariables($Config, $State) {
 
 function Invoke-Sync {
   $config = Read-Json $ConfigPath
-  if (-not $config -or -not $config.cloud -or -not $config.client) { Write-Log 'not set up (run Einrichten.bat)'; return }
+  if (-not $config -or -not $config.cloud -or -not $config.client) { Write-Log 'not set up (desktop app or Einrichten.bat)'; return }
+  Write-Log "sync (script version $ScriptVersion)"
+  try { Remove-Automation } catch { Write-Log "Remove-Automation failed: $($_.Exception.Message)" }
+  # Set up before version 2 (no repository in the settings): this script's repository from now on.
+  $here = Split-Path (Split-Path $PSCommandPath)
+  if ((-not $config.repo -or -not (Test-Repo $config.repo)) -and (Test-Repo $here)) {
+    $config | Add-Member -Force -NotePropertyName 'repo' -NotePropertyValue (Resolve-Path $here).Path
+    $config | Add-Member -Force -NotePropertyName 'scriptVersion' -NotePropertyValue $ScriptVersion
+    Write-Json $ConfigPath $config
+  }
   if (-not (Test-Path $config.cloud)) { Write-Log "cloud folder not available: $($config.cloud)"; return }
   $state = Read-Json $StatePath
   if (-not $state) { $state = [pscustomobject]@{} }
   $script:ForceFriends = $false
-  foreach ($step in 'Update-Self', 'Update-Addon', 'Send-Own', 'Receive-Friends', 'Backup-SavedVariables') {
+  foreach ($step in 'Update-Addon', 'Send-Own', 'Receive-Friends', 'Backup-SavedVariables') {
     try {
-      if ($step -eq 'Update-Self' -or $step -eq 'Update-Addon') { & $step $config } else { & $step $config $state }
+      if ($step -eq 'Update-Addon') { & $step $config } else { & $step $config $state }
     } catch {
       Write-Log "$step failed: $($_.Exception.Message)"
     }
@@ -411,59 +434,19 @@ function Invoke-Setup {
   $shareId = if ($old -and $old.shareId -match '^[0-9a-f]{32}$') { $old.shareId } else { [guid]::NewGuid().ToString('N') }
   New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
   Write-Json $ConfigPath ([pscustomobject]@{ cloud = $CloudFolder; repo = $RepoFolder; client = $ClientFolder;
-                                             shareId = $shareId; interval = $IntervalMinutes; scriptVersion = $ScriptVersion })
-  foreach ($name in 'ForeverSync.ps1', 'ForeverSync.vbs') {
-    Copy-Item -Force (Join-Path (Join-Path $RepoFolder 'sync') $name) (Join-Path $DataDir $name)
-  }
-  if (-not $NoStartup) {
-    # A loop of an older version would keep running until the next login: stop it, the new one starts below.
-    Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
-      Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*ForeverSync.ps1*-Loop*' } |
-      ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-    $startup = [Environment]::GetFolderPath('Startup')
-    $shell = New-Object -ComObject WScript.Shell
-    $link = $shell.CreateShortcut((Join-Path $startup 'Journey Forever Sync.lnk'))
-    $link.TargetPath = Join-Path $env:WINDIR 'System32\wscript.exe'
-    $link.Arguments = '"' + (Join-Path $DataDir 'ForeverSync.vbs') + '"'
-    $link.Description = 'Journey Forever: Addon und Freunde-Daten mit dem Cloud-Ordner abgleichen'
-    $link.Save()
-  }
+                                             shareId = $shareId; scriptVersion = $ScriptVersion })
   Write-Log "setup: cloud $CloudFolder, repo $RepoFolder, client $ClientFolder"
   Invoke-Sync
-  if (-not $NoStartup) { Start-Process -FilePath (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList ('"' + (Join-Path $DataDir 'ForeverSync.vbs') + '"') }
   Write-Host ''
   Write-Host 'Journey Forever Sync ist eingerichtet.'
   Write-Host "  Cloud-Ordner: $CloudFolder (nur Spielerdaten)"
-  Write-Host "  Repository:   $RepoFolder (Addon-Updates: nach git pull automatisch)"
+  Write-Host "  Repository:   $RepoFolder (Addon-Updates: nach git pull beim naechsten Abgleich)"
   Write-Host "  Spiel:        $ClientFolder"
-  Write-Host '  Laeuft ab jetzt unsichtbar bei jeder Windows-Anmeldung (alle 10 Minuten).'
+  Write-Host '  Abgleichen, wann du willst: Desktop-App "Jetzt abgleichen" (F5) oder sync\Abgleichen.bat.'
   Write-Host '  Im Spiel nach einem Update oder neuen Freunde-Daten: /reload'
 }
 
 # -- main -------------------------------------------------------------------------------------------------
 
 if ($Setup) { Invoke-Setup; return }
-if ($Once) { Invoke-Sync; return }
-if ($Loop) {
-  $mutex = New-Object Threading.Mutex($false, 'Local\ForeverChronicleSync')
-  if (-not $mutex.WaitOne(0)) { return }   # already running
-  try {
-    Write-Log "sync started (script version $ScriptVersion)"
-    while ($true) {
-      $script:Restart = $false
-      Invoke-Sync
-      if ($script:Restart) {
-        Write-Log 'restarting with the updated script'
-        $mutex.ReleaseMutex()
-        Start-Process -FilePath (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList ('"' + (Join-Path $DataDir 'ForeverSync.vbs') + '"')
-        return
-      }
-      $config = Read-Json $ConfigPath
-      $minutes = if ($config -and $config.interval) { [int]$config.interval } else { $IntervalMinutes }
-      Start-Sleep -Seconds ([Math]::Max(1, $minutes) * 60)
-    }
-  } finally {
-    try { $mutex.ReleaseMutex() } catch { }
-    $mutex.Dispose()
-  }
-}
+if ($Once -or $Loop) { Invoke-Sync; return }   # -Loop: an old Startup entry or loop restart; this run turns it off

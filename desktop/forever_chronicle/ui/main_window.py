@@ -179,10 +179,14 @@ class MainWindow(QMainWindow):
         self.import_action = QAction(self)
         self.import_action.setShortcut(QKeySequence("Ctrl+I"))
         self.import_action.triggered.connect(self._import_now)
+        self.sync_action = QAction(self)
+        self.sync_action.setShortcut(QKeySequence("F5"))
+        self.sync_action.triggered.connect(self._sync_now)
         self.quit_action = QAction(self)
         self.quit_action.setShortcut(QKeySequence.StandardKey.Quit)
         self.quit_action.triggered.connect(self.close)
         self.file_menu.addAction(self.import_action)
+        self.file_menu.addAction(self.sync_action)
         self.file_menu.addSeparator()
         self.file_menu.addAction(self.quit_action)
 
@@ -204,6 +208,11 @@ class MainWindow(QMainWindow):
         import_page = self.page("tab.import")
         self.show_page(import_page)
         import_page.run_import()
+
+    def _sync_now(self) -> None:
+        import_page = self.page("tab.import")
+        self.show_page(import_page)
+        import_page.run_sync()
 
     # -- data -------------------------------------------------------------------------
 
@@ -300,6 +309,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(tr("app.title"))
         self.file_menu.setTitle(tr("menu.file"))
         self.import_action.setText(tr("menu.import"))
+        self.sync_action.setText(tr("menu.sync"))
         self.quit_action.setText(tr("menu.quit"))
         self.lang_menu.setTitle(tr("menu.language"))
         self.side_heading.setText(tr("sidebar.characters"))

@@ -1,4 +1,5 @@
-"""Import: client folder, found SavedVariables files, import button, backups/JSONL transfer and history."""
+"""Import: client folder, found SavedVariables files, import button, the friends' cloud sync (run it now),
+backups/JSONL transfer and history."""
 
 from __future__ import annotations
 
@@ -7,11 +8,12 @@ import sqlite3
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QProcess, Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QInputDialog, QLabel, QMessageBox,
                                QPushButton, QTableWidgetItem, QVBoxLayout)
 
+from ... import cloud_sync
 from ...i18n import format_datetime, tr
 from .. import theme
 from ..widgets import Page, muted, table, value_label
@@ -67,6 +69,25 @@ class ImportPage(Page):
         self.message = muted()
         fl.addWidget(self.message)
         root.addWidget(self.files_box)
+
+        # The friends' cloud sync (sync/ForeverSync.ps1): one run now instead of waiting for the next one.
+        self.sync_box = QGroupBox()
+        sl = QVBoxLayout(self.sync_box)
+        self.sync_label = QLabel()
+        self.sync_label.setWordWrap(True)
+        sl.addWidget(self.sync_label)
+        sync_actions = QHBoxLayout()
+        self.sync_button = QPushButton()
+        self.sync_button.clicked.connect(self.run_sync)
+        sync_actions.addWidget(self.sync_button)
+        sync_actions.addStretch(1)
+        sl.addLayout(sync_actions)
+        self.sync_message = muted()
+        self.sync_message.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        sl.addWidget(self.sync_message)
+        root.addWidget(self.sync_box)
+        self.sync_process: QProcess | None = None
+        self._sync_log_start = 0
 
         # Backups and JSONL export/import (spec F-011).
         self.backup_box = QGroupBox()
@@ -128,8 +149,82 @@ class ImportPage(Page):
         else:
             self.files_label.setText(tr("import.files_none"))
         self.run.setEnabled(bool(files))
+        self._refresh_sync()
         self._refresh_backups()
         self._fill_history()
+
+    def _refresh_sync(self) -> None:
+        self.sync_box.setTitle(tr("sync.group"))
+        running = self.sync_process is not None
+        setup = cloud_sync.find_setup()
+        self.sync_button.setText(tr("sync.running") if running else tr("sync.run") if setup else tr("sync.setup_run"))
+        self.sync_button.setEnabled(not running and cloud_sync.sync_script() is not None)
+        if cloud_sync.sync_script() is None:
+            self.sync_label.setText(tr("sync.no_script"))
+            return
+        if setup is None:
+            self.sync_label.setText(tr("sync.none"))
+            return
+        # What is where: my upload (push), friends' files in the cloud and what the game got of them (pull).
+        files = cloud_sync.player_files(setup)
+        mine = [f for f in files if f.mine]
+        friends = [f for f in files if not f.mine]
+        lines = [tr("sync.cloud", cloud=setup.cloud),
+                 tr("sync.pushed", files=self._player_list(mine)) if mine else tr("sync.pushed_none"),
+                 tr("sync.pulled", files=self._player_list(friends)) if friends else tr("sync.pulled_none")]
+        game = cloud_sync.friends_in_game(setup)
+        lines.append(tr("sync.in_game", n=game[0], when=format_datetime(int(game[1]))) if game
+                     else tr("sync.in_game_none"))
+        last = cloud_sync.log_lines(setup.folder)[-1:]
+        if last:
+            lines.append(tr("sync.last", line=last[0]))
+        self.sync_label.setText("\n".join(lines))
+
+    @staticmethod
+    def _player_list(files: list[cloud_sync.PlayerFile]) -> str:
+        return ", ".join(f"{f.name} ({format_datetime(int(f.modified))})" for f in files)
+
+    def run_sync(self) -> None:
+        """Starts one sync run (the setup first, when there is none yet): it uploads my share file and pulls
+        friends' files into the game. The window keeps working while it runs."""
+        script = cloud_sync.sync_script()
+        if script is None or self.sync_process is not None:
+            self._refresh_sync()
+            return
+        folder = cloud_sync.sync_dir()
+        self._sync_log_start = cloud_sync.log_size(folder)
+        command = cloud_sync.run_command if cloud_sync.find_setup(folder) else cloud_sync.setup_command
+        program, args = command(script, folder)
+        self.sync_process = QProcess(self)
+        self.sync_process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        self.sync_process.finished.connect(self._sync_finished)
+        self.sync_process.errorOccurred.connect(self._sync_failed)
+        self.sync_message.setText("")
+        self.sync_process.start(program, args)
+        self._refresh_sync()
+
+    def _sync_finished(self, code: int, status: QProcess.ExitStatus) -> None:
+        process, self.sync_process = self.sync_process, None
+        if process is None:
+            return
+        output = bytes(process.readAll()).decode("utf-8", errors="replace").strip()
+        process.deleteLater()
+        new = cloud_sync.log_lines(cloud_sync.sync_dir(), self._sync_log_start)
+        if code != 0 or status != QProcess.ExitStatus.NormalExit:
+            self.sync_message.setText(tr("sync.failed", message=output or code))
+        elif any(" failed: " in line for line in new):
+            self.sync_message.setText(tr("sync.failed", message="\n".join(new)))
+        else:
+            self.sync_message.setText(tr("sync.done") + ("\n" + "\n".join(new) if new else " " + tr("sync.nothing")))
+        self._refresh_sync()
+
+    def _sync_failed(self, error: QProcess.ProcessError) -> None:
+        if error != QProcess.ProcessError.FailedToStart or self.sync_process is None:
+            return  # a crash also ends in finished()
+        process, self.sync_process = self.sync_process, None
+        self.sync_message.setText(tr("sync.failed", message=process.errorString()))
+        process.deleteLater()
+        self._refresh_sync()
 
     def _refresh_backups(self) -> None:
         self.backup_box.setTitle(tr("backup.group"))
