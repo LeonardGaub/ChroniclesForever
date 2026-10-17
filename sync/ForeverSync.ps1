@@ -370,6 +370,8 @@ function Send-Screenshots($Config, $State) {
   }
   foreach ($share in Get-ShareFiles $Config) {
     $text = [IO.File]::ReadAllText($share.Path, [Text.Encoding]::UTF8)
+    # Written by an addon before 2026-10-16 (no screenshotFiles yet): the cloud's pictures are left as they are.
+    if ($text -notmatch '\["screenshotFiles"\]\s*=') { continue }
     $accountId = (Get-Sha ([Text.Encoding]::UTF8.GetBytes($share.Account))).Substring(0, 8)
     $player = Join-Path $root ('{0}-{1}-{2}' -f (Get-PlayerName $text), $Config.shareId.Substring(0, 8), $accountId)
     # The same account under an older name: its folder moves along (the pictures are not uploaded again).

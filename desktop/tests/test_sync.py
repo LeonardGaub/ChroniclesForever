@@ -3,6 +3,7 @@ setup, addon install from the repository clone, upload, download with the pure-d
 real Lua VM, backups, addon updates and turning off the old automation (versions 1 and 2 ran by themselves)."""
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -274,6 +275,13 @@ def test_screenshots_uploaded_per_character_scaled_down(world):
     once(world)
     [player] = (world["cloud"] / "screenshots").iterdir()
     assert player.name.startswith("Leon-") and (player / character.name / uploaded.name).stat().st_mtime_ns == stamp
+
+    # A share file from an addon before screenshotFiles: the pictures in the cloud stay.
+    old = re.sub(r'\["screenshotFiles"\] = \{[^{}]*\},?', "", text)
+    assert "screenshotFiles" not in old
+    share.write_text(old, encoding="utf-8")
+    once(world)
+    assert (player / character.name / uploaded.name).stat().st_mtime_ns == stamp
 
     # Screenshots no longer shared (category off in game): removed from the cloud.
     share.write_text(text.replace('["100726_101005"] = "Blind-Classic Beta PvP",', ""), encoding="utf-8")
