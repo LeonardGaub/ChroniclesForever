@@ -1,7 +1,7 @@
-# Dungeon maps: exploration
+# Dungeon maps
 
-Status: exploring (2026-10-15). The addon now probes every dungeon passively; the next dungeon visit answers the
-open questions, then one of the options below gets built.
+Status: option 2 built in the addon (2026-10-18), without boss pins; see "Built" at the end. The probe keeps
+running, so a later dungeon visit can still show whether option 1 (a real path) is possible.
 
 ## What we know
 - **No position inside dungeons (Phase 0, Ragefire Chasm):** `C_Map.GetBestMapForUnit("player")` and the
@@ -64,3 +64,29 @@ add option 1 on top if the probe finds a position.
   "dungeon completed" is recorded; the probe shows this.
 - The first kill of a dungeon's last boss per character is a `dungeon_completed` event with its own screenshot
   trigger "On dungeon completion" (on by default, like level-ups it may skip the cooldown).
+
+## Built (2026-10-18): dungeon map with the visit list
+- **Map art.** The Forever client has no dungeon maps in its own tables (its UiMap table holds only the 60 world,
+  continent and zone maps), but it still contains Blizzard's dungeon map pictures: 256-px tiles, 4 x 3 per floor.
+  `tools/build_dungeon_maps.py` links them up from the map tables of WoW Classic 5.5.4 (wago.tools: UiMapAssignment
+  → dungeon/micro UiMaps → UiMapXMapArt → UiMapArtTile; floor names from UiMapGroupMember in English and German),
+  keeps the instances that exist in Forever's own Map table and whose every tile is in the install, and writes
+  `addons/ForeverChronicle/Data/DungeonMaps.lua`: 27 dungeons and raids, 70 floors. The addon draws the tiles by
+  file ID; no picture ships with it. `--preview FOLDER` writes every floor as a picture to check the tile order.
+  These are the Cataclysm-era pictures (Ragefire Chasm, Deadmines and Shadowfang Keep show their reworked
+  layouts), the same ones MapUtils and OpenMap use. The pictures already mark the bosses with skulls.
+- **No map for Forever's own dungeons** (City of Dalaran 2959, Excavation Site: Wetlands 2998, Ruins of Lordaeron
+  2999, Hall of the Thanes 3065): Blizzard has no picture of them. MapUtils and OpenMap ship hand-drawn ones, but
+  MapUtils is "all rights reserved" and OpenMap's drawings are used with the artist's permission and not under its
+  MIT licence, so they are not copied. These dungeons keep the old behaviour (shown at the entrance).
+- **No boss pins.** The client's journal tables (JournalEncounter) are empty, and the Classic 5.5.4 journal has the
+  Cataclysm bosses (Glubtok, Helix, ...), not Forever's. The only boss positions for Forever's bosses are MapUtils'
+  hand-placed ones, which may not be copied. The visit list replaces the pins.
+- **Map page.** A dungeon with a map is a view of its own (`"dungeon:<instanceID>"`, `Route.DungeonView`), listed
+  among the maps in the order of the first visit. Replays and Chronicle clicks inside the dungeon open it
+  (`Route.ViewFor`). It shows the floor picked last (arrows top right when there are several) and the visit list:
+  the visit at the shown moment (`Route.DungeonVisits`; time outside up to 30 min, such as a corpse run, belongs to
+  the same visit), with every event of that visit (bosses numbered in kill order), the time since entering, grey
+  until it happens, click to jump. Zone maps still show dungeon moments at the entrance.
+- **Not built:** choosing the floor automatically (the sub-zone names the probe records could match the floor
+  names), the desktop app (it could use the same table and `--preview` pictures).
