@@ -14,7 +14,8 @@ at the time (older entries may describe things that changed later). Architecture
 - Desktop app: starts on the home screen (Start). Tabs at the bottom: Start, Übersicht, Chronik, Galerie, Karte
   (with the cinematic mode), Berufe; the gear menu next to them opens Import, Einstellungen (sound), Diagnose. Start it with `desktop/Forever Chronicle.bat`; friends use `Journey Forever starten.bat` from the
   package built by `tools/package_for_friend.py`. The user is moving away from the desktop app: fixes and features
-  go into the addon, except features that need the screenshot files (cinematic replay).
+  go into the addon, except features that need the screenshot files (cinematic replay). The Karte tab and the
+  cinematic mode show dungeon maps like the addon (see History, 2026-10-18).
 - Sharing with friends: the companion addon plus the cloud sync `sync/ForeverSync.ps1` (docs/Sharing_Design.md).
   The desktop share feature was removed. The OneDrive folder "Journey Forever Cloud" holds only player data:
   `players\` and, since 2026-10-16, `screenshots\<player>\<character>-<realm>\` (pictures scaled to 1920 px by the
@@ -22,7 +23,7 @@ at the time (older entries may describe things that changed later). Architecture
   and link them, `importing/friend_screenshots.py`); the addon and the sync script come from each PC's clone of
   the repository (setup: `sync\Einrichten.bat` there).
 - Tests: `tests/addon` (`npm test`: queue tests and phases 1-15, writes the fixtures) first, then `desktop`
-  (`pytest`, 119 tests). All pass.
+  (`pytest`, 164 tests). All pass.
 
 ## Open items
 1. Dungeon maps: after the user's next dungeon, read `FC.db.dungeonProbe` from the saved file and decide the
@@ -66,6 +67,28 @@ at the time (older entries may describe things that changed later). Architecture
   format and `snapshots` area.
 
 ## History
+
+### Dungeon maps on the desktop (2026-10-18)
+- User decision: the desktop gets the addon's dungeon maps too, in the Karte tab and in the cinematic mode.
+- `tools/build_dungeon_maps.py` now also writes the floors for the desktop (on by default, `--no-desktop` to
+  skip): `desktop/forever_chronicle/maps/dungeon_<instanceID>_<floor>.jpg` (1002 x 668 like the zone maps, a
+  smaller layer is scaled up; 70 floors, ~13 MB in git) and `maps/dungeons.json` (dungeon and floor names, en/de).
+  Rerun it with the addon table after a client patch; old `dungeon_*.jpg` are removed first.
+- `domain/dungeons.py`: a dungeon with a map is a view `"dungeon:<instanceID>"`, listed among the maps in the
+  order of the first visit (`available_views`), opened by `view_for` for points inside; `visits` (the addon's
+  `Route.DungeonVisits`: up to 30 min outside, such as a corpse run, is the same visit), `visit_at`,
+  `visit_entries` (every event of the visit, bosses numbered in kill order), `since_entering` ("+m:ss").
+- Karte tab: the floor picture without route, pins or marker; floor arrows top right for several floors; the
+  visit list below them (title, date · duration · visit n of m, entries with icon and time since entering, grey
+  until they happen, click jumps there). The map follows into and out of a dungeon; a dungeon picked by hand
+  stays until the zone changes. Dungeons without a map are shown at their entrance as before.
+- Cinematic mode (`DungeonOverlay` in `ui/dungeon_view.py`): inside such a dungeon the first floor fades in over
+  the picture with the visit so far as a list on the left (later moments are not shown in advance; a new entry
+  glows), event alerts on the right as usual; it turns grey with the world while the player is dead and fades
+  out on leaving. The video export grabs it like the rest of the window.
+- Not built: choosing the floor automatically (the addon does not either), boss pins (no positions).
+- Tests: `desktop/tests/test_dungeons.py` (table, views, visits and entries, map tab, cinematic, the tool's
+  desktop output with a fake storage, and that the shipped pictures match `dungeons.json`).
 
 ### Desktop UI: home screen, gallery, card lists, the game's fonts (2026-10-16)
 - User request after the brainstorm. Home screen (`ui/pages/home.py`) with four cards: last session (time, levels,

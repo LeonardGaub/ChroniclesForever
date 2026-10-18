@@ -13,6 +13,9 @@
 - Events slide in as achievement alerts and flash a burst on the map; level-ups get a large title. At each
   screenshot the replay pauses: the picture flies out from the marker as a polaroid under an achievement
   banner (domain/cinematic.py decides which moments). The visual pieces are in ui/cinematic_fx.py.
+- Dungeons with a map (domain/dungeons.py): there is no position inside, so the dungeon's map fades in over the
+  picture with the visit so far as a list (bosses numbered, the time since entering), the newest entry glowing
+  (ui/dungeon_view.py). Dungeons without a map are shown at their entrance with a portal marker.
 - Deaths: the replay slows down before one and holds a moment on a dark red title while the world turns grey
   (the game's spirit world). The body is a headstone; after the release the ghost is a pale wisp and the corpse
   run a pale dotted line. Back at the body the colour returns with rising light.
@@ -44,7 +47,7 @@ from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPat
 from PySide6.QtWidgets import (QGraphicsOpacityEffect, QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsScene,
                                QGraphicsView, QHBoxLayout, QLabel, QPushButton, QToolTip, QWidget)
 
-from ..domain import maps
+from ..domain import dungeons, maps
 from ..domain.cinematic import Cue, Death, Levels, build_cues, CUE_EVENT_TYPES, death_spans, still_spans
 from ..domain.route import Route, Timeline
 from ..domain.route_colors import RouteColors, zone_colors
@@ -54,6 +57,7 @@ from ..wow.map_art import find_art
 from . import icons, theme
 from .cinematic_fx import (FADE_SECONDS, GHOST_COLOR, AchievementToast, CinemaFrame, CinemaView, MarkerItem,
                            PhotoOverlay, Pin, PinsItem, RouteItem, TitleCard, clamp, ease_in_out, load_thumbnail)
+from .dungeon_view import DungeonOverlay, dungeon_name
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
 TICK_MS = 33
@@ -391,6 +395,11 @@ class CinematicWindow(QWidget):
         self.cover.setStyleSheet("background: black;")
         self.cover_effect = _faded(self.cover)
         self.cover_age = FADE_SECONDS * 2
+        # Inside a dungeon with a map: its map and the visit list, under the letterbox bars and the overlays.
+        self.dungeon_overlay = DungeonOverlay(self)
+        self.all_events = sorted(repo.events(character_id, limit=1_000_000), key=lambda e: e.occurred_at)
+        self._dungeon_visits: dict[int, list] = {}
+        self._dungeon_entries: dict[tuple[int, int], list] = {}
         self.frame = CinemaFrame(self)
 
         # In the top bar: the character on the left, zone and moment on the right.
@@ -521,6 +530,8 @@ class CinematicWindow(QWidget):
         self._layout_bars()
         self._layout_toasts()
         self._layout_still()
+        self.dungeon_overlay.setGeometry(r)
+        self.dungeon_overlay.area = self.picture_area()
 
     def _layout_still(self) -> None:
         self.still_label.adjustSize()
@@ -890,6 +901,7 @@ class CinematicWindow(QWidget):
         grey = self.view.grey
         grey = min(1.0, grey + dt / GREY_IN) if dead else max(0.0, grey - dt / GREY_OUT)
         self.view.set_grey(grey)
+        self.dungeon_overlay.set_grey(grey)
 
     # -- music -------------------------------------------------------------------------------
 
@@ -966,8 +978,25 @@ class CinematicWindow(QWidget):
             self.last_head = None
             self.marker.hide()
         self._set_caption(zone, self.route.instance_name(point))
+        self._update_dungeon(point, jump)
         self.bar.set_value(self.bar.timeline.to_value(self.t))
         self.clock_label.setText(format_datetime(int(self.t)))
+
+    def _update_dungeon(self, point, jump: bool) -> None:
+        """The dungeon's map with the visit so far while the player is inside a dungeon that has one."""
+        dungeon = dungeons.get(point.instance_id)
+        if dungeon is None:
+            self.dungeon_overlay.show_visit(None, jump=jump)
+            return
+        key = dungeon.instance_id
+        if key not in self._dungeon_visits:
+            self._dungeon_visits[key] = dungeons.visits(self.route, key, self.start, self.end)
+        found = self._dungeon_visits[key]
+        index = dungeons.visit_at(found, self.t)
+        if index is not None and (key, index) not in self._dungeon_entries:
+            self._dungeon_entries[(key, index)] = dungeons.visit_entries(self.all_events, found[index])
+        self.dungeon_overlay.show_visit(dungeon, dungeon_name(dungeon, self.route.instance_names), found, index,
+                                        self._dungeon_entries.get((key, index), []), self.t, jump)
 
     # -- camera ------------------------------------------------------------------------------
 
@@ -1362,6 +1391,7 @@ class CinematicWindow(QWidget):
                 toast.deleteLater()
                 self._layout_toasts()
         self.title.advance(dt)
+        self.dungeon_overlay.advance(dt)
         self._update_still(dt)
         if self.frame.advance(dt):
             self._layout_bars()

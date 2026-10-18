@@ -5,6 +5,9 @@
   (domain/route_colors.py). The choice is kept in the app settings and used by cinematic mode too.
 - Time slider and playback (1x = one minute of play time per second; gaps are skipped).
 - The marker shows the nearest recorded point; inside dungeons there is no position, so a notice is shown.
+- Dungeons with a map (domain/dungeons.py) are views of their own, as in the addon: the dungeon's map, a floor at
+  a time, and the visit at the shown moment as a list (bosses numbered, the time since entering, grey until it
+  happens; a click jumps there). Dungeons without a map are shown at their entrance.
 - Selecting an event in the Chronicle moves the map to that moment (AppContext.focus_time).
 - Without artwork for a map a schematic grid is drawn instead.
 - Cinematic mode plays the selected range full screen with events and screenshots (ui/cinematic.py); "Video"
@@ -22,7 +25,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QGraphicsEllipseItem, QGrap
                                QGraphicsPixmapItem, QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel, QPushButton,
                                QSlider, QVBoxLayout)
 
-from ...domain import event_types, maps
+from ...domain import dungeons, event_types, maps
 from ...domain.cinematic import Levels
 from ...domain.route import Route
 from ...domain.route_colors import MODES, SEGMENT_END, RouteColors, hex_color
@@ -31,6 +34,7 @@ from ...wow.map_art import find_art
 from .. import icons, theme
 from ..cinematic import CinematicWindow
 from ..cinematic_export import ExportDialog
+from ..dungeon_view import FloorBar, VisitPanel, dungeon_name
 from ..widgets import Page, muted
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
@@ -128,8 +132,12 @@ class MapPage(Page):
     def __init__(self, ctx):
         super().__init__(ctx)
         self.route: Route | None = None
-        self.view_map: int | None = None
-        self._last_zone: int | None = None  # zone of the last shown point (map follow)
+        self.view_map: int | str | None = None   # a uiMapID, or "dungeon:<instanceID>" (domain/dungeons.py)
+        self._last_zone: int | str | None = None  # zone of the last shown point (map follow)
+        self.floors: dict[int, int] = {}          # dungeon -> floor shown last
+        self.all_events: list = []                # the character's events, oldest first (visit lists)
+        self._visits: dict[int, list] = {}        # dungeon -> its visits in the range
+        self._entries: dict[tuple[int, int], list] = {}
         self.range: tuple[int, int] | None = None
         self.current_t: int | None = None
         self.pending_focus: int | None = None
@@ -177,6 +185,12 @@ class MapPage(Page):
         self.legend = QLabel(self.view)
         self.legend.setStyleSheet(f"background: rgba(0,0,0,166); color: {theme.TEXT}; padding: 6px 10px;")
         self.legend.hide()
+        self.floor_bar = FloorBar(self.view)
+        self.floor_bar.stepped.connect(self._step_floor)
+        self.floor_bar.hide()
+        self.visit_panel = VisitPanel(self.view)
+        self.visit_panel.jump.connect(self._set_time)
+        self.visit_panel.hide()
         self.colors: RouteColors | None = None
 
         bottom = QHBoxLayout()
@@ -221,6 +235,7 @@ class MapPage(Page):
         repo = self.ctx.repo
         self.route = Route(repo.positions(self.character_id), repo.map_infos(), repo.instance_names(),
                            repo.entrances())
+        self.all_events = sorted(repo.events(self.character_id, limit=1_000_000), key=lambda e: e.occurred_at)
         char = next((c for c in repo.list_characters() if c.character_id == self.character_id), None)
         self.colors = RouteColors(self._color_mode(),
                                   Levels(repo.events(self.character_id, types=("level_up",)), char.level if char else None),
@@ -282,17 +297,24 @@ class MapPage(Page):
     def _fill_maps(self) -> None:
         self.map_select.blockSignals(True)
         self.map_select.clear()
-        infos = self.route.map_infos if self.route else {}
-        for map_id in (self.route.available_views() if self.route else []):
-            info = infos.get(map_id)
-            self.map_select.addItem(maps.display_name(map_id, info["name"] if info is not None else None), map_id)
+        for view in (dungeons.available_views(self.route) if self.route else []):
+            self.map_select.addItem(self._view_name(view), view)
         self.map_select.blockSignals(False)
+
+    def _view_name(self, view: int | str | None) -> str:
+        dungeon = dungeons.get(dungeons.dungeon_of(view))
+        if dungeon is not None:
+            return dungeon_name(dungeon, self.route.instance_names if self.route else {})
+        info = self.route.map_infos.get(view) if self.route else None
+        return maps.display_name(view, info["name"] if info is not None else None)
 
     def _clear(self, notice: str) -> None:
         self.view.scene().clear()
         self.marker = None
         self.view_map = None
         self.legend.hide()
+        self.floor_bar.hide()
+        self.visit_panel.hide()
         self.slider.setEnabled(False)
         self.play.setEnabled(False)
         self.cinematic.setEnabled(False)
@@ -314,11 +336,12 @@ class MapPage(Page):
         self.export.setEnabled(True)
         self._updating = False
         self._last_zone = None
-        self._set_view(self.route.view_for(self.route.point_at(start)) or self._first_view(), redraw=True)
+        self._visits, self._entries = {}, {}
+        self._set_view(dungeons.view_for(self.route, self.route.point_at(start)) or self._first_view(), redraw=True)
         self._set_time(start)
 
-    def _first_view(self) -> int | None:
-        views = self.route.available_views()
+    def _first_view(self) -> int | str | None:
+        views = dungeons.available_views(self.route)
         return views[0] if views else None
 
     def _session_selected(self) -> None:
@@ -334,7 +357,7 @@ class MapPage(Page):
             if self.current_t is not None:
                 self._set_time(self.current_t)
 
-    def _set_view(self, map_id: int | None, redraw: bool) -> None:
+    def _set_view(self, map_id: int | str | None, redraw: bool) -> None:
         self.view_map = map_id
         index = self.map_select.findData(map_id)
         if index >= 0 and index != self.map_select.currentIndex():
@@ -364,22 +387,35 @@ class MapPage(Page):
         point = self.route.point_at(self.current_t)
         if point is None:
             return
-        # Inside a dungeon there is no position: the dungeon entrance is shown instead, if known.
+        # Inside a dungeon there is no position: its map with the visit list, else its entrance if known.
         spot = self.route.locate(point.map_id, point.x, point.y, point.instance_id)
+        # Follow the player's zone (or dungeon). A map picked by hand stays until the zone changes or the point
+        # is not on it; a dungeon picked by hand stays until the zone changes.
+        zone = dungeons.view_for(self.route, point)
+        moved_zone = zone != self._last_zone
+        self._last_zone = zone
+        xy = self._project(spot)
+        if (self.follow.isChecked() and zone is not None and zone != self.view_map
+                and (moved_zone or (xy is None and dungeons.dungeon_of(self.view_map) is None))):
+            self._set_view(zone, redraw=True)
+            xy = self._project(spot)
+        dungeon = dungeons.dungeon_of(self.view_map)
+        if dungeon is not None:
+            if self.marker:
+                self.marker.hide()
+            self._update_visit(dungeon)
+            if point.instance_id == dungeon:
+                self._show_notice(self._art_notice or tr("map.dungeon_no_position"))
+            else:
+                self._show_notice(tr("map.elsewhere", name=self.route.instance_name(point)
+                                     if point.instance_id is not None else self._view_name(zone)))
+            return
         if spot is None:
             if self.marker:
                 self.marker.hide()
             self._show_notice(tr("map.instance", name=self.route.instance_name(point))
                               if point.instance_id is not None else None)
             return
-        # Follow the player's zone. A map picked by hand stays until the zone changes or the point is not on it.
-        zone = self.route.view_for(point)
-        moved_zone = zone != self._last_zone
-        self._last_zone = zone
-        xy = self.route.project(*spot, self.view_map) if self.view_map else None
-        if self.follow.isChecked() and zone is not None and zone != self.view_map and (moved_zone or xy is None):
-            self._set_view(zone, redraw=True)
-            xy = self.route.project(*spot, self.view_map)
         if xy is None:
             if self.marker:
                 self.marker.hide()
@@ -390,6 +426,11 @@ class MapPage(Page):
         if self.marker:
             self.marker.setPos(QPointF(xy[0] * W, xy[1] * H))
             self.marker.show()
+
+    def _project(self, spot) -> tuple[float, float] | None:
+        if spot is None or self.view_map is None or dungeons.dungeon_of(self.view_map) is not None:
+            return None
+        return self.route.project(*spot, self.view_map)
 
     def _show_notice(self, text: str | None) -> None:
         self.notice.setText(text or "")
@@ -405,7 +446,8 @@ class MapPage(Page):
         if not self.route or self.view_map is None:
             return
         scene.setSceneRect(QRectF(0, 0, W, H))
-        art = find_art(self.view_map)
+        dungeon = dungeons.get(dungeons.dungeon_of(self.view_map))
+        art = dungeon.art(self._floor(dungeon)) if dungeon else find_art(self.view_map)
         pixmap = QPixmap(str(art)) if art else QPixmap()
         if not pixmap.isNull():
             if pixmap.width() != W or pixmap.height() != H:
@@ -418,16 +460,24 @@ class MapPage(Page):
             self._art_notice = tr("map.no_art")
 
         start, end = self.range or (None, None)
-        segments = self.route.segments(self.view_map, start, end) if self.show_trail.isChecked() else []
+        # A dungeon has no route and no pins (no positions inside); its visit list shows what happened.
+        segments = (self.route.segments(self.view_map, start, end)
+                    if self.show_trail.isChecked() and dungeon is None else [])
         for seg in segments:
             self._draw_segment(scene, seg)
         self._show_legend(self.colors.legend(segments) if self.colors else [])
-        if self.show_events.isChecked():
+        if self.show_events.isChecked() and dungeon is None:
             self._draw_events(scene, start, end)
         self.marker = _marker(7, theme.GOLD)
         self.marker.setZValue(10)
         scene.addItem(self.marker)
         self._show_notice(self._art_notice)
+        self.floor_bar.setVisible(dungeon is not None and dungeon.floors > 1)
+        if dungeon is not None and dungeon.floors > 1:
+            self.floor_bar.show_floor(dungeon, self._floor(dungeon))
+        self.visit_panel.setVisible(dungeon is not None)
+        self.visit_panel.key = None
+        self._place_dungeon_parts()
 
     def _draw_schematic(self, scene: QGraphicsScene) -> None:
         scene.addRect(QRectF(0, 0, W, H), QPen(QColor(theme.BORDER)), QBrush(QColor(theme.PANEL)))
@@ -436,7 +486,7 @@ class MapPage(Page):
             scene.addLine(x, 0, x, H, grid)
         for y in range(0, H, 100):
             scene.addLine(0, y, W, y, grid)
-        label = scene.addSimpleText(maps.display_name(self.view_map))
+        label = scene.addSimpleText(self._view_name(self.view_map))
         font = theme.heading_font(28)
         label.setFont(font)
         label.setBrush(QBrush(QColor(theme.MUTED)))
@@ -481,6 +531,45 @@ class MapPage(Page):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._place_legend()
+        self._place_dungeon_parts()
+
+    # -- dungeons --------------------------------------------------------------------------
+
+    def _floor(self, dungeon) -> int:
+        floor = self.floors.get(dungeon.instance_id, 1)
+        return floor if 1 <= floor <= dungeon.floors else 1
+
+    def _step_floor(self, step: int) -> None:
+        dungeon = dungeons.get(dungeons.dungeon_of(self.view_map))
+        if dungeon is None:
+            return
+        self.floors[dungeon.instance_id] = (self._floor(dungeon) - 1 + step) % dungeon.floors + 1
+        self._draw()
+        self._update_marker()
+
+    def _update_visit(self, instance_id: int) -> None:
+        """The visit list for the shown moment."""
+        if instance_id not in self._visits:
+            start, end = self.range or (self.route.start, self.route.end)
+            self._visits[instance_id] = dungeons.visits(self.route, instance_id, start, end)
+        found = self._visits[instance_id]
+        index = dungeons.visit_at(found, self.current_t)
+        if index is not None and (instance_id, index) not in self._entries:
+            self._entries[(instance_id, index)] = dungeons.visit_entries(self.all_events, found[index])
+        entries = self._entries.get((instance_id, index), [])
+        self.visit_panel.show_visit(dungeon_name(dungeons.get(instance_id), self.route.instance_names), found,
+                                    index, entries, self.current_t)
+        self._place_dungeon_parts()
+
+    def _place_dungeon_parts(self) -> None:
+        """The floor bar and the visit list in the top-right corner of the map."""
+        right, top = self.view.width() - 10, 10
+        if self.floor_bar.isVisible():
+            self.floor_bar.adjustSize()
+            self.floor_bar.move(right - self.floor_bar.width(), top)
+            top += self.floor_bar.height() + 4
+        self.visit_panel.adjustSize()
+        self.visit_panel.move(right - self.visit_panel.width(), top)
 
     def _draw_events(self, scene: QGraphicsScene, start: int | None, end: int | None) -> None:
         for e in self.ctx.repo.events(self.character_id):
@@ -568,7 +657,7 @@ class MapPage(Page):
         self.session_select.setCurrentIndex(index)
         self.session_select.blockSignals(False)
         self._apply_range()
-        zone = self.route.view_for(self.route.point_at(t))
+        zone = dungeons.view_for(self.route, self.route.point_at(t))
         if zone is not None and zone != self.view_map:
             self._set_view(zone, redraw=True)
         self._set_time(t)
