@@ -53,7 +53,6 @@ character carry the character's natural key, not the local UUID. `Database.backu
 | Layer | Files | Role |
 |---|---|---|
 | Core | `Core/*.lua` | namespace, module registry, event dispatch, storage, diagnostics, registries, view (which character is shown), route rules, `/fj` |
-| Data | `Data/*.lua` | generated tables, never edited by hand: `DungeonMaps.lua` (dungeon floors and their map tiles by file ID) from `tools/build_dungeon_maps.py`; rerun it after client patches |
 | Modules | `Modules/*.lua` | one file per feature: Character, Session, Travel, Positions, Progress, Rares, Dungeons, Professions, Gear, Metrics, Screenshots (+ the pure ScreenshotQueue) |
 | UI | `UI/*.lua` | Blizzard templates (ButtonFrameTemplate) with icon tabs on the right edge; shared widgets in `UI/Widgets.lua`; one file per page in `UI/Pages/` |
 | Locales | `Locales/*.lua` | `deDE` (default) and `enUS` (fallback) |
@@ -138,11 +137,6 @@ fully explored, as the game does. Rerun it after a client patch; Forever reworke
 Stormwind, Eastern Plaguelands, ...), so the Classic images do not fit everywhere.
 `ui/pages/map_page.py` is the map tab. All art uses the 1002×668 world-map canvas that game coordinates are
 normalized to, which was verified against real Phase 0 coordinates.
-Dungeon maps on the desktop (as in the addon's map page): `tools/build_dungeon_maps.py` also writes every floor as
-`maps/dungeon_<instanceID>_<floor>.jpg` (same canvas) and `maps/dungeons.json` (names). `domain/dungeons.py` makes
-a dungeon with a map a view of its own (`"dungeon:<instanceID>"`, `view_for` / `available_views` wrap the route's)
-and finds its visits (`Route.DungeonVisits` / `dungeons.visits`, 30 min outside still count) and their events;
-`ui/dungeon_view.py` draws the floor bar and visit list (map tab) and the cinematic mode's dungeon overlay.
 
 ### Adding an in-game page
 Create `UI/Pages/MyPage.lua` with `FC.UI:RegisterPage({ id, labelKey, icon, order, Create = fn, Refresh = fn })` and
@@ -161,8 +155,8 @@ Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `
 | `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`), game files (`casc.py`), the event, profession and recipe icons (`game_icons.py`) and fonts (`game_fonts.py`: Friz Quadrata, Morpheus; never in git) from them, the zones' music (`zone_music.py`, table `zone_music.json` from `tools/extract_zone_music.py`) |
 | `importing/` | SavedVariables → SQLite, validation, gaps, `.bak` fallback |
 | `storage/` | `database.py` (schema migrations + backups), `repository.py` (all SQL), `jsonl.py` (export/import) |
-| `domain/` | pure logic, no Qt: registries `event_types.py` (how events are shown) and `stats.py` (overview statistics); `route.py`, `route_colors.py`, `maps.py`, `dungeons.py` (the map); `cinematic.py` (what a replay announces, deaths and standstills) |
-| `ui/` | `theme.py` (Classic look, the game's fonts first), `widgets.py` (page base class), `cards.py` (home cards and the card list of Chronik and Berufe), `main_window.py` (page stack, tabs at the bottom, gear menu), `pages/` (one file per page; `home.py` is the start page, `gallery.py` the screenshots), `screenshots.py` (thumbnails, Shot, the viewer with banner, favourite and replay), `cinematic.py` + `cinematic_fx.py` (cinematic mode), `dungeon_view.py` (dungeon maps on both), `cinematic_export.py` (the replay as an MP4 video), `sound.py` (clicks, alerts, music) |
+| `domain/` | pure logic, no Qt: registries `event_types.py` (how events are shown) and `stats.py` (overview statistics); `route.py`, `route_colors.py`, `maps.py` (the map); `cinematic.py` (what a replay announces, deaths and standstills) |
+| `ui/` | `theme.py` (Classic look, the game's fonts first), `widgets.py` (page base class), `cards.py` (home cards and the card list of Chronik and Berufe), `main_window.py` (page stack, tabs at the bottom, gear menu), `pages/` (one file per page; `home.py` is the start page, `gallery.py` the screenshots), `screenshots.py` (thumbnails, Shot, the viewer with banner, favourite and replay), `cinematic.py` + `cinematic_fx.py` (cinematic mode), `cinematic_export.py` (the replay as an MP4 video), `sound.py` (clicks, alerts, music) |
 | `i18n.py` | German (default) / English strings |
 
 ### Sound

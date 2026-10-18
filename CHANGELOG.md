@@ -7,12 +7,6 @@ then turn "Unreleased" into the uploaded version and date.
 ## Unreleased (0.15.0)
 
 ### New
-- Dungeon maps: the Map tab shows the map of a dungeon you visited (27 dungeons and raids, with every floor:
-  switch floors with the arrows at the top right). Inside dungeons the game gives no position, so instead of a
-  route a list shows what happened during the visit: bosses numbered in the order you killed them, deaths,
-  level-ups and more, each with the time since you entered. During a replay, entries that have not happened yet
-  are greyed out, and a click on an entry jumps there. Replays and Chronicle entries inside a dungeon now open
-  its map; the zone with the dungeon entrance is still there with the map arrows.
 - Deaths name their cause, read from the game's death recap: "Killed by Hogger in Elwynn Forest", or "Drowned",
   "Fell to death" and so on. Hover the entry for the killing blow (spell and damage). Deaths without a recap
   stay "Died in ...".

@@ -1,7 +1,8 @@
 # Dungeon maps
 
-Status: option 2 built in the addon (2026-10-18), without boss pins; see "Built" at the end. The probe keeps
-running, so a later dungeon visit can still show whether option 1 (a real path) is possible.
+Status: option 2 was built in the addon and the desktop app on 2026-10-18 and removed again the same day: the
+user did not like the dungeon maps (see "Tried and removed" at the end). Dungeon moments are shown at the
+entrance, as before. The probe keeps running.
 
 ## What we know
 - **No position inside dungeons (Phase 0, Ragefire Chasm):** `C_Map.GetBestMapForUnit("player")` and the
@@ -65,7 +66,9 @@ add option 1 on top if the probe finds a position.
 - The first kill of a dungeon's last boss per character is a `dungeon_completed` event with its own screenshot
   trigger "On dungeon completion" (on by default, like level-ups it may skip the cooldown).
 
-## Built (2026-10-18): dungeon map with the visit list
+## Tried and removed (2026-10-18): dungeon map with the visit list
+Built in the addon (commit 63af856) and the desktop Karte tab and cinematic mode (c531fef), then removed by the
+user's decision ("I dont like the dungeons maps"). Do not bring them back without asking. What was learned:
 - **Map art.** The Forever client has no dungeon maps in its own tables (its UiMap table holds only the 60 world,
   continent and zone maps), but it still contains Blizzard's dungeon map pictures: 256-px tiles, 4 x 3 per floor.
   `tools/build_dungeon_maps.py` links them up from the map tables of WoW Classic 5.5.4 (wago.tools: UiMapAssignment
@@ -88,9 +91,6 @@ add option 1 on top if the probe finds a position.
   the visit at the shown moment (`Route.DungeonVisits`; time outside up to 30 min, such as a corpse run, belongs to
   the same visit), with every event of that visit (bosses numbered in kill order), the time since entering, grey
   until it happens, click to jump. Zone maps still show dungeon moments at the entrance.
-- **Desktop app (built 2026-10-18).** The tool also writes every floor as
-  `desktop/forever_chronicle/maps/dungeon_<instanceID>_<floor>.jpg` (1002 x 668) and `maps/dungeons.json` (names).
-  The Karte tab works like the addon's map page (`domain/dungeons.py`, `ui/dungeon_view.py`). The cinematic mode
-  fades the first floor in while the player is inside, with the visit so far listed on the left.
-- **Not built:** choosing the floor automatically (the sub-zone names the probe records could match the floor
-  names).
+- **Desktop app.** The tool also wrote every floor as a 1002 x 668 picture for the Karte tab, and the cinematic
+  mode faded the floor in while the player was inside, with the visit so far listed on the left.
+- The tool and the table were removed with the feature; `git show 63af856` has them.

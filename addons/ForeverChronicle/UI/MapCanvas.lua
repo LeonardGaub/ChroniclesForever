@@ -1,7 +1,7 @@
 -- Journey Forever - map canvas
 -- Draws a map with the client's own map art (the same tiles and explored-area overlays as the world map),
 -- route lines, event icons and a position marker. If the client cannot provide the art, a plain
--- parchment-coloured area with the map name is shown instead. Dungeon maps come from Data/DungeonMaps.lua.
+-- parchment-coloured area with the map name is shown instead.
 --
 -- Zoom: mouse wheel (at the cursor), drag to pan, right-click to reset. The visible area (frame) clips a
 -- content frame that is scaled and moved; lines, icons and the marker are counter-scaled so they keep
@@ -171,49 +171,24 @@ function Canvas:SetMap(mapID)
     return false
   end
   self.name:Hide()
-  self:DrawTiles(layer.layerWidth, layer.layerHeight, layer.tileWidth, layer.tileHeight, textures)
-  self:DrawExplored(mapID)
-  return true
-end
-
--- Lays out map art of w x h map units from tiles (file IDs, row by row); the canvas shows its full width.
-function Canvas:DrawTiles(w, h, tileWidth, tileHeight, textures)
+  local w, h = layer.layerWidth, layer.layerHeight
   self.art:SetSize(w, h)
   self.art:SetScale(self.width / w)
-  local cols = math.ceil(w / tileWidth)
-  local rows = math.ceil(h / tileHeight)
+  local cols = math.ceil(w / layer.tileWidth)
+  local rows = math.ceil(h / layer.tileHeight)
   for row = 1, rows do
     for col = 1, cols do
       local index = (row - 1) * cols + col
       local tex = self.tiles[index] or self.art:CreateTexture(nil, "BACKGROUND", nil, -7)
       self.tiles[index] = tex
-      tex:SetSize(tileWidth, tileHeight)
+      tex:SetSize(layer.tileWidth, layer.tileHeight)
       tex:ClearAllPoints()
-      tex:SetPoint("TOPLEFT", (col - 1) * tileWidth, -(row - 1) * tileHeight)
+      tex:SetPoint("TOPLEFT", (col - 1) * layer.tileWidth, -(row - 1) * layer.tileHeight)
       tex:SetTexture(textures[index], nil, nil, "TRILINEAR")
       tex:Show()
     end
   end
-end
-
--- A floor of a dungeon's map (Data/DungeonMaps.lua): the client still has these pictures but no map for them.
--- Returns true if there is one.
-function Canvas:SetDungeon(instanceID, floorIndex)
-  local key = "dungeon:" .. tostring(instanceID) .. ":" .. tostring(floorIndex)
-  if key ~= self.mapID then self:ResetZoom() end
-  self.mapID = key
-  hideAll(self.tiles)
-  hideAll(self.overlays)
-  local dungeon = FC.DungeonMaps and FC.DungeonMaps[instanceID]
-  local floor = dungeon and dungeon.floors[floorIndex]
-  if not floor then
-    self.name:SetText(FC:InstanceName(instanceID))
-    self.name:Show()
-    return false
-  end
-  self.name:Hide()
-  local layout = floor.layout or FC.DUNGEON_MAP_LAYOUT
-  self:DrawTiles(layout[1], layout[2], layout[3], layout[4], floor.tiles)
+  self:DrawExplored(mapID)
   return true
 end
 

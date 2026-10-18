@@ -171,56 +171,17 @@ function Route.ZoneFor(p)
   return best or p.mapID
 end
 
--------------------------------------------------------------------------------
--- Dungeon maps (Data/DungeonMaps.lua): a dungeon with a map is a view of its own, "dungeon:<instanceID>". It has
--- no route (no positions inside); the map page lists what happened during each visit instead.
--------------------------------------------------------------------------------
-
-Route.VISIT_GAP = 30 * 60 -- time outside (a corpse run, a quick trip out) that still counts as the same visit
-
-function Route.DungeonView(instanceID)
-  return instanceID and FC.DungeonMaps and FC.DungeonMaps[instanceID] and ("dungeon:" .. instanceID) or nil
-end
-
--- The instanceID of a dungeon view, nil for map views.
-function Route.DungeonOf(view)
-  return type(view) == "string" and tonumber(view:match("^dungeon:(%d+)$")) or nil
-end
-
--- The view for a point: its dungeon's map if there is one, else its zone (see Route.ZoneFor).
-function Route.ViewFor(p)
-  return p and Route.DungeonView(p.instanceID) or Route.ZoneFor(p)
-end
-
--- Visits to a dungeon within [startTime, endTime], oldest first: list of { from, to }.
-function Route.DungeonVisits(points, instanceID, startTime, endTime)
-  local visits = {}
-  for _, run in ipairs(Route.ZoneRuns(points, startTime, endTime)) do
-    if run.instanceID == instanceID then
-      local last = visits[#visits]
-      if last and run.from - last.to <= Route.VISIT_GAP then
-        last.to = run.to
-      else
-        visits[#visits + 1] = { from = run.from, to = run.to }
-      end
-    end
-  end
-  return visits
-end
-
--- Maps that have points (zones, and dungeons with a map) in the order they were first visited, followed by the
--- continents that contain them.
+-- Zone maps that have points, followed by the continents that contain them.
 function Route.Views(points)
   local zones, continents, seen = {}, {}, {}
   for _, p in ipairs(points) do
-    local view = p.mapID or Route.DungeonView(p.instanceID)
-    if view and not seen[view] then
-      seen[view] = true
-      zones[#zones + 1] = view
+    if p.mapID and not seen[p.mapID] then
+      seen[p.mapID] = true
+      zones[#zones + 1] = p.mapID
     end
   end
   for _, z in ipairs(zones) do
-    local info = not Route.DungeonOf(z) and FC:MapInfo(z)
+    local info = FC:MapInfo(z)
     local c = info and info.minX and info.continent
     if c and not seen[c] then
       seen[c] = true
