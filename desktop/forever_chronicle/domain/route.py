@@ -24,6 +24,7 @@ TELEPORT_SPEED = 0.004      # continent widths per second
 TELEPORT_DISTANCE = 0.01    # shorter steps never count as a teleport
 UNKNOWN_ZONE_SCALE = 0.1    # assumed size of a zone without continent geometry
 CONTINENT_TYPE = 2          # Enum.UIMapType.Continent
+WORLD_PER_CONTINENT = 0.78  # a continent map's width as a share of the world map's (maps.CONTINENT_IN_WORLD)
 
 
 @dataclass
@@ -100,6 +101,8 @@ class Route:
             return None
         if map_id == view:
             return x, y
+        if view == maps.WORLD:
+            return maps.world_xy(map_id, x, y, self.map_infos)
         info = self.map_infos.get(map_id)
         if info is not None and info["continent_id"] == view and info["min_x"] is not None:
             return (info["min_x"] + x * (info["max_x"] - info["min_x"]),
@@ -203,10 +206,28 @@ class Route:
         d = math.hypot(p.x - prev.x, p.y - prev.y) * self._continent_scale(p.map_id)
         return d >= TELEPORT_DISTANCE and d / max(1, p.time - prev.end) > TELEPORT_SPEED
 
-    def connected(self, prev: PositionPoint, p: PositionPoint) -> bool:
-        """True when a route line joins prev and p."""
-        return (p.time - prev.end <= GAP_SECONDS and prev.map_id == p.map_id and prev.taxi == p.taxi
-                and not self.is_jump(prev, p))
+    def connected(self, prev: PositionPoint, p: PositionPoint, view: int | None = None) -> bool:
+        """True when a route line joins prev and p. On the world map (the seamless one) lines also cross from
+        one zone into the next, unless the step is a teleport."""
+        if p.time - prev.end > GAP_SECONDS or prev.taxi != p.taxi:
+            return False
+        if prev.map_id == p.map_id:
+            return not self.is_jump(prev, p)
+        return view == maps.WORLD and self._walked_across(prev, p)
+
+    def _walked_across(self, prev: PositionPoint, p: PositionPoint) -> bool:
+        """True when prev and p lie on different maps of one continent, close enough to be one walk."""
+        if prev.instance_id is not None or p.instance_id is not None:
+            return False
+        on = lambda m: m if m in maps.CONTINENT_IN_WORLD else self.continent(m)  # noqa: E731
+        if on(prev.map_id) != on(p.map_id):
+            return False
+        a = maps.world_xy(prev.map_id, prev.x, prev.y, self.map_infos)
+        b = maps.world_xy(p.map_id, p.x, p.y, self.map_infos)
+        if a is None or b is None:
+            return False
+        d = math.hypot(b[0] - a[0], b[1] - a[1]) / WORLD_PER_CONTINENT    # continent widths
+        return d < TELEPORT_DISTANCE or d / max(1, p.time - prev.end) <= TELEPORT_SPEED
 
     # -- segments ----------------------------------------------------------------------
 
@@ -223,7 +244,7 @@ class Route:
             if xy is None:
                 current, prev = None, p
                 continue
-            if current is None or prev is None or not self.connected(prev, p):
+            if current is None or prev is None or not self.connected(prev, p, view):
                 current = Segment(taxi=p.taxi)
                 result.append(current)
             current.points.append((p.time, xy[0], xy[1]))
@@ -242,14 +263,19 @@ class Route:
         candidates = [self.points[j] for j in (i, i + 1) if 0 <= j < len(self.points)]
         return min(candidates, key=lambda p: min(abs(t - p.time), abs(t - p.end)))
 
-    def glide(self, t: float) -> tuple[int, float, float] | None:
+    def glide(self, t: float, view: int | None = None) -> tuple[int, float, float] | None:
         """Where a replay shows the player at time t: between two connected points on the line joining them,
-        else the nearest point (inside a dungeon its entrance). None if unknown."""
+        else the nearest point (inside a dungeon its entrance). None if unknown. view=WORLD (the seamless map)
+        also glides from one zone into the next; the point is then on the world map."""
         i = bisect.bisect_right(self.times, t) - 1
         if 0 <= i < len(self.points) - 1:
             a, b = self.points[i], self.points[i + 1]
-            if a.x is not None and b.x is not None and a.end < t < b.time and self.connected(a, b):
+            if a.x is not None and b.x is not None and a.end < t < b.time and self.connected(a, b, view):
                 f = (t - a.end) / (b.time - a.end)
+                if a.map_id != b.map_id:
+                    wa = maps.world_xy(a.map_id, a.x, a.y, self.map_infos)
+                    wb = maps.world_xy(b.map_id, b.x, b.y, self.map_infos)
+                    return maps.WORLD, wa[0] + (wb[0] - wa[0]) * f, wa[1] + (wb[1] - wa[1]) * f
                 return a.map_id, a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f
         p = self.point_at(int(t))
         return self.locate(p.map_id, p.x, p.y, p.instance_id) if p else None

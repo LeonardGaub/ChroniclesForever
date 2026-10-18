@@ -12,11 +12,18 @@ from ..i18n import language, tr
 
 ART_WIDTH, ART_HEIGHT = 1002, 668
 WORLD, KALIMDOR, EASTERN_KINGDOMS = 947, 1414, 1415
-# Where each continent's map lies on the world map (min_x, max_x, min_y, max_y; may reach past its edges).
-# Found by matching the continent map art onto the world map art, so the pictures line up when one fades into
-# the other (cinematic mode); the game itself does not tell the addon these.
+# Where each continent's map art lies on the world map art (min_x, max_x, min_y, max_y; may reach past its
+# edges). Found by matching the continent map art onto the world map art, so the pictures line up when one fades
+# into the other (the cinematic's trips between continents on the zone maps); the game itself does not tell the
+# addon these.
 CONTINENT_ON_WORLD = {KALIMDOR: (-0.1808, 0.6346, 0.0681, 0.8835),
                       EASTERN_KINGDOMS: (0.3937, 1.1399, 0.1184, 0.8646)}
+# Where the game places each continent on the world map (C_Map.GetMapRectOnMap(continent, 947)): from the
+# client's UiMapAssignment table (tools/build_world_map.py --placement; rerun after a client patch). The seamless
+# world map (OpenMap's zones, placed by the game's rectangles) and every position on it use these. The world map
+# art draws the Eastern Kingdoms smaller, which is why CONTINENT_ON_WORLD differs.
+CONTINENT_IN_WORLD = {KALIMDOR: (-0.18589, 0.63409, 0.06768, 0.88774),
+                      EASTERN_KINGDOMS: (0.37148, 1.15916, 0.0815, 0.8691)}
 
 
 @dataclass(frozen=True)
@@ -84,6 +91,7 @@ CLASSIC_MAPS = [
 ]
 
 BY_ID = {m.map_id: m for m in CLASSIC_MAPS}
+CITIES = {1453, 1454, 1455, 1456, 1457, 1458}
 
 
 def display_name(map_id: int | None, client_name: str | None = None) -> str:
@@ -91,6 +99,35 @@ def display_name(map_id: int | None, client_name: str | None = None) -> str:
     if known:
         return known.de if language() == "de" else known.en
     return client_name or tr("map.unknown_map", id=map_id)
+
+
+def world_xy(map_id: int | None, x: float | None, y: float | None,
+             map_infos: dict | None = None) -> tuple[float, float] | None:
+    """A point of a zone or continent map on the world map 947 (normalized: 0..1 across its art; the seamless
+    world map's world units are these times ART_WIDTH / ART_HEIGHT). None without the geometry."""
+    if map_id is None or x is None or y is None:
+        return None
+    if map_id == WORLD:
+        return x, y
+    if map_id in CONTINENT_IN_WORLD:
+        continent, cx, cy = map_id, x, y
+    else:
+        info = (map_infos or {}).get(map_id)
+        if info is None or info["min_x"] is None or info["continent_id"] not in CONTINENT_IN_WORLD:
+            return None
+        continent = info["continent_id"]
+        cx = info["min_x"] + x * (info["max_x"] - info["min_x"])
+        cy = info["min_y"] + y * (info["max_y"] - info["min_y"])
+    x0, x1, y0, y1 = CONTINENT_IN_WORLD[continent]
+    return x0 + cx * (x1 - x0), y0 + cy * (y1 - y0)
+
+
+def world_rect(map_id: int | None, map_infos: dict | None = None) -> tuple[float, float, float, float] | None:
+    """(left, top, right, bottom) of a zone or continent on the world map 947, normalized; None if unknown."""
+    a, b = world_xy(map_id, 0.0, 0.0, map_infos), world_xy(map_id, 1.0, 1.0, map_infos)
+    if a is None or b is None or b[0] <= a[0] or b[1] <= a[1]:
+        return None
+    return a[0], a[1], b[0], b[1]
 
 
 def continent_of(map_id: int, map_infos: dict | None = None) -> int | None:
