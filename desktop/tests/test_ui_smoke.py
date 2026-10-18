@@ -112,7 +112,7 @@ def test_main_window_with_data(app, db, tmp_path, monkeypatch, addon_fixture):
     home = window.page("tab.home")
     window.show_page(home)
     assert home.welcome.text() == "Willkommen zurück, Blind"
-    assert home.session_card.title.text() == "Letzte Sitzung" and home.characters_card.title.text() == "Charaktere"
+    assert home.session_card.title.text() == "Letzte Sitzung" and home.map_card.title.text() == "Karte & Wiedergabe"
     ctx.navigate.emit("tab.gallery")
     assert window.current_page() is window.page("tab.gallery") and window.nav_buttons[window.current_page()].isChecked()
     ctx.select_character.emit(window.current_character_id())

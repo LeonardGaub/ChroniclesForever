@@ -59,7 +59,7 @@ def format_value(stat: Stat, value: Any) -> str:
 
 # -- session statistics -------------------------------------------------------------
 
-def _session_durations(repo: Repository, cid: str) -> list[int]:
+def session_durations(repo: Repository, cid: str) -> list[int]:
     out = []
     for s in repo.sessions(cid):
         end = s["ended_at"] or (int(time.time()) if s["end_reason"] == "open" else None)
@@ -82,7 +82,7 @@ def _first_tracked(repo: Repository, cid: str) -> int | None:
 
 def _per_hour(event_type: str) -> Callable[[Repository, str], float | None]:
     def compute(repo: Repository, cid: str) -> float | None:
-        seconds = sum(_session_durations(repo, cid))
+        seconds = sum(session_durations(repo, cid))
         if seconds < 3600:
             return None
         return repo.count_events(cid, event_type) / (seconds / 3600)
@@ -92,7 +92,7 @@ def _per_hour(event_type: str) -> Callable[[Repository, str], float | None]:
 register(Stat("played_total", "stats.played_total", 10, _played_total, "duration", "time"))
 register(Stat("sessions", "stats.sessions", 12, lambda r, c: len(r.sessions(c)), "number", "time"))
 register(Stat("longest_session", "stats.longest_session", 13,
-              lambda r, c: max(_session_durations(r, c), default=None), "duration", "time"))
+              lambda r, c: max(session_durations(r, c), default=None), "duration", "time"))
 register(Stat("first_tracked", "stats.first_tracked", 14, _first_tracked, "date", "time"))
 
 def _counter(key: str) -> Callable[[Repository, str], Any]:

@@ -97,9 +97,6 @@ QPushButton#NavGear {{ background: #241b12; color: {GOLD}; border: 1px solid {BO
                        font-size: 13pt; }}
 QPushButton#NavGear:checked, QPushButton#NavGear:hover {{ background: {SELECT}; border-color: {GOLD}; }}
 QPushButton#NavGear::menu-indicator {{ width: 0; }}
-QPushButton#CharacterRow {{ background: #1d1712; border: 1px solid {BORDER}; border-radius: 4px; padding: 0; }}
-QPushButton#CharacterRow:hover {{ background: #2a2016; border-color: {CARD_HOVER}; }}
-QPushButton#CharacterRow:checked {{ background: {SELECT}; border: 1px solid {GOLD}; }}
 QPushButton#Star {{ background: transparent; border: 0; padding: 0; font-size: 16pt; color: {MUTED}; }}
 QPushButton#Star:checked {{ color: {GOLD}; }}
 QLabel#Muted {{ color: {MUTED}; }}

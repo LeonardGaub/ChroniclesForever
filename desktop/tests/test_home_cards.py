@@ -9,10 +9,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QPoint, Qt  # noqa: E402
 from PySide6.QtGui import QPixmap  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel  # noqa: E402
 
 from forever_chronicle.app_context import AppContext  # noqa: E402
 from forever_chronicle.config import AppConfig  # noqa: E402
+from forever_chronicle.domain.route import Route  # noqa: E402
+from forever_chronicle.storage.repository import PositionPoint  # noqa: E402
+from forever_chronicle.ui.pages.home import session_range, session_stats, taxi_seconds, zone_times  # noqa: E402
 from forever_chronicle.storage.jsonl import export_jsonl, import_jsonl  # noqa: E402
 from forever_chronicle.ui import theme  # noqa: E402
 from forever_chronicle.ui.cards import KIND, CardList  # noqa: E402
@@ -68,11 +71,38 @@ def test_home_screen_cards(ctx):
         cinematic = home.play(session["started_at"], session["started_at"] + 600)
         assert cinematic is not None and cinematic.start == session["started_at"]
         cinematic.close()
-    rows = [w for w in home.characters_card.findChildren(type(home.recap_button)) if w.objectName() == "CharacterRow"]
-    assert rows and rows[0].isChecked(), "the shown character is marked"
-    rows[0].click()
-    assert window.current_page() is window.page("tab.overview"), "a character row opens its overview"
+    assert not hasattr(home, "characters_card"), "the characters are in the sidebar, not on a card"
+    labels = [w.text() for w in home.session_card.findChildren(QLabel)]
+    assert "Statistik" in labels and "Sitzungen" in labels, "the last session shows its statistics"
     window.close()
+
+
+def test_session_statistics(ctx):
+    cid = ctx.repo.list_characters()[0].character_id
+    sessions = ctx.repo.sessions(cid)
+    session = sessions[0]
+    route = Route(ctx.repo.positions(cid), ctx.repo.map_infos(), ctx.repo.instance_names(), ctx.repo.entrances())
+    start, end = session_range(session, route)
+    events = [e for e in ctx.repo.events(cid, limit=100_000) if start <= e.occurred_at <= end]
+    rows = dict(session_stats(session, len(sessions), [3600, 1800], events, route, start, end))
+    assert rows["Sitzungen"] == str(len(sessions))
+    assert rows["Durchschnittliche Sitzung"] == "45 Min."
+    zones = zone_times(route, start, end)
+    assert all(seconds >= 0 for _, seconds in zones)
+    assert [s for _, s in zones] == sorted((s for _, s in zones), reverse=True), "the longest zone first"
+
+
+def test_taxi_and_zone_times():
+    def point(t, until, map_id=1429, taxi=False, instance=None):
+        return PositionPoint(t, until, map_id, 0.5, 0.5, instance, taxi)
+    route = Route([point(0, 100), point(100, 110, taxi=True), point(150, 400, taxi=True), point(400, 500),
+                   point(600, 900, None, instance=36)], instance_names={36: "Die Todesminen"})
+    assert taxi_seconds(route, 0, 1000) == 300, "the flight, including the step between its two points"
+    assert taxi_seconds(route, 200, 300) == 100, "clipped to the asked range"
+    assert taxi_seconds(None, 0, 1000) == 0
+    zones = zone_times(route, 0, 900)
+    assert len(zones) == 2 and zones[0][1] == 600, "the zone first, its break before the dungeon counted to it"
+    assert zones[1] == ("Die Todesminen", 300)
 
 
 def test_favorites_travel_with_the_export(ctx, tmp_path, db):

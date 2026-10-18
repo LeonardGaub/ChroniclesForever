@@ -1,12 +1,13 @@
-"""Home: the start page, four cards instead of a wall of tabs.
+"""Home: the start page, three cards instead of a wall of tabs.
 
-- Letzte Sitzung: when the character last played, how long, what happened (levels, and a game icon with a count
-  per kind of moment), its screenshots, and "▶ Rückblick" (the session in the cinematic mode) or "⤓ Video".
+- Letzte Sitzung (the whole left column): when the character last played, how long, what happened (levels, and
+  a game icon with a count per kind of moment), its statistics (quests per hour, time on flight paths, time at
+  the level, total played, the average session), the zones it was spent in, its screenshots, and "▶ Rückblick"
+  (the session in the cinematic mode) or "⤓ Video".
 - Galerie: the newest pictures (favourites first) and how many there are; opens the gallery.
 - Karte & Wiedergabe: the last session's route on its zone map, "Karte öffnen" and "▶ Kino-Modus" for everything.
-- Charaktere: my characters (class colour, level, last played) and the friends' ones; a click shows that
-  character.
-The cards navigate through AppContext.navigate / select_character; the main window does the rest.
+The characters are in the sidebar, so the page has no card for them.
+The cards navigate through AppContext.navigate; the main window does the rest.
 """
 
 from __future__ import annotations
@@ -19,7 +20,8 @@ from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QPushBu
                                QWidget)
 
 from ...domain import event_types, maps
-from ...domain.route import Route
+from ...domain.route import GAP_SECONDS, Route
+from ...domain.stats import session_durations
 from ...i18n import format_datetime, format_day, format_duration, tr
 from ...wow.map_art import find_art
 from .. import icons, theme
@@ -32,7 +34,8 @@ SESSION_TYPES = ("level_up", "quest_completed", "zone_discovered", "achievement_
                  "boss_killed", "dungeon_completed", "player_died", "recipe_learned")
 THUMB = QSize(132, 82)
 MAP_PREVIEW = QSize(420, 280)
-MAX_CHARACTERS = 7
+MAX_ZONES = 4
+MIN_RATE_SECONDS = 15 * 60      # shorter sessions show no quests per hour
 
 
 def clear(layout) -> None:
@@ -53,6 +56,65 @@ def session_range(session, route: Route | None) -> tuple[int, int]:
     if not end and route and route.points:
         end = max((p.end for p in route.points if p.time >= start), default=start)
     return start, max(end or start, start + 1)
+
+
+def taxi_seconds(route: Route | None, start: int, end: int) -> int:
+    """Time of [start, end] spent on flight paths: the taxi points, and the steps between two of them."""
+    if not route:
+        return 0
+    total = 0
+    points = route.points
+    for i, p in enumerate(points):
+        if not p.taxi or p.end < start or p.time > end:
+            continue
+        to = p.end
+        nxt = points[i + 1] if i + 1 < len(points) else None
+        if nxt is not None and nxt.taxi and nxt.time - p.end <= GAP_SECONDS:
+            to = nxt.time
+        total += max(0, min(to, end) - max(p.time, start))
+    return total
+
+
+def zone_times(route: Route | None, start: int, end: int) -> list[tuple[str, int]]:
+    """The zones and dungeons of [start, end] with the time spent in each, longest first."""
+    if not route:
+        return []
+    seconds: dict[tuple[int | None, int | None], int] = {}
+    for run in route.zone_runs(start, end):
+        key = (run.map_id, run.instance_id)
+        seconds[key] = seconds.get(key, 0) + int(run.to - run.start)
+    out = []
+    for (map_id, instance_id), n in seconds.items():
+        if instance_id is not None:
+            name = route.instance_names.get(instance_id) or f"#{instance_id}"
+        else:
+            info = route.map_infos.get(map_id)
+            name = maps.display_name(map_id, info["name"] if info is not None else None)
+        out.append((name, n))
+    return sorted(out, key=lambda z: -z[1])
+
+
+def session_stats(session, count: int, durations: list[int], events, route: Route | None, start: int,
+                  end: int) -> list[tuple[str, str]]:
+    """The last session's statistics as (label, value) rows; those without data are left out. count: all the
+    character's sessions, durations: the lengths of those that have one."""
+    rows = []
+    quests = sum(1 for e in events if e.event_type == "quest_completed")
+    if quests and end - start >= MIN_RATE_SECONDS:
+        rate = f"{quests / ((end - start) / 3600):.1f}".replace(".", tr("common.decimal_sep"))
+        rows.append((tr("stats.quests_per_hour"), rate))
+    taxi = taxi_seconds(route, start, end)
+    if taxi >= 60:
+        rows.append((tr("home.stat.taxi"), format_duration(taxi)))
+    if session["played_level_seconds"] is not None:
+        rows.append((tr("home.stat.level_time", level=session["end_level"] or session["start_level"] or "?"),
+                     format_duration(session["played_level_seconds"])))
+    if session["played_total_seconds"] is not None:
+        rows.append((tr("stats.played_total"), format_duration(session["played_total_seconds"])))
+    if len(durations) > 1:
+        rows.append((tr("home.stat.average"), format_duration(sum(durations) / len(durations))))
+    rows.append((tr("stats.sessions"), str(count)))
+    return rows
 
 
 def route_preview(route: Route, view: int, start: int, end: int, size: QSize = MAP_PREVIEW) -> QPixmap:
@@ -136,18 +198,15 @@ class HomePage(Page):
         self.gallery_card = Card(clickable=True)
         self.gallery_card.clicked.connect(lambda: ctx.navigate.emit("tab.gallery"))
         self.map_card = Card()
-        self.characters_card = Card()
-        grid.addWidget(self.session_card, 0, 0)
+        grid.addWidget(self.session_card, 0, 0, 2, 1)
         grid.addWidget(self.gallery_card, 0, 1)
-        grid.addWidget(self.map_card, 1, 0)
-        grid.addWidget(self.characters_card, 1, 1)
+        grid.addWidget(self.map_card, 1, 1)
         for column in (0, 1):
             grid.setColumnStretch(column, 1)
         root.addLayout(grid)
         root.addStretch(1)
         self.bodies = {}
-        for name, card in (("session", self.session_card), ("gallery", self.gallery_card), ("map", self.map_card),
-                           ("characters", self.characters_card)):
+        for name, card in (("session", self.session_card), ("gallery", self.gallery_card), ("map", self.map_card)):
             body = QVBoxLayout()
             body.setSpacing(8)
             card.body.addLayout(body)
@@ -162,24 +221,23 @@ class HomePage(Page):
         self.session_card.title.setText(tr("home.session"))
         self.gallery_card.title.setText(tr("home.gallery"))
         self.map_card.title.setText(tr("home.map"))
-        self.characters_card.title.setText(tr("home.characters"))
         for body in self.bodies.values():
             clear(body)
         route = (Route(repo.positions(self.character_id), repo.map_infos(), repo.instance_names(), repo.entrances())
                  if self.character_id else None)
         sessions = repo.sessions(self.character_id) if self.character_id else []
-        self._fill_session(sessions[0] if sessions else None, route)
+        self._fill_session(sessions, route)
         self._fill_gallery()
         self._fill_map(sessions[0] if sessions else None, route)
-        self._fill_characters()
 
     # -- last session ----------------------------------------------------------------------
 
-    def _fill_session(self, session, route: Route | None) -> None:
+    def _fill_session(self, sessions, route: Route | None) -> None:
         body = self.bodies["session"]
-        if session is None:
+        if not sessions:
             body.addWidget(muted(tr("home.no_session")))
             return
+        session = sessions[0]
         start, end = session_range(session, route)
         when = QLabel(f"{format_day(start)}  ·  {time.strftime('%H:%M', time.localtime(start))}"
                       f"–{time.strftime('%H:%M', time.localtime(end))}")
@@ -220,7 +278,38 @@ class HomePage(Page):
         else:
             body.addWidget(muted(tr("home.quiet_session")))
 
-        shots = [r for r in self.ctx.repo.screenshots(self.character_id, only_files=True)
+        stats = QGridLayout()
+        stats.setHorizontalSpacing(16)
+        stats.setVerticalSpacing(4)
+        durations = session_durations(self.ctx.repo, self.character_id)
+        for i, (label, value) in enumerate(session_stats(session, len(sessions), durations, events, route, start,
+                                                         end)):
+            name = muted(label)
+            name.setWordWrap(False)
+            stats.addWidget(name, i, 0)
+            text = QLabel(value)
+            text.setStyleSheet(theme.font_css(12, "#ffffff"))
+            stats.addWidget(text, i, 1)
+        stats.setColumnStretch(2, 1)
+        body.addWidget(self._heading(tr("home.stats")))
+        body.addLayout(stats)
+        self.stats_grid = stats
+
+        zones = zone_times(route, start, end)
+        if zones:
+            body.addWidget(self._heading(tr("home.zones")))
+            for name, seconds in zones[:MAX_ZONES]:
+                row = QHBoxLayout()
+                label = QLabel(name)
+                label.setStyleSheet(theme.font_css(12, "#ffffff"))
+                row.addWidget(label)
+                row.addStretch(1)
+                row.addWidget(muted(format_duration(seconds)))
+                body.addLayout(row)
+            if len(zones) > MAX_ZONES:
+                body.addWidget(muted(tr("home.more_zones", n=len(zones) - MAX_ZONES)))
+
+        shots =[r for r in self.ctx.repo.screenshots(self.character_id, only_files=True)
                  if file_exists(r["file_path"]) and start <= (r["captured_at"] or r["requested_at"] or 0) <= end]
         if shots:
             row = QHBoxLayout()
@@ -308,48 +397,11 @@ class HomePage(Page):
         buttons.addStretch(1)
         body.addLayout(buttons)
 
-    # -- characters ------------------------------------------------------------------------
-
-    def _fill_characters(self) -> None:
-        body = self.bodies["characters"]
-        chars = self.ctx.repo.list_characters()
-        if not chars:
-            body.addWidget(muted(tr("sidebar.empty")))
-            return
-        mine = [c for c in chars if not c.is_friend]
-        friends = [c for c in chars if c.is_friend]
-        for char in (mine + friends)[:MAX_CHARACTERS]:
-            row = QPushButton()
-            row.setObjectName("CharacterRow")
-            row.setCursor(Qt.CursorShape.PointingHandCursor)
-            row.setCheckable(True)
-            row.setChecked(char.character_id == self.character_id)
-            row.clicked.connect(lambda _=False, cid=char.character_id: self._show_character(cid))
-            layout = QHBoxLayout(row)
-            layout.setContentsMargins(10, 4, 10, 4)
-            name = QLabel(char.full_name)
-            name.setStyleSheet(theme.font_css(12, theme.class_color(char.class_file)))
-            level = QLabel(tr("cine.level", level=char.level or "?"))
-            level.setStyleSheet("color: #ffffff; background: transparent;")
-            detail = (tr("char.friend", name=char.owner_name or "?") if char.is_friend
-                      else tr("home.last_played", when=format_datetime(char.last_seen_at)) if char.last_seen_at else "")
-            seen = QLabel(detail)
-            seen.setStyleSheet(f"color: {theme.MUTED}; background: transparent; font-size: 8pt;")
-            for w in (name, level):
-                layout.addWidget(w)
-            layout.addStretch(1)
-            layout.addWidget(seen)
-            row.setMinimumHeight(38)
-            body.addWidget(row)
-        rest = len(chars) - MAX_CHARACTERS
-        if rest > 0:
-            body.addWidget(muted(tr("home.more_characters", n=rest)))
-        if friends:
-            body.addWidget(muted(tr("home.friends", n=len({c.owner_id for c in friends}), chars=len(friends))))
-
-    def _show_character(self, character_id: str) -> None:
-        self.ctx.select_character.emit(character_id)
-        self.ctx.navigate.emit("tab.overview")
+    @staticmethod
+    def _heading(text: str) -> QLabel:
+        label = QLabel(text)
+        label.setStyleSheet(theme.font_css(12, theme.GOLD) + " padding-top: 6px;")
+        return label
 
     # -- actions ---------------------------------------------------------------------------
 
