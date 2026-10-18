@@ -616,7 +616,11 @@ if PHASE == 9 then
   -- The mock moves the player from the login spot to the walk start in one step: a teleport.
   check(#segs == 2 and #segs[1].points == 1 and #segs[2].points >= 20, "Barrens walk, split at the jump (" .. #segs .. ")")
   local views = table.concat(Route.Views(points), ",")
-  check(views == "1413,1411,1414", "views: zones then continent (" .. views .. ")")
+  check(views == "1413,dungeon:389,1411,1414", "views: zones and dungeons, then continent (" .. views .. ")")
+  check(Route.DungeonOf("dungeon:389") == 389 and Route.DungeonOf(1413) == nil, "dungeon view keys")
+  check(Route.DungeonView(2999) == nil, "no view for a dungeon without a map")
+  local visits = Route.DungeonVisits(points, 389, points[1].time, points[#points].endTime)
+  check(#visits == 1 and visits[1].from <= dungeonTime and visits[1].to >= dungeonTime, "one visit to Ragefire Chasm")
   local cx, cy = Route.Project({ mapID = 1413, x = 0.5, y = 0.5 }, 1414)
   check(math.abs(cx - 0.44) < 1e-9 and math.abs(cy - 0.74) < 1e-9, "projection onto the continent")
   -- Continent points (between zones) belong to the smallest known zone that contains them.
@@ -640,7 +644,10 @@ if PHASE == 9 then
   check(page.canvas.overlays[1] and page.canvas.overlays[1]:IsShown(), "explored overlays drawn")
 
   page:StepMap(-1)
-  check(page.viewMap == 1413, "previous map: The Barrens")
+  check(page.viewMap == "dungeon:389" and page.visitPanel:IsShown() and not page.canvas.marker:IsShown(),
+    "previous map: Ragefire Chasm, without a marker while the player is elsewhere")
+  page:StepMap(-1)
+  check(page.viewMap == 1413 and not page.visitPanel:IsShown(), "previous map: The Barrens")
   page:Refresh()
 
   -- Zoom: limits, point under the cursor stays, reset.
@@ -668,11 +675,48 @@ if PHASE == 9 then
   for _, line in ipairs(page.canvas.lines) do if line:IsShown() then shown = shown + 1 end end
   check(shown >= 10, "route lines drawn (" .. shown .. ")")
 
-  -- Clicking a Chronicle entry inside the dungeon shows the dungeon entrance (user request).
+  -- Clicking a Chronicle entry inside the dungeon opens the dungeon's map with the list of the visit.
+  local function stepTo(view)
+    for _ = 1, #page.views do
+      if page.viewMap == view then return true end
+      page:StepMap(1)
+    end
+    return page.viewMap == view
+  end
   page:StepMap(1)                                   -- some other map first
   FC.UI:FocusMap(dungeonTime)
-  check(not page.live and page.viewMap == 1413 and page.canvas.marker:IsShown(),
-    "dungeon moment opens the entrance zone (" .. tostring(page.viewMap) .. ")")
+  check(not page.live and page.viewMap == "dungeon:389" and not page.canvas.marker:IsShown(),
+    "dungeon moment opens the dungeon map (" .. tostring(page.viewMap) .. ")")
+  local rfc = FC.DungeonMaps[389].floors[1].tiles
+  check(page.canvas.tiles[1].texture == rfc[1] and page.canvas.tiles[12].texture == rfc[12] and page.canvas.tiles[12]:IsShown(),
+    "dungeon map drawn from its tile file IDs")
+  check(page.mapSel.label.text == "Ragefire Chasm" and page.visitPanel:IsShown() and not page.floorBar:IsShown(),
+    "dungeon name, visit list, no floor bar for a single floor")
+  check(page.notice.text:find("Keine Position", 1, true), "notice: " .. tostring(page.notice.text))
+  local function deathRow()
+    for _, row in ipairs(page.visitPanel.rows) do
+      if row:IsShown() and row.title and row.title:find("Ragefire", 1, true) then return row end
+    end
+  end
+  local row = deathRow()
+  check(row and row:GetAlpha() < 1 and row.when.text:match("^%+0:0%d$"), "the death is listed, greyed until it happens")
+  FC.UI:FocusMap(dungeonTime + 2)
+  check(deathRow():GetAlpha() == 1, "the death is listed normally once it happened")
+  page:JumpTo(page.range[1])
+  deathRow():GetScript("OnClick")(deathRow())
+  check(page.current == deathRow().at and not page.live, "clicking an entry of the list jumps there")
+  -- Floors: Blackfathom Deeps has three; the floor picked stays for the dungeon.
+  page.floors[48] = 3
+  page.dungeon = 48
+  page:SyncFloorBar()
+  check(page.floorBar:IsShown() and page.floorSel.label.text:find("3/3", 1, true), "floor bar: " .. tostring(page.floorSel.label.text))
+  page:StepFloor(1)
+  check(page.floors[48] == 1 and page.canvas.tiles[1].texture == FC.DungeonMaps[48].floors[1].tiles[1], "next floor wraps around")
+  page.floors[48] = nil
+
+  -- The entrance zone is still there: the dungeon moment is shown at the entrance (user request).
+  FC.UI:FocusMap(dungeonTime)
+  check(stepTo(1413) and page.canvas.marker:IsShown(), "entrance zone picked by hand")
   check(page.notice.text:find("Ragefire", 1, true) and page.notice.text:find("Eingang", 1, true),
     "notice: " .. tostring(page.notice.text))
   local function deathPin()
@@ -683,6 +727,7 @@ if PHASE == 9 then
   end
   check(not deathPin(), "the death two seconds later is not painted yet")
   FC.UI:FocusMap(dungeonTime + 2)
+  stepTo(1413)
   check(deathPin(), "death inside the dungeon is pinned at the entrance")
   local skull
   for _, pin in ipairs(page.canvas.pins) do
@@ -741,7 +786,8 @@ if PHASE == 9 then
   local journal = ForeverChronicleDB.entrances["389"]
   check(journal and journal.source == "journal" and journal.mapID == 1454 and journal.x == 0.5195, "journal entrance")
   FC.UI:FocusMap(dungeonTime)
-  check(page.viewMap == 1454 and page.canvas.marker:IsShown(), "dungeon moment shown at the journal entrance")
+  check(page.viewMap == "dungeon:389" and stepTo(1454) and page.canvas.marker:IsShown(),
+    "dungeon moment shown at the journal entrance")
   FC:GetModule("Positions"):LearnEntrance(389, { time = time(), mapID = 1413, x = 0.1, y = 0.1 }, time())
   check(ForeverChronicleDB.entrances["389"].source == "journal", "walking in does not replace a journal entrance")
 

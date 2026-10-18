@@ -7,6 +7,11 @@
 -- fading out. Lines are coloured by character level, by session or in one colour (blue = flight path).
 -- The slider is a timeline: a coloured band per zone in its track, ticks above it for level-ups, deaths,
 -- rares, achievements, new zones, boss kills and completed dungeons. Breaks between sessions are collapsed.
+--
+-- Dungeons with a map (Data/DungeonMaps.lua) are views of their own: the dungeon's map, a floor at a time, and a
+-- list of what happened during the visit (boss kills numbered, deaths, level-ups, ...) with the time since
+-- entering. The client gives no position inside dungeons, so there is no route or marker there; the list
+-- greys out what has not happened yet at the shown moment, and a click on an entry jumps there.
 
 local ADDON, FC = ...
 local L = FC.L
@@ -39,6 +44,7 @@ local TICK_COLORS = {
 }
 local TRACK_INSET = 8 -- the slider thumb's centre never reaches the track's ends
 local MAX_BANDS, MAX_TICKS = 600, 300
+local VISIT_WIDTH, VISIT_ROWS, VISIT_ROW_HEIGHT = 250, 16, 18
 
 -------------------------------------------------------------------------------
 -- Small controls
@@ -210,6 +216,192 @@ local function settings()
 end
 
 -------------------------------------------------------------------------------
+-- Dungeon view: the dungeon's map (a floor at a time) and what happened during the visit
+-------------------------------------------------------------------------------
+
+local function localized(names)
+  return names and (names[FC:GetLanguage()] or names.enUS)
+end
+
+-- The name the client gave this instance (recorded on entering), else the map table's.
+local function dungeonName(instanceID)
+  local name = FC:InstanceName(instanceID)
+  if name:sub(1, 1) ~= "#" then return name end
+  local d = FC.DungeonMaps[instanceID]
+  return localized(d and d.name) or name
+end
+
+-- "+m:ss" (or "+h:mm:ss") since entering.
+local function sinceEntering(seconds)
+  seconds = math.max(0, math.floor(seconds))
+  local h, m, s = math.floor(seconds / 3600), math.floor(seconds / 60) % 60, seconds % 60
+  if h > 0 then return string.format("+%d:%02d:%02d", h, m, s) end
+  return string.format("+%d:%02d", m, s)
+end
+
+local function blackBox(parent, level)
+  local f = CreateFrame("Frame", nil, parent)
+  f:SetFrameLevel(level)
+  local bg = f:CreateTexture(nil, "BACKGROUND")
+  bg:SetAllPoints()
+  bg:SetColorTexture(0, 0, 0, 0.75)
+  return f
+end
+
+-- Floor bar ([<] Floor 2/4 - Library [>]) and the visit list, both in the canvas's top-right corner.
+function page:CreateDungeonParts()
+  self.floors = {} -- instanceID -> floor shown last
+  local level = self.canvas.frame:GetFrameLevel() + 6
+  local bar = blackBox(self.canvas.frame, level)
+  bar:SetSize(VISIT_WIDTH, 30)
+  bar:SetPoint("TOPRIGHT", -8, -8)
+  self.floorSel = cycler(bar, VISIT_WIDTH - 60, function(step) self:StepFloor(step) end)
+  self.floorSel.prev:SetPoint("LEFT", 2, 0)
+  self.floorSel.label:SetFontObject("GameFontNormalSmall")
+  self.floorBar = bar
+  bar:Hide()
+
+  local panel = blackBox(self.canvas.frame, level)
+  panel:SetWidth(VISIT_WIDTH)
+  panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  panel.title:SetPoint("TOPLEFT", 8, -8)
+  panel.title:SetWidth(VISIT_WIDTH - 16)
+  panel.title:SetJustifyH("LEFT")
+  panel.title:SetWordWrap(false)
+  panel.sub = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  panel.sub:SetPoint("TOPLEFT", panel.title, "BOTTOMLEFT", 0, -3)
+  panel.sub:SetWidth(VISIT_WIDTH - 16)
+  panel.sub:SetJustifyH("LEFT")
+  panel.sub:SetWordWrap(false)
+  panel.rows = {}
+  for i = 1, VISIT_ROWS do
+    local row = CreateFrame("Button", nil, panel)
+    row:SetSize(VISIT_WIDTH - 10, VISIT_ROW_HEIGHT)
+    row:SetPoint("TOPLEFT", 5, -42 - (i - 1) * VISIT_ROW_HEIGHT)
+    row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    row.icon = row:CreateTexture(nil, "ARTWORK")
+    row.icon:SetSize(14, 14)
+    row.icon:SetPoint("LEFT", 3, 0)
+    row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    row.when = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.when:SetPoint("RIGHT", -3, 0)
+    row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.text:SetPoint("LEFT", row.icon, "RIGHT", 5, 0)
+    row.text:SetPoint("RIGHT", row.when, "LEFT", -6, 0)
+    row.text:SetJustifyH("LEFT")
+    row.text:SetWordWrap(false)
+    row:SetScript("OnClick", function(r) if r.at then self:JumpTo(r.at) end end)
+    UI:Tooltip(row, function(r) return r.title end, function(r) return r.line end)
+    panel.rows[i] = row
+  end
+  panel.more = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  self.visitPanel = panel
+  self:PlaceVisitPanel()
+  panel:Hide()
+end
+
+function page:PlaceVisitPanel()
+  local panel = self.visitPanel
+  panel:ClearAllPoints()
+  if self.floorBar:IsShown() then
+    panel:SetPoint("TOPRIGHT", self.floorBar, "BOTTOMRIGHT", 0, -4)
+  else
+    panel:SetPoint("TOPRIGHT", -8, -8)
+  end
+end
+
+function page:Floor(instanceID)
+  local d = FC.DungeonMaps[instanceID]
+  local floor = self.floors[instanceID] or 1
+  if not d or floor > #d.floors then floor = 1 end
+  return floor
+end
+
+function page:SyncFloorBar()
+  local d = self.dungeon and FC.DungeonMaps[self.dungeon]
+  local count = d and #d.floors or 0
+  self.floorBar:SetShown(count > 1)
+  if count > 1 then
+    local floor = self:Floor(self.dungeon)
+    local name = localized(d.floors[floor].name)
+    local text = string.format(L.MAP_FLOOR, floor, count)
+    self.floorSel.label:SetText(name and (text .. " - " .. name) or text)
+  end
+  self:PlaceVisitPanel()
+end
+
+function page:StepFloor(step)
+  local d = self.dungeon and FC.DungeonMaps[self.dungeon]
+  if not d then return end
+  self.floors[self.dungeon] = (self:Floor(self.dungeon) - 1 + step) % #d.floors + 1
+  self.canvas:SetDungeon(self.dungeon, self:Floor(self.dungeon))
+  self:SyncFloorBar()
+end
+
+-- The visit shown: the one at the shown moment, else the last one before it, else the first.
+function page:VisitAt(visits, t)
+  local index = visits[1] and 1 or nil
+  for i, v in ipairs(visits) do
+    if v.from <= t then index = i end
+  end
+  return index
+end
+
+-- Fills the visit list for the shown moment; entries after it are greyed out.
+function page:UpdateVisit()
+  local panel = self.visitPanel
+  local visits = Route.DungeonVisits(self.points, self.dungeon, self.range[1], self.range[2])
+  local index = self:VisitAt(visits, self.current)
+  local visit = index and visits[index]
+  local entries = {}
+  if visit then
+    for _, r in ipairs(FC:ViewStream("events").records) do
+      if r.time and r.time >= visit.from and r.time <= visit.to then entries[#entries + 1] = r end
+    end
+  end
+  local done = 0
+  for _, r in ipairs(entries) do if r.time <= self.current then done = done + 1 end end
+  local key = table.concat({ self.dungeon, index or 0, visit and visit.to or 0, #entries, done, FC:GetLanguage() }, ":")
+  if key == self.visitKey then return end
+  self.visitKey = key
+
+  panel.title:SetText(dungeonName(self.dungeon))
+  if not visit then
+    panel.sub:SetText(L.MAP_VISIT_NONE)
+  else
+    local text = Util.FormatTime(visit.from) .. "  \194\183  " .. Util.FormatDuration(visit.to - visit.from)
+    if #visits > 1 then text = text .. "  \194\183  " .. string.format(L.MAP_VISIT_OF, index, #visits) end
+    panel.sub:SetText(text)
+  end
+  local bosses, shown = 0, math.min(#entries, VISIT_ROWS)
+  for i, row in ipairs(panel.rows) do
+    local r = entries[i]
+    if r and i <= shown then
+      local text, icon = FC:DescribeEvent(r)
+      if r.type == "boss_killed" then
+        bosses = bosses + 1
+        text = bosses .. ". " .. tostring(type(r.data) == "table" and r.data.name or text)
+      end
+      row.text:SetText(text)
+      row.when:SetText(sinceEntering(r.time - visit.from))
+      UI:SetIcon(row.icon, icon)
+      row.at, row.title, row.line = r.time, (FC:DescribeEvent(r)), Util.FormatTime(r.time)
+      row:SetAlpha(r.time <= self.current and 1 or 0.4)
+      row:Show()
+    else
+      row.at = nil
+      row:Hide()
+    end
+  end
+  panel.more:ClearAllPoints()
+  panel.more:SetPoint("TOPLEFT", 8, -42 - shown * VISIT_ROW_HEIGHT - 2)
+  local more = #entries > shown and string.format(L.MAP_VISIT_MORE, #entries - shown)
+    or (#entries == 0 and visit and L.MAP_VISIT_EMPTY) or nil
+  panel.more:SetText(more or "")
+  panel:SetHeight(42 + shown * VISIT_ROW_HEIGHT + (more and 16 or 0) + 8)
+end
+
+-------------------------------------------------------------------------------
 -- Page
 -------------------------------------------------------------------------------
 
@@ -283,6 +475,7 @@ function page:CreateCanvas(c)
   self.notice = noticeFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   self.notice:SetPoint("TOPLEFT", 8, -6)
   self.noticeFrame = noticeFrame
+  self:CreateDungeonParts()
 end
 
 -- Bottom bar: previous event, play/pause, next event | speeds | timeline | time | live
@@ -496,20 +689,31 @@ function page:Redraw()
   for _, v in ipairs(self.views) do if v == self.viewMap then known = true end end
   if not known then
     local p = Route.PointAt(self.points, self.current or self.range[2])
-    self.viewMap = Route.ZoneFor(p) or self.views[1]
+    self.viewMap = Route.ViewFor(p) or self.views[1]
   end
   for i, v in ipairs(self.views) do if v == self.viewMap then self.viewIndex = i end end
-  local hasArt = self.canvas:SetMap(self.viewMap)
-  local info = FC:MapInfo(self.viewMap)
-  self.mapSel.label:SetText((info and info.name) or tostring(self.viewMap))
+  local dungeon = Route.DungeonOf(self.viewMap)
+  self.dungeon, self.visitKey = dungeon, nil
+  local hasArt
+  if dungeon then
+    hasArt = self.canvas:SetDungeon(dungeon, self:Floor(dungeon))
+    self.mapSel.label:SetText(dungeonName(dungeon))
+  else
+    hasArt = self.canvas:SetMap(self.viewMap)
+    local info = FC:MapInfo(self.viewMap)
+    self.mapSel.label:SetText((info and info.name) or tostring(self.viewMap))
+  end
   self.artNotice = not hasArt and L.MAP_NO_ART or nil
+  self:SyncFloorBar()
+  self.visitPanel:SetShown(dungeon ~= nil)
 
-  local segments = self.routeToggle.on and Route.Segments(self.points, self.viewMap, self.range[1], self.range[2]) or {}
+  local segments = self.routeToggle.on and not dungeon
+    and Route.Segments(self.points, self.viewMap, self.range[1], self.range[2]) or {}
   self.canvas:DrawRoute(segments, self:RouteColor())
   self.canvas:SetLegend(self:Legend(segments))
 
   local pins = {}
-  if self.eventToggle.on then
+  if self.eventToggle.on and not dungeon then
     for _, r in ipairs(FC:ViewStream("events").records) do
       -- Events inside dungeons are shown at the dungeon entrance.
       local spot = r.location and r.time >= self.range[1] and r.time <= self.range[2] and Route.Locate(r.location)
@@ -685,9 +889,28 @@ function page:UpdateMarker()
 
   local p = Route.PointAt(self.points, self.current)
   if not p then return end
+  -- Follow the player's zone (or dungeon map). A map picked by hand stays until the player changes zones.
+  local zone = Route.ViewFor(p)
+  local movedZone = zone ~= self.lastZone
+  self.lastZone = zone
+  if zone and zone ~= self.viewMap and movedZone then
+    self.viewMap = zone
+    self:Redraw()
+  end
+  local instanceName = p.instanceID and FC:InstanceName(p.instanceID)
+  if self.dungeon then
+    self.canvas:SetMarker(nil)
+    self:UpdateVisit()
+    if p.instanceID == self.dungeon then
+      self:ShowNotice(self.artNotice or L.MAP_DUNGEON_NO_POSITION)
+    else
+      local info = Route.ZoneFor(p) and FC:MapInfo(Route.ZoneFor(p))
+      self:ShowNotice(string.format(L.MAP_ELSEWHERE, instanceName or (info and info.name) or L.UNKNOWN))
+    end
+    return
+  end
   -- Inside a dungeon the client gives no position: show the dungeon entrance instead, if known.
   local shown = Route.Locate(p)
-  local instanceName = p.instanceID and FC:InstanceName(p.instanceID)
   if not shown then
     self.canvas:SetMarker(nil)
     self:ShowNotice(instanceName and string.format(L.MAP_INSTANCE, instanceName) or nil)
@@ -698,16 +921,7 @@ function page:UpdateMarker()
     local glide = Route.Glide(self.points, self.current)
     if glide and glide.x and glide.mapID == shown.mapID then shown = glide end
   end
-  -- Follow the player's zone. A map picked by hand stays until the player changes zones.
-  local zone = Route.ZoneFor(p)
-  local movedZone = zone ~= self.lastZone
-  self.lastZone = zone
   local x, y = Route.Project(shown, self.viewMap)
-  if zone and zone ~= self.viewMap and movedZone then
-    self.viewMap = zone
-    self:Redraw()
-    x, y = Route.Project(shown, self.viewMap)
-  end
   self.canvas:SetMarker(x, y)
   if x then
     self:ShowNotice(instanceName and string.format(L.MAP_INSTANCE_ENTRANCE, instanceName) or self.artNotice)
