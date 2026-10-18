@@ -87,6 +87,11 @@ CONTROLS_HEIGHT = 58
 SLOW_SECONDS = 1.5         # real seconds before a screenshot in which the replay slows down
 SLOW_MIN = 0.2             # share of the speed right before a screenshot
 RAMP_SECONDS = 1.0         # real seconds to get back to speed after a screenshot
+ZONE_SECONDS = 2.0         # real seconds a zone stays on screen at least: the replay slows down through short
+ZONE_MIN_SPEED = 1         # visits, but never below this speed (×), and not for visits shorter than ZONE_BLIP
+ZONE_BLIP = 30             # game seconds; a step into a zone and back is part of the visit around it
+ZONE_AHEAD = 0.6           # real seconds of look-ahead, so the replay is slow already when the next zone comes
+ZONE_EASE_IN, ZONE_EASE_OUT = 0.25, 0.9   # time constants of slowing down for a short visit / speeding up after
 DEATH_COLOR = QColor("#ff3333")
 # Trips to the other continent (boat, zeppelin, portal), shown on the world map.
 VOYAGE_OUT, VOYAGE_TRAVEL, VOYAGE_IN = 1.0, 1.8, 1.0   # out to the world map, across the sea, into the zone
@@ -326,6 +331,10 @@ class CinematicWindow(QWidget):
         self.still_mode = mode if mode in STILL_MODES else "fast"
         self.t = float(self.route.next_time_after(start - 1) or start)
         self.cue_index = bisect.bisect_left(self.cue_times, self.t)
+        self.zone_visits = self._zone_visits()
+        self.zone_visit_starts = [a for a, _, _ in self.zone_visits]
+        self.zone_share = 1.0               # share of the chosen speed short zone visits allow (smoothed)
+        self._update_zone_share(0.0, now=True)
         self.paused = False
         self.ended = False
         self.view_map: int | None = None
@@ -575,6 +584,7 @@ class CinematicWindow(QWidget):
         self.ended = False
         self.ramp = RAMP_SECONDS
         self.hold = 0.0
+        self._update_zone_share(0.0, now=True)
         self.view.set_grey(1.0 if self._death_at(self.t) else 0.0)
         self.still_note = 0.0
         self.title.hide()
@@ -604,6 +614,7 @@ class CinematicWindow(QWidget):
 
     def set_speed(self, speed: int) -> None:
         self.speed = speed
+        self._update_zone_share(0.0, now=True)
         self._sync_controls()
 
     def toggle_music(self) -> None:
@@ -708,6 +719,7 @@ class CinematicWindow(QWidget):
         if self.paused or self.ended:
             return
         self.ramp += dt
+        self._update_zone_share(dt)
         before = self.t
         t = self.t + self.speed * BASE_SPEED * dt * self.pace()
         t = self._skip_gap(t)
@@ -741,8 +753,8 @@ class CinematicWindow(QWidget):
 
     def pace(self) -> float:
         """Share of the chosen speed: slower shortly before a screenshot or a death, back to full speed after
-        one; much faster through a standstill ("fast" mode)."""
-        factor = min(1.0, SLOW_MIN + (1 - SLOW_MIN) * self.ramp / RAMP_SECONDS)
+        one; slower through short zone visits; much faster through a standstill ("fast" mode)."""
+        factor = min(1.0, SLOW_MIN + (1 - SLOW_MIN) * self.ramp / RAMP_SECONDS, self.zone_share)
         if self.still_mode == "fast" and self._still_at(self.t) is not None:
             factor *= STILL_FASTER
         upcoming = next((c for c in self.cues[self.cue_index:]
@@ -753,6 +765,70 @@ class CinematicWindow(QWidget):
             if distance < window:
                 factor = min(factor, SLOW_MIN + (1 - SLOW_MIN) * max(0.0, distance) / window)
         return factor
+
+    # -- zone visits -------------------------------------------------------------------------
+
+    def _zone_visits(self) -> list[tuple[float, float, float]]:
+        """Stretches of the range in one place as the caption names it (a zone, or a dungeon): (start, end,
+        game seconds per real second at most there, so the place stays on screen for ZONE_SECONDS). Steps into
+        a zone and straight back (shorter than ZONE_BLIP) belong to the visit around them."""
+        route = self.route
+        continents = {info["continent_id"] for info in route.map_infos.values()}
+        entrance_views: dict[int, int | None] = {}
+        visits: list[list] = []             # [place, start, end]
+        for p in route.points[max(0, bisect.bisect_right(route.times, self.start) - 1):]:
+            if p.time > self.end:
+                break
+            if p.end < self.start:
+                continue
+            if p.instance_id is not None:
+                if p.instance_id not in entrance_views:
+                    entrance_views[p.instance_id] = route.view_for(p)
+                place = (entrance_views[p.instance_id], p.instance_id)
+            elif p.map_id in continents or p.x is None:      # only these need the search for their zone
+                place = (route.view_for(p), None)
+            else:
+                place = (p.map_id, None)
+            if place == (None, None):
+                continue
+            if visits and visits[-1][0] == place:
+                continue
+            begin = max(float(p.time), float(self.start))
+            if visits:
+                visits[-1][2] = begin
+            visits.append([place, begin, float(self.end)])
+        timeline = route.timeline(self.start, self.end, GAP_SKIP)
+        played = lambda v: timeline.to_value(v[2]) - timeline.to_value(v[1])  # noqa: E731  (breaks left out)
+        merged: list[list] = []
+        for visit in visits:
+            if len(merged) >= 2 and played(merged[-1]) < ZONE_BLIP and merged[-2][0] == visit[0]:
+                merged.pop()
+                merged[-1][2] = visit[2]
+            else:
+                merged.append(visit)
+        if len(merged) < 2:
+            return []
+        floor = ZONE_MIN_SPEED * BASE_SPEED
+        return [(v[1], v[2], math.inf if played(v) < ZONE_BLIP else max(floor, played(v) / ZONE_SECONDS))
+                for v in merged]
+
+    def _update_zone_share(self, dt: float, now: bool = False) -> None:
+        """Lets the share of the chosen speed drift towards what the visits now and just ahead allow: down
+        quickly before a short visit, back up gently after it (at once after a jump or a new speed)."""
+        rate = self.speed * BASE_SPEED
+        horizon = self.t + rate * ZONE_AHEAD
+        cap = math.inf
+        i = max(0, bisect.bisect_right(self.zone_visit_starts, self.t) - 1)
+        while i < len(self.zone_visits) and self.zone_visits[i][0] <= horizon:
+            if self.zone_visits[i][1] > self.t:
+                cap = min(cap, self.zone_visits[i][2])
+            i += 1
+        target = min(1.0, cap / rate)
+        if now:
+            self.zone_share = target
+            return
+        tau = ZONE_EASE_IN if target < self.zone_share else ZONE_EASE_OUT
+        self.zone_share += (target - self.zone_share) * (1 - math.exp(-dt / tau))
 
     # -- standstills -------------------------------------------------------------------------
 

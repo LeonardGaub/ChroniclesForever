@@ -1,6 +1,7 @@
 """Cinematic mode: cue script, teleport breaks and gliding in the route, and a headless run of the window."""
 
 import dataclasses
+import math
 import os
 
 import pytest
@@ -238,6 +239,40 @@ def test_voyage_camera_and_crossing():
     v.age = v.life
     scale, center = v.camera()
     assert scale == pytest.approx(4.0) and center == QPointF(90, 80) and v.marker() == QPointF(200, 100),         "ends exactly where the new zone's view takes over"
+
+
+def test_short_zone_visits_slow_the_replay_down():
+    from types import SimpleNamespace
+    from forever_chronicle.ui import cinematic as cine
+
+    def zone(a, b, map_id):
+        return [P(t, 0.5, 0.5, map_id) for t in range(a, b, 5)]
+
+    # A long visit, a step into another zone and back, three quick zones, then a long visit again.
+    points = (zone(0, 3000, 1) + zone(3000, 3010, 2) + zone(3010, 6000, 1) + zone(6000, 6120, 3)
+              + zone(6120, 6400, 4) + zone(6400, 6420, 5) + zone(6420, 12000, 6))
+    window = SimpleNamespace(route=Route(points), start=0, end=12000, speed=10, t=0.0)
+    window._zone_visits = lambda: cine.CinematicWindow._zone_visits(window)
+    window._update_zone_share = lambda dt, now=False: cine.CinematicWindow._update_zone_share(window, dt, now)
+    visits = window._zone_visits()
+    assert [(a, b) for a, b, _ in visits] == [(0, 6000), (6000, 6120), (6120, 6400), (6400, 6420),
+                                              (6420, 12000)], "the step into zone 2 and back is no visit"
+    rate = 10 * cine.BASE_SPEED
+    assert visits[0][2] > rate and visits[-1][2] > rate, "long visits play at the chosen speed"
+    assert visits[1][2] == cine.BASE_SPEED, "never slower than 1×"
+    assert visits[2][2] == pytest.approx(280 / cine.ZONE_SECONDS), "each zone stays on screen for a while"
+    assert visits[3][2] == math.inf, "too short to be readable at any speed: not slowed down"
+
+    window.zone_visits, window.zone_visit_starts = visits, [a for a, _, _ in visits]
+    window.zone_share = 1.0
+    window._update_zone_share(0.0, now=True)
+    assert window.zone_share == 1.0
+    window.t = 6000 - rate * cine.ZONE_AHEAD / 2
+    window._update_zone_share(0.0, now=True)
+    assert window.zone_share == pytest.approx(1 / 10), "slow already shortly before the next zone"
+    window.t = 7000
+    window._update_zone_share(0.1)
+    assert 0.1 < window.zone_share < 0.5, "back to speed gently"
 
 
 def test_deaths_from_the_route():
