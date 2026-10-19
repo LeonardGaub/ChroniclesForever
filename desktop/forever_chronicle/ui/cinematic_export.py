@@ -33,13 +33,13 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDia
                                QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressDialog, QPushButton, QVBoxLayout)
 
 from ..i18n import format_datetime, tr
-from .sound import DEFAULT_GAP, MIN_GAP, TRIM, MusicPlayer, effect_path, gain
+from .sound import DEFAULT_GAP, MIN_GAP, TRIM, MusicPlayer, effect_path, gain, game_sounds_on
 
 FPS = 30
 RATE = 48000
 SAMPLES = RATE // FPS          # audio samples per frame
 SIZES = {"720p": (1280, 720), "1080p": (1920, 1080)}
-TAIL = 4.0                     # seconds of the end title after the replay
+TAIL = 4.0                     # seconds after the replay at least (the end title; the credits take longer)
 NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
@@ -157,7 +157,7 @@ def mix(recorder: Recorder, ffmpeg: str, out: Path) -> None:
             while next_effect < len(effects) and effects[next_effect][0] < start + 1 / FPS:
                 _, name = effects[next_effect]
                 next_effect += 1
-                path = effect_path(name)
+                path = effect_path(name, game_sounds_on(recorder.config))
                 if path.is_file():
                     playing.append([decode(ffmpeg, str(path)), 0,
                                     gain(recorder.config.effects_volume) * TRIM.get(name, 1.0)])
@@ -206,7 +206,7 @@ def export_video(ctx, character_id: str, start: int, end: int, path: Path, size:
     total = window.bar.timeline.total
     tail = 0.0
     try:
-        while tail < TAIL:
+        while tail < max(TAIL, window.credits_seconds()):
             window.advance(1 / FPS)
             recorder.step(1 / FPS)
             image = window.grab().toImage().convertToFormat(QImage.Format.Format_ARGB32)

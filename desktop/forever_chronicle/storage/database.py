@@ -269,6 +269,22 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (character_id, screenshot_id)
     );
     """,
+    # 11: the addon's minute samples (time, experience earned in total, kills, money, level) for the cinematic's
+    # experience bar, and the bar as it was last seen (xp of xp_max at xp_at)
+    """
+    CREATE TABLE metrics (
+        character_id   TEXT NOT NULL REFERENCES characters(character_id),
+        occurred_at    INTEGER NOT NULL,
+        xp             INTEGER NOT NULL,
+        kills          INTEGER,
+        money          INTEGER,
+        level          INTEGER,
+        PRIMARY KEY (character_id, occurred_at)
+    );
+    ALTER TABLE characters ADD COLUMN xp INTEGER;
+    ALTER TABLE characters ADD COLUMN xp_max INTEGER;
+    ALTER TABLE characters ADD COLUMN xp_at INTEGER;
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

@@ -1,5 +1,6 @@
-"""Settings: sound effects, cinematic music (the game's zone music, else the built-in theme, own file or folder)
-and own sound files."""
+"""Settings: sound effects (the game's own sounds, else the built-in ones), cinematic music (the game's zone music,
+else the built-in theme, own file or folder), the cinematic mode's looks (time of day, end credits) and
+own sound files."""
 
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout, QGroupBox, Q
 
 from ...i18n import tr
 from ..audio_setup import AudioInstallDialog
-from ..sound import AUDIO, EFFECTS, MUSIC_SUFFIXES, music_tracks, user_sounds_dir
+from ..sound import ALL_EFFECTS, AUDIO, MUSIC_SUFFIXES, game_sounds_on, music_tracks, user_sounds_dir
 from ..widgets import Page, muted, value_label
 
 
@@ -27,6 +28,7 @@ def slider() -> QSlider:
 
 class SettingsPage(Page):
     title_key = "tab.settings"
+    scrollable = True
     needs_character = False
 
     def __init__(self, ctx):
@@ -52,25 +54,28 @@ class SettingsPage(Page):
         self.clicks.toggled.connect(lambda on: self._set("click_sounds", on))
         self.events = QCheckBox()
         self.events.toggled.connect(lambda on: self._set("event_sounds", on))
+        self.game_sounds = QCheckBox()      # the game's own sounds (wow/game_sounds.py)
+        self.game_sounds.toggled.connect(lambda on: self._set_extra("game_sounds", on))
         self.effects_label = QLabel()
         self.effects_volume = slider()
         self.effects_volume.valueChanged.connect(self._set_effects_volume)
         self.effects_value = value_label()
         self.effects_value.setMinimumWidth(44)
         self.test_buttons: list[tuple[str, QPushButton]] = []
-        tests = QHBoxLayout()
-        for name in EFFECTS:
+        tests = QGridLayout()
+        for i, name in enumerate(ALL_EFFECTS):
             button = QPushButton()
             button.clicked.connect(lambda _=False, n=name: self.sound.play(n, force=True))
-            tests.addWidget(button)
+            tests.addWidget(button, i // 5, i % 5)
             self.test_buttons.append((name, button))
-        tests.addStretch(1)
+        tests.setColumnStretch(5, 1)
         el.addWidget(self.clicks, 0, 0, 1, 4, Qt.AlignmentFlag.AlignLeft)
         el.addWidget(self.events, 1, 0, 1, 4, Qt.AlignmentFlag.AlignLeft)
-        el.addWidget(self.effects_label, 2, 0)
-        el.addWidget(self.effects_volume, 2, 1)
-        el.addWidget(self.effects_value, 2, 2)
-        el.addLayout(tests, 3, 0, 1, 4)
+        el.addWidget(self.game_sounds, 2, 0, 1, 4, Qt.AlignmentFlag.AlignLeft)
+        el.addWidget(self.effects_label, 3, 0)
+        el.addWidget(self.effects_volume, 3, 1)
+        el.addWidget(self.effects_value, 3, 2)
+        el.addLayout(tests, 4, 0, 1, 4)
         el.setColumnStretch(3, 1)
         root.addWidget(self.effects_box)
 
@@ -118,6 +123,25 @@ class SettingsPage(Page):
         ml.setColumnStretch(3, 1)
         root.addWidget(self.music_box)
 
+        # Cinematic mode: time of day, end credits (ui/cinematic.py; on by default)
+        self.cine_box = QGroupBox()
+        cl = QVBoxLayout(self.cine_box)
+        self.cine_options: list[tuple[str, QCheckBox]] = []
+        for key in ("cine_daylight", "cine_credits"):
+            box = QCheckBox()
+            box.toggled.connect(lambda on, k=key: self._set_extra(k, on))
+            cl.addWidget(box, 0, Qt.AlignmentFlag.AlignLeft)
+            self.cine_options.append((key, box))
+        root.addWidget(self.cine_box)
+
+        # The app itself: motion (ui/motion.py)
+        self.ui_box = QGroupBox()
+        ul = QVBoxLayout(self.ui_box)
+        self.motion = QCheckBox()
+        self.motion.toggled.connect(lambda on: self._set_extra("ui_motion", on))
+        ul.addWidget(self.motion, 0, Qt.AlignmentFlag.AlignLeft)
+        root.addWidget(self.ui_box)
+
         # Own sound files
         self.own_box = QGroupBox()
         ol = QHBoxLayout(self.own_box)
@@ -138,6 +162,23 @@ class SettingsPage(Page):
         self.effects_box.setTitle(tr("settings.effects"))
         self.clicks.setText(tr("settings.clicks"))
         self.events.setText(tr("settings.events"))
+        self.game_sounds.setText(tr("settings.game_sounds"))
+        self.game_sounds.setToolTip(tr("settings.game_sounds_tip"))
+        self.cine_box.setTitle(tr("settings.cine_box"))
+        for key, box in self.cine_options:
+            box.setText(tr(f"settings.{key}"))
+            box.setToolTip(tr(f"settings.{key}_tip"))
+            box.blockSignals(True)
+            box.setChecked(config.extra.get(key, True) is not False)
+            box.blockSignals(False)
+        self.ui_box.setTitle(tr("settings.ui_box"))
+        self.motion.setText(tr("settings.ui_motion"))
+        self.motion.blockSignals(True)
+        self.motion.setChecked(config.extra.get("ui_motion", True) is not False)
+        self.motion.blockSignals(False)
+        self.game_sounds.blockSignals(True)
+        self.game_sounds.setChecked(game_sounds_on(config))
+        self.game_sounds.blockSignals(False)
         self.effects_label.setText(tr("settings.volume"))
         for name, button in self.test_buttons:
             button.setText(tr(f"settings.test.{name}"))
@@ -155,7 +196,7 @@ class SettingsPage(Page):
         self.builtin.setText(tr("settings.builtin"))
         self.music_hint.setText(tr("settings.music_hint"))
         self.own_box.setTitle(tr("settings.own_box"))
-        self.own_hint.setText(tr("settings.own_hint", files=", ".join(f"{n}.wav" for n in EFFECTS)))
+        self.own_hint.setText(tr("settings.own_hint", files=", ".join(f"{n}.wav" for n in ALL_EFFECTS)))
         self.open_folder.setText(tr("settings.open_folder"))
         for widget, value in ((self.clicks, config.click_sounds), (self.events, config.event_sounds),
                               (self.music, config.music), (self.effects_volume, config.effects_volume),
@@ -196,6 +237,10 @@ class SettingsPage(Page):
 
     def _set(self, key: str, value) -> None:
         setattr(self.ctx.config, key, value)
+        self.ctx.config.save()
+
+    def _set_extra(self, key: str, value) -> None:
+        self.ctx.config.extra[key] = value
         self.ctx.config.save()
 
     def _set_effects_volume(self, value: int) -> None:
@@ -252,9 +297,12 @@ class SettingsPage(Page):
         folder.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
-    def hideEvent(self, event) -> None:
+    def leave(self) -> None:
         """The preview ends when the page is left."""
         if self.preview.isChecked():
             self.sound.music.stop()
             self._sync_preview()
+
+    def hideEvent(self, event) -> None:
+        self.leave()
         super().hideEvent(event)

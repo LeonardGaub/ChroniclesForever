@@ -25,6 +25,12 @@ class AppContext(QObject):
     focus_time = Signal(str, int)  # (character_id, epoch seconds): show this moment, e.g. on the map
     navigate = Signal(str)         # show a page (its title_key), e.g. from a card on the home screen
     select_character = Signal(str)  # make this character the shown one (character_id)
+    imported = Signal(list)        # import_ids of imports that brought new events (the main window announces them)
+    setup_requested = Signal()     # open the first-start wizard (the home screen's first-steps card)
+
+    def needs_setup(self) -> bool:
+        """True on a first start: no character yet, and the wizard was neither finished nor skipped."""
+        return not self.config.extra.get("setup_done") and not self.repo.list_characters()
 
     def __init__(self, config: AppConfig, db: Database):
         super().__init__()
@@ -69,6 +75,9 @@ class AppContext(QObject):
         new_icons = self.extract_icons()
         if matched or new_icons or friends.changed or self.last_friend_screenshots.changed or any(r.status != "unchanged" for r in results):
             self.data_changed.emit()
+        fresh = [r.import_id for r in results if r.imported and r.import_id is not None]
+        if fresh:
+            self.imported.emit(fresh)
         return results
 
     def import_friends(self, notify: bool = True) -> FriendImportResult:

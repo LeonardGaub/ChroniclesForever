@@ -170,6 +170,78 @@ QToolTip {{ background: #090807; color: {TEXT}; border: 1px solid {GOLD}; paddin
 """
 
 
+# The game's own UI textures (tools/build_ui_skin.py): dialog frames, red panel buttons, the character frame's tabs,
+# checkboxes, input fields and the rock background, cut into nine slices by the style sheet (border-image). Where
+# the pictures are missing, the drawn look above stays.
+SKIN = Path(__file__).resolve().parent / "assets" / "skin"
+_S = SKIN.as_posix()
+SKIN_STYLESHEET = f"""
+QWidget {{ background: transparent; }}
+QMainWindow {{ background-image: url("{_S}/rock.png"); }}
+QDialog, QMessageBox {{ background-image: url("{_S}/rock.png"); }}
+
+QFrame#Panel, QStackedWidget#Panel {{ border-image: url("{_S}/panel.png") 32 32 32 32 stretch stretch;
+    border-width: 12px; border-radius: 0; background: transparent; }}
+QFrame#Card {{ border-image: url("{_S}/card.png") 16 16 16 16 stretch stretch; border-width: 6px; border-radius: 0;
+    background: transparent; }}
+QFrame#Card[clickable="true"]:hover {{ border-image: url("{_S}/card_hover.png") 16 16 16 16 stretch stretch; }}
+QFrame#Card[selected="true"] {{ border-image: url("{_S}/card_selected.png") 16 16 16 16 stretch stretch;
+    border-width: 6px; }}
+QGroupBox {{ border-image: url("{_S}/group.png") 16 16 16 16 stretch stretch; border-width: 6px; border-radius: 0;
+    background: transparent; }}
+
+QPushButton {{ border-image: url("{_S}/button_up.png") 0 12 0 12 stretch stretch; border-width: 0 12px;
+    border-radius: 0; background: transparent; padding: 5px 2px; min-height: 16px; color: {GOLD}; }}
+QPushButton:hover {{ border-image: url("{_S}/button_hover.png") 0 12 0 12 stretch stretch; background: transparent; }}
+QPushButton:pressed {{ border-image: url("{_S}/button_down.png") 0 12 0 12 stretch stretch; background: transparent; }}
+QPushButton:checked {{ border-image: url("{_S}/button_selected.png") 0 12 0 12 stretch stretch; color: #ffffff;
+    background: transparent; }}
+QPushButton:disabled {{ border-image: url("{_S}/button_disabled.png") 0 12 0 12 stretch stretch; color: {MUTED};
+    background: transparent; }}
+QPushButton#Star, QPushButton#Star:hover, QPushButton#Star:checked {{ border-image: none; border: 0; padding: 0; }}
+
+QPushButton#NavTab, QPushButton#NavGear {{ border-image: url("{_S}/tab.png") 0 20 0 20 stretch stretch;
+    border-width: 0 20px; border-radius: 0; background: transparent; padding: 6px 0 9px 0; color: {GOLD}; }}
+QPushButton#NavTab:hover, QPushButton#NavGear:hover {{ border-image: url("{_S}/tab_hover.png") 0 20 0 20 stretch stretch;
+    background: transparent; }}
+QPushButton#NavTab:checked, QPushButton#NavGear:checked {{
+    border-image: url("{_S}/tab_active.png") 0 20 0 20 stretch stretch; color: #ffffff; background: transparent; }}
+QPushButton#NavGear {{ border-width: 0 14px; font-size: 13pt; padding: 2px 0 7px 0; }}
+
+QLineEdit, QComboBox {{ border-image: url("{_S}/input.png") 3 8 3 8 stretch stretch; border-width: 3px 6px;
+    border-radius: 0; background: transparent; padding: 2px 2px; }}
+QComboBox::drop-down {{ border: 0; width: 18px; }}
+QComboBox::down-arrow {{ image: url("{ASSETS}/arrow_down.svg"); width: 10px; height: 10px; }}
+
+QCheckBox::indicator, QTreeView::indicator, QListView::indicator, QTableView::indicator {{
+    image: url("{_S}/check.png"); width: 20px; height: 20px; border: 0; background: transparent; }}
+QCheckBox::indicator:hover, QTreeView::indicator:hover, QListView::indicator:hover {{
+    image: url("{_S}/check_hover.png"); border: 0; }}
+QCheckBox::indicator:checked, QTreeView::indicator:checked, QListView::indicator:checked,
+QTableView::indicator:checked {{ image: url("{_S}/check_checked.png"); background: transparent; border: 0; }}
+QCheckBox::indicator:checked:hover, QTreeView::indicator:checked:hover, QListView::indicator:checked:hover {{
+    image: url("{_S}/check_checked_hover.png"); }}
+QCheckBox::indicator:disabled {{ image: url("{_S}/check_disabled.png"); }}
+
+QSlider::handle:horizontal {{ image: url("{_S}/slider_handle.png"); background: transparent; border: 0; width: 22px;
+    margin: -9px 0; }}
+
+QListWidget, QTableWidget, QTreeView {{ background: rgba(10, 8, 6, 175); alternate-background-color: rgba(26, 21, 16, 175); }}
+QToolTip {{ border-image: url("{_S}/tooltip.png") 16 16 16 16 stretch stretch; border-width: 5px; padding: 2px;
+    background: #090807; }}
+QMenu {{ border-image: url("{_S}/tooltip.png") 16 16 16 16 stretch stretch; border-width: 5px; background: #0b0907; }}
+QTabWidget::pane {{ background: rgba(10, 8, 6, 120); }}
+"""
+
+
+def skin_available() -> bool:
+    return all((SKIN / name).is_file() for name in ("panel.png", "button_up.png", "tab.png", "check.png"))
+
+
+def stylesheet() -> str:
+    return STYLESHEET + (SKIN_STYLESHEET if skin_available() else "")
+
+
 def apply(app: QApplication) -> None:
     app.setStyle("Fusion")
     palette = QPalette()
@@ -180,4 +252,4 @@ def apply(app: QApplication) -> None:
     palette.setColor(QPalette.ColorRole.Highlight, QColor(SELECT))
     palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
     app.setPalette(palette)
-    app.setStyleSheet(STYLESHEET)
+    app.setStyleSheet(stylesheet())

@@ -2,6 +2,10 @@
 
 - Effects are WAV files played with QSoundEffect (low latency). The built-in ones are in ui/assets/sounds and are
   made by tools/generate_sounds.py; a file of the same name in %APPDATA%\\ForeverChronicle\\sounds replaces one.
+- The game's own sounds (wow/game_sounds.py: level-up, quest complete, achievement, discovery, button click,
+  resurrection, teleport) are taken from the install once and turned into WAV (install_game_sounds, a background
+  thread); they play instead of the built-in ones while the option "game_sounds" is on (the default). Effects
+  without a built-in file of their own (achievement, discovery, revive, teleport) fall back to the built-in alert.
 - Clicks: an application-wide event filter plays "click" when a button, tab, drop-down or menu entry is clicked.
 - Music: the built-in theme, or the player's own file, or a folder of files (shuffled), with fades and ducking
   under big moments. QMediaPlayer plays MP3, OGG, FLAC, WAV and M4A. The cinematic mode switches to the zone's
@@ -15,22 +19,29 @@ from __future__ import annotations
 
 import os
 import random
+import threading
+import wave
 from collections import deque
 from pathlib import Path
 
-from PySide6.QtCore import QElapsedTimer, QEvent, QObject, Qt, QTimer, QUrl
+from PySide6.QtCore import QElapsedTimer, QEvent, QEventLoop, QObject, Qt, QTimer, QUrl
 from PySide6.QtWidgets import QAbstractButton, QComboBox, QMenu, QTabBar
 
 from ..config import AppConfig, app_home
+from ..wow import game_sounds
 
 try:
-    from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QSoundEffect
+    from PySide6.QtMultimedia import QAudioDecoder, QAudioFormat, QAudioOutput, QMediaPlayer, QSoundEffect
     AUDIO = True
 except ImportError:
     AUDIO = False
 
 ASSETS = Path(__file__).resolve().parent / "assets" / "sounds"
-EFFECTS = ("click", "screenshot", "level_up", "event", "death")
+EFFECTS = ("click", "screenshot", "level_up", "event", "death")       # each has a built-in file
+MORE_EFFECTS = ("achievement", "discovery", "revive", "teleport")   # the game's, else the built-in alert
+ALL_EFFECTS = EFFECTS + MORE_EFFECTS
+FALLBACK = {name: "event" for name in MORE_EFFECTS}
+WAV_RATE = 44100
 BUILTIN_MUSIC = ASSETS / "cinematic_theme.ogg"
 MUSIC_SUFFIXES = (".mp3", ".ogg", ".flac", ".wav", ".m4a", ".opus")
 TRIM = {"click": 0.55}            # the click is heard very often: quieter than the alerts
@@ -46,13 +57,86 @@ STEP_MS = 30
 
 
 def user_sounds_dir() -> Path:
-    """Own sounds: click.wav, screenshot.wav, level_up.wav, event.wav, death.wav replace the built-in ones."""
+    """Own sounds: click.wav, screenshot.wav, level_up.wav, event.wav, death.wav (and the other ALL_EFFECTS)
+    replace the game's and the built-in ones."""
     return app_home() / "sounds"
 
 
-def effect_path(name: str) -> Path:
+def effect_path(name: str, game: bool = True) -> Path:
+    """The file an effect plays: an own file, else the game's sound (game: option "game_sounds"), else the
+    built-in one."""
     own = user_sounds_dir() / f"{name}.wav"
-    return own if own.is_file() else ASSETS / f"{name}.wav"
+    if own.is_file():
+        return own
+    found = game_sounds.wav_path(name) if game else None
+    return found or ASSETS / f"{FALLBACK.get(name, name)}.wav"
+
+
+def game_sounds_on(config: AppConfig) -> bool:
+    return config.extra.get("game_sounds", True) is not False
+
+
+def install_game_sounds(client) -> threading.Thread | None:
+    """Takes the game's sounds out of the install and turns them into WAV, in a background thread (opening the
+    game files takes a few seconds). Does nothing once they are all there."""
+    if not AUDIO or client is None or not game_sounds.missing():
+        return None
+
+    def work() -> None:
+        for name in game_sounds.extract_missing(client):
+            source, target = game_sounds.ogg_path(name), game_sounds.cache_dir() / f"{name}.wav"
+            if decode_to_wav(source, target):
+                try:
+                    source.unlink()
+                except OSError:
+                    pass
+            else:
+                game_sounds.mark_failed(name)
+
+    thread = threading.Thread(target=work, daemon=True)
+    thread.start()
+    return thread
+
+
+def decode_to_wav(source: Path, target: Path, timeout_ms: int = 8000) -> bool:
+    """Decodes an audio file (OGG, MP3) into a 16-bit stereo WAV at WAV_RATE with QtMultimedia. Runs its own
+    event loop, so it works in any thread. Returns whether the WAV was written."""
+    if not AUDIO:
+        return False
+    decoder = QAudioDecoder()
+    fmt = QAudioFormat()
+    fmt.setSampleRate(WAV_RATE)
+    fmt.setChannelCount(2)
+    fmt.setSampleFormat(QAudioFormat.SampleFormat.Int16)
+    decoder.setAudioFormat(fmt)
+    decoder.setSource(QUrl.fromLocalFile(str(source)))
+    chunks: list[bytes] = []
+    failed: list[bool] = []
+    loop = QEventLoop()
+
+    def ready() -> None:
+        while decoder.bufferAvailable():
+            chunks.append(decoder.read().data().tobytes())
+
+    decoder.bufferReady.connect(ready)
+    decoder.finished.connect(loop.quit)
+    decoder.error.connect(lambda *_: (failed.append(True), loop.quit()))
+    QTimer.singleShot(timeout_ms, loop.quit)
+    decoder.start()
+    loop.exec()
+    ready()
+    decoder.stop()
+    data = b"".join(chunks)
+    if failed or not data:
+        return False
+    part = target.with_name(target.name + ".part")
+    with wave.open(str(part), "wb") as out:
+        out.setnchannels(2)
+        out.setsampwidth(2)
+        out.setframerate(WAV_RATE)
+        out.writeframes(data)
+    part.replace(target)
+    return True
 
 
 def music_tracks(music_path: str | None) -> list[Path]:
@@ -113,8 +197,9 @@ class Sound(QObject):
         return True
 
     def _effect(self, name: str):
-        """The loaded effect; an own file added or removed meanwhile is picked up."""
-        path = effect_path(name)
+        """The loaded effect; an own file added or removed meanwhile (or the game's sounds arriving) is picked
+        up."""
+        path = effect_path(name, game_sounds_on(self.config))
         cached = self._effects.get(name)
         if cached and cached[0] == path:
             return cached[1]

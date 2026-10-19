@@ -46,7 +46,12 @@ def main(argv: list[str] | None = None) -> int:
     window.show()
     if config.auto_import:
         QTimer.singleShot(200, lambda: ctx.import_all(skip_unchanged=True))
-    QTimer.singleShot(800, lambda: audio_setup.offer_at_start(window, ctx))
+    def first_steps() -> None:
+        if ctx.needs_setup():                # first start: the wizard first, the sound offer after it
+            window.open_setup()
+        audio_setup.offer_at_start(window, ctx)
+
+    QTimer.singleShot(800, first_steps)
     code = app.exec()
     db.close()
     if audio_setup.RESTART:                  # the sound part was just installed: it loads in a new process

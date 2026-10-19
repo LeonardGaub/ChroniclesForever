@@ -152,18 +152,19 @@ Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `
 
 | Package | Role |
 |---|---|
-| `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`), game files (`casc.py`), the event, profession and recipe icons (`game_icons.py`) and fonts (`game_fonts.py`: Friz Quadrata, Morpheus; never in git) from them, the zones' music (`zone_music.py`, table `zone_music.json` from `tools/extract_zone_music.py`) |
+| `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`), game files (`casc.py`), the event, profession and recipe icons (`game_icons.py`), fonts (`game_fonts.py`: Friz Quadrata, Morpheus) and sound effects (`game_sounds.py`) from them (never in git), the zones' music (`zone_music.py`, table `zone_music.json` from `tools/extract_zone_music.py`) |
 | `importing/` | SavedVariables → SQLite, validation, gaps, `.bak` fallback |
 | `storage/` | `database.py` (schema migrations + backups), `repository.py` (all SQL), `jsonl.py` (export/import) |
-| `domain/` | pure logic, no Qt: registries `event_types.py` (how events are shown) and `stats.py` (overview statistics); `route.py`, `route_colors.py`, `maps.py` (the map); `cinematic.py` (what a replay announces, deaths and standstills) |
-| `ui/` | `theme.py` (Classic look, the game's fonts first), `widgets.py` (page base class), `cards.py` (home cards and the card list of Chronik and Berufe), `main_window.py` (page stack, tabs at the bottom, gear menu), `pages/` (one file per page; `home.py` is the start page, `gallery.py` the screenshots), `screenshots.py` (thumbnails, Shot, the viewer with banner, favourite and replay), `cinematic.py` + `cinematic_fx.py` (cinematic mode), `cinematic_export.py` (the replay as an MP4 video), `sound.py` (clicks, alerts, music) |
+| `domain/` | pure logic, no Qt: registries `event_types.py` (how events are shown) and `stats.py` (overview statistics); `route.py`, `route_colors.py`, `maps.py` (the map); `cinematic.py` (what a replay announces, deaths, standstills and teleports), `daylight.py` (the light by time of day), `credits.py` (the end credits' numbers), `experience.py` (the XP bar's fill) |
+| `ui/` | `theme.py` (Classic look, the game's fonts first; the skin from the game's UI textures in `assets/skin/`, built by `tools/build_ui_skin.py`), `motion.py` (page crossfade, hover glow, toasts), `setup_wizard.py` (first start), `widgets.py` (page base class), `cards.py` (home cards and the card list of Chronik and Berufe), `main_window.py` (page stack, tabs at the bottom, gear menu), `pages/` (one file per page; `home.py` is the start page, `gallery.py` the screenshots), `screenshots.py` (thumbnails, Shot, the viewer with banner, favourite and replay), `cinematic.py` + `cinematic_fx.py` (cinematic mode), `cinematic_credits.py` (end credits), `cinematic_hud.py` (the game's XP bar), `cinematic_export.py` (the replay as an MP4 video), `sound.py` (clicks, alerts, music) |
 | `i18n.py` | German (default) / English strings |
 
 ### Sound
 
 `ui/sound.py` holds `ctx.sound`: `play(name)` for effects (WAV via QSoundEffect), an app-wide click filter, and
 `ctx.sound.music` (QMediaPlayer with fades and `duck(seconds)`). Cinematic mode starts and stops the music and plays
-`level_up`, `screenshot`, `event` and `death`. The Settings tab holds the switches, volumes and the music choice
+`level_up`, `screenshot`, `event`, `death`, `achievement`, `discovery`, `revive` and `teleport` (`sound.ALL_EFFECTS`;
+the last four fall back to the built-in `event`). The Settings tab holds the switches, volumes and the music choice
 (the game's zone music, else the built-in theme, own file, or own folder as a shuffled playlist). With zone music the
 cinematic mode switches playlists (`music.play(tracks)`: fade out, fade in) after a moment in a new zone. The video
 export drives a silent `MusicPlayer(audible=False)` frame by frame and mixes the logged music and effects itself.
@@ -171,6 +172,9 @@ export drives a silent `MusicPlayer(audible=False)` frame by frame and mixes the
 - Built-in sounds in `ui/assets/sounds` are synthesized by `tools/generate_sounds.py` (original, no third-party
   audio; needs `pip install -e .[tools]`). Change the script and rerun it rather than editing the files.
 - Players can replace an effect with a WAV of the same name in `%APPDATA%\ForeverChronicle\sounds`.
+- The game's own sounds (`wow/game_sounds.py`, fileDataIDs from the community listfile) are taken from the install in a
+  background thread at start and turned into WAV with `QAudioDecoder` (`sound.install_game_sounds`) into
+  `%APPDATA%\ForeverChronicle\game_sounds`. Order: own file, game sound (option `game_sounds`), built-in.
 - QtMultimedia ships in PySide6-Addons. Without it (`PySide6-Essentials` only) `sound.AUDIO` is False and the app
   runs silently. `Journey Forever starten.bat` installs PySide6-Addons of the installed PySide6 version once
   (marker `.ready_sound`, optional like the icon packages); if that failed, the app offers the same download at

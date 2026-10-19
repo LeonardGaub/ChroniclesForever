@@ -6,9 +6,12 @@ On the map (scene items):
   their dashes move along the line; corpse runs are pale and dotted.
 - MarkerItem: the player, at screen size: a disc in the class colour with a pulsing halo and an arrow in the
   direction of travel; a flapping gryphon on flight paths and a swirling portal inside dungeons. Dead it is a
-  dim grave mark, released a floating wisp (the ghost).
+  dim grave mark, released a floating wisp (the ghost). Flying to a teleport's destination it is a bright arcane
+  comet.
 - PinsItem: a pin where each event of the replay happened, once it has happened (screenshots as small
-  polaroids), and short bursts on the map at the moment something happens.
+  polaroids), and short bursts on the map at the moment something happens (a teleport: an arcane swirl where the
+  player vanishes and a flash where they arrive).
+- SkyItem: the time of day over the map (domain/daylight.py), multiplied onto the map art.
 - CinemaView: the view showing the map; while the player is dead it drains the colour like the game's spirit
   world (grey with a cold blue light).
 
@@ -51,8 +54,10 @@ TRIM, TRIM_DARK, BANNER_HEADING = QColor("#c9a24a"), QColor(201, 162, 74, 90), Q
 PAPER, PAPER_EDGE, INK = QColor("#f3eee2"), QColor("#c9bea6"), QColor("#3b2a18")
 SYMBOL_FONTS = ["Segoe UI Symbol", "Segoe UI", "DejaVu Sans"]
 PIN_POP = 0.35             # seconds a new pin takes to pop up
-BURST_LIFE = {"level": 1.7, "death": 1.5, "event": 1.1, "revive": 1.8, "spirit": 1.6}
+BURST_LIFE = {"level": 1.7, "death": 1.5, "event": 1.1, "revive": 1.8, "spirit": 1.6, "teleport": 1.5, "arrive": 1.4}
+BURST_REACH = {"level": 110, "death": 70, "event": 55, "revive": 90, "spirit": 60, "teleport": 80, "arrive": 95}
 GHOST_COLOR = QColor("#b9d3ea")   # the corpse run on the map, and the ghost
+ARCANE_COLOR = QColor("#8fc4ff")  # teleports: the swirl, the comet and its trail
 GHOST_DOTS = (0.1, 2.2)    # dotted line of the corpse run, in pen widths
 SPIRIT_TINT = QColor(96, 116, 142)    # the spirit world's light: grey tones in this colour
 LETTERBOX = 2.2            # aspect ratio of the picture between the bars
@@ -141,6 +146,7 @@ class RouteItem(QGraphicsItem):
 
     def __init__(self, segments, colors: RouteColors, ghost_spans=()):
         super().__init__()
+        self.setZValue(2)                        # above the map art and the light
         self.segs = []
         self.has_taxi = False
         for seg in segments:
@@ -287,7 +293,7 @@ class MarkerItem(QGraphicsItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.setZValue(10)
         self.color = QColor(theme.GOLD)
-        self.mode = "walk"           # "walk" | "taxi" | "dungeon" | "dead" | "ghost"
+        self.mode = "walk"           # "walk" | "taxi" | "dungeon" | "dead" | "ghost" | "flight"
         self.angle = 0.0             # direction of travel in degrees, as on screen (0: right, 90: down)
         self.motion = 0.0            # 0..1: how visible the arrow is (only while moving)
         self.moving = False
@@ -322,6 +328,8 @@ class MarkerItem(QGraphicsItem):
             self._gryphon(painter, pulse)
         elif self.mode == "ghost":
             self._ghost(painter, pulse)
+        elif self.mode == "flight":
+            self._ghost(painter, pulse, ARCANE_COLOR, bob=False)
         elif self.mode == "dead":
             self._grave(painter, pulse)
         else:
@@ -358,11 +366,13 @@ class MarkerItem(QGraphicsItem):
         painter.setBrush(QColor(255, 255, 255, 150))
         painter.drawEllipse(QPointF(-2.5, -3), 2.6, 2.6)
 
-    def _ghost(self, painter: QPainter, pulse: float) -> None:
-        """A floating wisp: a pale flame bobbing on a cold halo, its tail pointing back along the way."""
-        self._halo(painter, GHOST_COLOR, 24 + 7 * pulse, 150 - 40 * pulse)
+    def _ghost(self, painter: QPainter, pulse: float, color: QColor = GHOST_COLOR, bob: bool = True) -> None:
+        """A floating wisp: a pale flame bobbing on a cold halo, its tail pointing back along the way (in the
+        arcane colour, without bobbing: the comet flying to a teleport's destination)."""
+        self._halo(painter, color, 24 + 7 * pulse, 150 - 40 * pulse)
         painter.save()
-        painter.translate(0, -2.5 * math.sin(self.clock * 2.4))
+        if bob:
+            painter.translate(0, -2.5 * math.sin(self.clock * 2.4))
         painter.scale(1.35, 1.35)
         painter.rotate(self.angle + 90)
         flame = QPainterPath()                       # pointing down (+y) before the rotation: tail behind
@@ -371,8 +381,8 @@ class MarkerItem(QGraphicsItem):
         flame.cubicTo(-9, 2, -8, -9, 0, -9)
         body = QRadialGradient(QPointF(0, -2), 16)
         body.setColorAt(0, QColor(255, 255, 255, 245))
-        body.setColorAt(0.5, with_alpha(GHOST_COLOR, 225))
-        body.setColorAt(1, with_alpha(GHOST_COLOR, 90))
+        body.setColorAt(0.5, with_alpha(color, 225))
+        body.setColorAt(1, with_alpha(color, 90))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(10, 20, 40, 110))              # a soft shadow keeps it visible on pale maps
         painter.drawPath(flame.translated(1.5, 2))
@@ -465,7 +475,7 @@ class Pin:
 class Burst:
     pos: QPointF
     color: QColor
-    kind: str                     # "level" | "death" | "event"
+    kind: str                     # a key of BURST_LIFE
     age: float = 0.0
 
 
@@ -588,7 +598,7 @@ class PinsItem(QGraphicsItem):
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         delays = (0.0, 0.2) if b.kind != "event" else (0.0,)
-        reach = {"level": 110, "death": 70, "event": 55, "revive": 90, "spirit": 60}[b.kind]
+        reach = BURST_REACH[b.kind]
         for delay in delays:
             y = (x - delay) / (1 - delay)
             if 0 < y < 1:
@@ -604,8 +614,19 @@ class PinsItem(QGraphicsItem):
                 a = math.radians(i * 30 + x * 25)
                 d = QPointF(math.cos(a), math.sin(a))
                 painter.drawLine(p + d * r1, p + d * (r1 + 16 * fade))
-        elif b.kind in ("revive", "spirit"):
-            # Light rising from the spot: coming back to life (gold), or the ghost appearing (pale blue).
+        if b.kind in ("teleport", "arrive"):
+            # An arcane swirl: arcs turning round the spot, inwards where the player vanishes, outwards on arrival.
+            pen = QPen(with_alpha(b.color, 230 * fade), 2.4)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            size = 34 * (1 - ease_out(x)) + 10 if b.kind == "teleport" else 10 + 46 * ease_out(x)
+            spin = x * (540 if b.kind == "teleport" else -360)
+            for k in range(3):
+                box = QRectF(p.x() - size, p.y() - size, 2 * size, 2 * size)
+                painter.drawArc(box, int((spin + k * 120) * 16), 75 * 16)
+        if b.kind in ("revive", "spirit", "teleport", "arrive"):
+            # Light rising from the spot: coming back to life (gold), the ghost appearing (pale blue), a teleport.
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
             for i in range(9):
                 dx = (i - 4) * 7 + 3 * math.sin(i * 1.7)
@@ -621,6 +642,34 @@ class PinsItem(QGraphicsItem):
                 painter.setPen(pen)
                 painter.drawLine(bottom, top)
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+
+
+# -- light --------------------------------------------------------------------------------------------------
+
+class SkyItem(QGraphicsItem):
+    """The time of day over the map: its colour multiplied onto everything beneath (the map art;
+    the route, pins and marker lie above it and keep their colours). Hidden by full daylight."""
+
+    def __init__(self):
+        super().__init__()
+        self.setZValue(1)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemUsesExtendedStyleOption)
+        self.color = QColor("white")
+        self.hide()
+
+    def boundingRect(self) -> QRectF:
+        return QRectF(-W, -H, 3 * W, 3 * H)
+
+    def set_light(self, rgb) -> None:
+        color = QColor.fromRgbF(*(clamp(c) for c in rgb))
+        if color.rgb() != self.color.rgb():
+            self.color = color
+            self.setVisible(min(color.red(), color.green(), color.blue()) < 254)
+            self.update()
+
+    def paint(self, painter: QPainter, option, widget=None) -> None:
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Multiply)
+        painter.fillRect(option.exposedRect, self.color)
 
 
 # -- view ---------------------------------------------------------------------------------------------------

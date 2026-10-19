@@ -107,13 +107,23 @@ function Progress:ReadXP()
   return Util.SafeValue("number", UnitXP, "player"), Util.SafeValue("number", UnitXPMax, "player")
 end
 
+-- The bar as it is now (info.xp of info.xpMax at info.xpAt): the desktop's experience bar starts the level there.
+function Progress:RememberXP(xp, max)
+  local info = FC.char and FC.char.info
+  if info and xp and max and max > 0 then
+    info.xp, info.xpMax, info.xpAt = xp, max, time()
+  end
+end
+
 function Progress:OnEnable()
   self.lastXP, self.lastMax = self:ReadXP()
+  self:RememberXP(self.lastXP, self.lastMax)
 end
 
 Progress:RegisterEvent("PLAYER_XP_UPDATE", function(self, _, unit)
   if unit and Util.Plain(unit) ~= "player" then return end
   local xp, max = self:ReadXP()
+  self:RememberXP(xp, max)
   if not xp or not self.lastXP then
     self.lastXP, self.lastMax = xp, max
     return

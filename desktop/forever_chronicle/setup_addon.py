@@ -28,6 +28,12 @@ class InstallResult:
     version: str | None
 
 
+def bundled_addon() -> Path | None:
+    """The addon next to the app: addons\\ForeverChronicle in the repository or the friends' package."""
+    source = Path(__file__).resolve().parents[2] / "addons" / ADDON_NAME
+    return source if (source / f"{ADDON_NAME}.toc").is_file() else None
+
+
 def addon_version(addon: Path) -> str | None:
     try:
         for line in (addon / f"{ADDON_NAME}.toc").read_text(encoding="utf-8").splitlines():

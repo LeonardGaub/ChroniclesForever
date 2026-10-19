@@ -24,6 +24,7 @@ class Character:
     last_seen_at: int | None
     owner_id: int | None = None         # None = my own character, else a friend (owners table)
     owner_name: str | None = None
+    xp: tuple[int, int, int] | None = None   # the experience bar last seen: (when, xp, xp to the next level)
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "Character":
@@ -31,7 +32,9 @@ class Character:
         return cls(row["character_id"], row["name"], row["name_suffix"], row["realm"], row["level"],
                    row["class_name"], row["class_file"], row["race_name"], row["faction"], row["last_seen_at"],
                    row["owner_id"] if "owner_id" in keys else None,
-                   row["owner_name"] if "owner_name" in keys else None)
+                   row["owner_name"] if "owner_name" in keys else None,
+                   (row["xp_at"], row["xp"], row["xp_max"]) if "xp_at" in keys and row["xp_at"] is not None
+                   and row["xp"] is not None and row["xp_max"] else None)
 
     @property
     def is_friend(self) -> bool:
@@ -174,6 +177,9 @@ class Repository:
             "class_file": info.get("classFile"),
             "race_name": info.get("raceName"),
             "race_file": info.get("raceFile"),
+            "xp": info.get("xp") if isinstance(info.get("xp"), int) else None,
+            "xp_max": info.get("xpMax") if isinstance(info.get("xpMax"), int) else None,
+            "xp_at": info.get("xpAt") if isinstance(info.get("xpAt"), int) else None,
             "faction": info.get("faction"),
             "level": info.get("level"),
             "client_locale": info.get("locale"),
@@ -240,6 +246,15 @@ class Repository:
         sql += " ORDER BY occurred_at DESC, seq DESC LIMIT ?"
         args.append(limit)
         return [EventRow.from_row(r) for r in self.conn.execute(sql, args).fetchall()]
+
+    def events_of_imports(self, import_ids: Iterable[int]) -> list[EventRow]:
+        """The events these imports added, in time order (all characters)."""
+        ids = list(import_ids)
+        if not ids:
+            return []
+        marks = ",".join("?" for _ in ids)
+        rows = self.conn.execute(f"SELECT * FROM events WHERE import_id IN ({marks}) ORDER BY occurred_at", ids)
+        return [EventRow.from_row(r) for r in rows]
 
     def event_types_for(self, character_id: str) -> list[str]:
         rows = self.conn.execute("SELECT DISTINCT event_type FROM events WHERE character_id = ? ORDER BY 1",
@@ -462,6 +477,22 @@ class Repository:
         """Recorded dungeon entrances: instance ID -> (map ID, x, y)."""
         rows = self.conn.execute("SELECT instance_id, map_id, x, y FROM instance_entrances").fetchall()
         return {r[0]: (r[1], r[2], r[3]) for r in rows}
+
+    # -- metrics (the addon's minute samples) --------------------------------------
+
+    def upsert_metric(self, character_id: str, t: int, xp: int, kills: int | None, money: int | None,
+                      level: int | None) -> None:
+        self.conn.execute(
+            """INSERT INTO metrics (character_id, occurred_at, xp, kills, money, level) VALUES (?,?,?,?,?,?)
+               ON CONFLICT (character_id, occurred_at) DO UPDATE SET xp = excluded.xp, kills = excluded.kills,
+               money = excluded.money, level = excluded.level""",
+            (character_id, t, xp, kills, money, level))
+
+    def metrics(self, character_id: str) -> list[tuple[int, int, int | None]]:
+        """(time, experience earned in total, level) of the samples, in time order."""
+        return [(r["occurred_at"], r["xp"], r["level"]) for r in self.conn.execute(
+            "SELECT occurred_at, xp, level FROM metrics WHERE character_id = ? ORDER BY occurred_at",
+            (character_id,))]
 
     # -- counters from the addon --------------------------------------------------
 

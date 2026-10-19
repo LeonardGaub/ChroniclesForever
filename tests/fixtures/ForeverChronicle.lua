@@ -22,6 +22,9 @@ ForeverChronicleDB = {
 				["raceName"] = "Tauren",
 				["realm"] = "Classic Beta PvP",
 				["realmNormalized"] = "ClassicBetaPvP",
+				["xp"] = 1000,
+				["xpAt"] = 1792051000,
+				["xpMax"] = 5000,
 			},
 			["snapshots"] = {
 				["gear"] = {

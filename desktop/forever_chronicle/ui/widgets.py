@@ -51,6 +51,7 @@ class Page(QWidget):
 
     title_key = ""
     needs_character = True
+    scrollable = False      # a form that may be taller than the window: the main window puts it in a scroll area
 
     def __init__(self, ctx: AppContext):
         super().__init__()
@@ -63,6 +64,9 @@ class Page(QWidget):
 
     def refresh(self) -> None:
         """Reload data from the database."""
+
+    def leave(self) -> None:
+        """The main window shows another page (also when this one sits in a scroll area and gets no hide event)."""
 
     def retranslate(self) -> None:
         """Re-apply texts after a language change."""

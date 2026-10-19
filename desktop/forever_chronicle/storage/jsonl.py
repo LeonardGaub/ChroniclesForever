@@ -59,6 +59,7 @@ RECORD_TYPES: list[RecordType] = [
     RecordType("screenshot_event", "screenshot_events", ("event_id",)),
     RecordType("screenshot_favorite", "screenshot_favorites", ("screenshot_id",)),
     RecordType("position", "positions", ("occurred_at",), merge="newer", compare="until_at"),
+    RecordType("metric", "metrics", ("occurred_at",), merge="replace"),
     RecordType("profession", "professions", ("skill_line",), merge="newer", compare="updated_at"),
     RecordType("recipe_category", "recipe_categories", ("skill_line", "category_id"), merge="replace"),
     RecordType("recipe", "recipes", ("skill_line", "recipe_id"), merge="replace"),

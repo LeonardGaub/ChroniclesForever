@@ -9,13 +9,22 @@
   when a moment is close or the player stands still. On a zone change the new map fades in from black. A trip to
   the other continent (boat, zeppelin) is shown on the world map: the camera pulls back from the old zone, the
   player crosses the sea on a dashed arc, and the camera dives into the new zone.
-  A vignette and letterbox bars frame the picture; the top bar names the character, the zone and the moment.
+  A vignette and letterbox bars frame the picture; the top bar names the character, the zone and the moment,
+  the bottom bar holds the game's experience bar (ui/cinematic_hud.py).
 - Events slide in as achievement alerts and flash a burst on the map; level-ups get a large title. At each
   screenshot the replay pauses: the picture flies out from the marker as a polaroid under an achievement
   banner (domain/cinematic.py decides which moments). The visual pieces are in ui/cinematic_fx.py.
 - Deaths: the replay slows down before one and holds a moment on a dark red title while the world turns grey
   (the game's spirit world). The body is a headstone; after the release the ghost is a pale wisp and the corpse
   run a pale dotted line. Back at the body the colour returns with rising light.
+- Teleports (hearthstone, portals; domain/cinematic.teleports) fly: an arcane swirl where the player vanishes, the
+  camera pulls back, a comet crosses the world map on a dotted arc and the camera dives in at the destination.
+  The ghost's release to the graveyard flies the same way as a pale wisp. (Seamless world map only.)
+- Time of day (domain/daylight.py, option "cine_daylight"): the map is tinted by the recorded local time: a pink
+  dawn, an orange dusk and a cold blue night.
+- End credits (ui/cinematic_credits.py, option "cine_credits"): at the end the camera pulls back over the whole
+  route, the map dims, the music changes to the chosen theme and credits roll with what the journey added up to
+  (domain/credits.py) while the screenshots drift by.
 - Breaks without route points (logouts, long pauses) are skipped. The replay slows down shortly before each
   screenshot and gets back to speed afterwards. Standstills (AFK, waiting) play normally, much faster or are
   skipped (option; the moments inside them are still shown).
@@ -27,7 +36,8 @@
 - Keys: Space pause/continue (at the end: start again), 1-4 speed, Right: next moment, Left: 5 minutes back,
   S: standstills, M: music on/off, Esc: close.
 - Sound (ui/sound.py): music fades in with the window and out when it closes; level-ups play a fanfare (the music
-  ducks under it), screenshots a shutter, alerts a chime and deaths a bell.
+  ducks under it), screenshots a shutter, alerts a chime (achievements and discoveries their own sound), deaths a
+  bell, coming back to life the resurrection and teleports their sound; the game's own sounds where taken.
 - The video export (ui/cinematic_export.py) runs the same window off screen, frame by frame.
 """
 
@@ -44,8 +54,11 @@ from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPat
 from PySide6.QtWidgets import (QGraphicsOpacityEffect, QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsScene,
                                QGraphicsView, QHBoxLayout, QLabel, QPushButton, QToolTip, QWidget)
 
-from ..domain import maps
-from ..domain.cinematic import Cue, Death, Levels, build_cues, CUE_EVENT_TYPES, death_spans, still_spans
+from ..domain import credits as journey_credits
+from ..domain import daylight, maps
+from ..domain.cinematic import (Cue, Death, Levels, Teleport, build_cues, CUE_EVENT_TYPES, death_spans, still_spans,
+                                teleports)
+from ..domain.experience import Experience
 from ..domain.route import Route, Timeline
 from ..domain.route_colors import RouteColors, zone_colors
 from ..i18n import format_datetime, format_duration, tr
@@ -53,8 +66,11 @@ from ..wow import zone_music
 from ..wow.map_art import find_art
 from . import icons, theme, world_art
 from .world_art import WorldArt
-from .cinematic_fx import (FADE_SECONDS, GHOST_COLOR, AchievementToast, CinemaFrame, CinemaView, MarkerItem,
-                           PhotoOverlay, Pin, PinsItem, RouteItem, TitleCard, clamp, ease_in_out, load_thumbnail)
+from .cinematic_credits import CreditsOverlay
+from .cinematic_hud import XpBar
+from .cinematic_fx import (ARCANE_COLOR, FADE_SECONDS, GHOST_COLOR, AchievementToast, CinemaFrame, CinemaView,
+                           MarkerItem, PhotoOverlay, Pin, PinsItem, RouteItem, SkyItem, TitleCard, clamp, ease_in_out,
+                           load_thumbnail, with_alpha)
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
 TICK_MS = 33
@@ -103,7 +119,14 @@ CROSS_SECONDS = 0.4        # crossfade from the trip's last picture to the new z
 VOYAGE_LINE = QColor(232, 226, 208, 220)
 # The seamless world map (option "cine_map": "world", ui/world_art.py): one picture of every zone.
 FRAME_SECONDS = 3.0        # time constant of the view following the size of the zone the player is in
-CUT_JUMP = 0.5             # a step longer than this share of the picture's width cuts (crossfade): a teleport
+CUT_JUMP = 0.5             # a step longer than this share of the picture's width cuts (crossfade): a break
+# Flights on the seamless map: (out, across, in) seconds and the arc's bulge (share of the distance) per kind.
+FLIGHTS = {"sea": (VOYAGE_OUT, VOYAGE_TRAVEL, VOYAGE_IN, 0.3), "teleport": (0.75, 0.9, 0.85, 0.2),
+           "spirit": (0.6, 0.8, 0.7, 0.15)}
+FLIGHT_MARGIN = 1.5        # a teleport's flight shows both ends with this much room
+LIGHT_SECONDS = 1.2        # time constant of the light following the time of day
+OUTRO_SECONDS = 4.0        # the camera pulling back over the whole route at the end
+OUTRO_MARGIN = 1.3
 
 
 @dataclass
@@ -124,10 +147,19 @@ class _Voyage:
     details: list = field(default_factory=list)   # (finer map, scale of the map beneath it: share of the world)
     line: QGraphicsPathItem | None = None
     age: float = 0.0
+    kind: str = "sea"           # a key of FLIGHTS: the sea crossing, a teleport, the ghost's release
+
+    @property
+    def out(self) -> float:
+        return FLIGHTS[self.kind][0]
+
+    @property
+    def across(self) -> float:
+        return FLIGHTS[self.kind][1]
 
     @property
     def life(self) -> float:
-        return VOYAGE_OUT + VOYAGE_TRAVEL + VOYAGE_IN
+        return sum(FLIGHTS[self.kind][:3])
 
     def camera(self) -> tuple[float, QPointF]:
         """(scale, centre) at the current age; scales change geometrically so the zoom feels even."""
@@ -139,23 +171,23 @@ class _Voyage:
 
         # Close to a zone the camera stays on its view (it leaves late and arrives early), so the coarse maps
         # around the zone are only seen from afar.
-        if self.age < VOYAGE_OUT:
-            f = self.age / VOYAGE_OUT
+        if self.age < self.out:
+            f = self.age / self.out
             return (blend(self.start_scale, self.over_scale, ease_in_out(f)),
                     between(self.start, self.over_center, ease_in_out((f - 0.35) / 0.65)))
-        if self.age < VOYAGE_OUT + VOYAGE_TRAVEL:
+        if self.age < self.out + self.across:
             return self.over_scale, self.over_center
-        f = (self.age - VOYAGE_OUT - VOYAGE_TRAVEL) / VOYAGE_IN
+        f = (self.age - self.out - self.across) / (self.life - self.out - self.across)
         return (blend(self.over_scale, self.end_scale, ease_in_out(f)),
                 between(self.over_center, self.end, ease_in_out(f / 0.65)))
 
     def travelled(self) -> float:
-        return ease_in_out((self.age - VOYAGE_OUT) / VOYAGE_TRAVEL)
+        return ease_in_out((self.age - self.out) / self.across)
 
     def arc(self, f: float) -> QPointF:
         """A point of the crossing (0: start, 1: arrival), on an arc bulging northwards like a ship's course."""
         a, b = self.origin, self.target
-        lift = math.hypot(b.x() - a.x(), b.y() - a.y()) * 0.3
+        lift = math.hypot(b.x() - a.x(), b.y() - a.y()) * FLIGHTS[self.kind][3]
         c = QPointF((a.x() + b.x()) / 2, min(a.y(), b.y()) - lift)
         u = 1 - f
         return QPointF(u * u * a.x() + 2 * u * f * c.x() + f * f * b.x(),
@@ -321,10 +353,14 @@ class CinematicWindow(QWidget):
         self.cue_times = [c.time for c in self.cues]
         self.deaths: list[Death] = [d for d in death_spans(events, self.route) if d.revived >= start and d.time <= end]
         self.ghost_spans = [(d.released, d.revived) for d in self.deaths if d.released is not None]
+        self.teleports: list[Teleport] = teleports(self.route, self.deaths, start, end)
+        self.teleport_departs = [tp.depart for tp in self.teleports]
         char = next((c for c in repo.list_characters() if c.character_id == character_id), None)
         self.char_name = char.name if char else ""
         self.char_color = theme.class_color(char.class_file if char else None)
         self.levels = Levels(events, char.level if char else None)
+        self.experience = Experience(self.levels, repo.metrics(character_id),
+                                     lambda a, b: self.route.timeline(a, b, GAP_SKIP).total, char.xp if char else None)
         self.color_mode = colors
         self.colors = RouteColors(colors, self.levels, [s["started_at"] for s in repo.sessions(character_id)])
         self.start, self.end = start, max(end, start + 1)
@@ -334,6 +370,7 @@ class CinematicWindow(QWidget):
         mode = still or ctx.config.extra.get("cine_still")
         self.still_mode = mode if mode in STILL_MODES else "fast"
         self.t = float(self.route.next_time_after(start - 1) or start)
+        self.rendered_t = self.t            # the moment of the last picture (teleports crossed since then fly)
         self.cue_index = bisect.bisect_left(self.cue_times, self.t)
         self.zone_visits = self._zone_visits()
         self.zone_visit_starts = [a for a, _, _ in self.zone_visits]
@@ -357,6 +394,13 @@ class CinematicWindow(QWidget):
         self.screen_speed = 0.0             # how fast the marker crosses the picture (widths per second, smoothed)
         self.frame_dt = 0.0                 # real time of the current step (camera smoothing)
         self.hold = 0.0                     # real seconds the replay waits (at a death)
+        extra = ctx.config.extra
+        self.daylight = extra.get("cine_daylight", True) is not False
+        self.credits_on = extra.get("cine_credits", True) is not False
+        self.sky: SkyItem | None = None
+        self.light = daylight.light_at(self.t) if self.daylight else daylight.DAY   # the time of day (smoothed)
+        self.credits: CreditsOverlay | None = None
+        self.outro: list | None = None      # [scale, centre at the end, scale, centre over the whole route, age]
         self._art: dict[int, QPixmap] = {}
         self._soft: dict[int, QPixmap | None] = {}
         self._thumbs: dict[str, QPixmap | None] = {}
@@ -404,7 +448,7 @@ class CinematicWindow(QWidget):
         self.cover_age = FADE_SECONDS * 2
         self.frame = CinemaFrame(self)
 
-        # In the top bar: the character on the left, zone and moment on the right.
+        # In the top bar: the character on the left, zone and moment on the right; the experience bar below.
         fonts = ", ".join(f'"{f}"' for f in theme.HEADING_FONTS)
         self.caption = QLabel(self)
         self.caption.setStyleSheet(f"background: transparent; font-family: {fonts}; font-size: 16pt;")
@@ -413,7 +457,8 @@ class CinematicWindow(QWidget):
         self.place.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         for label in (self.caption, self.place):
             label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.caption_effects = [_faded(self.caption), _faded(self.place)]
+        self.xp_bar = XpBar(self)
+        self.caption_effects = [_faded(self.caption), _faded(self.place), _faded(self.xp_bar)]
 
         self.toasts: list[AchievementToast] = []
         self.title = TitleCard(self)
@@ -451,6 +496,8 @@ class CinematicWindow(QWidget):
             f"QPushButton {{ background: rgba(255,255,255,18); color: {theme.TEXT}; border: 1px solid {theme.BORDER};"
             "border-radius: 3px; padding: 4px 10px; font-size: 11pt; }"
             f"QPushButton:checked {{ color: {theme.GOLD}; border-color: {theme.GOLD}; }}"
+            "QPushButton, QPushButton:hover, QPushButton:pressed, QPushButton:checked, QPushButton:disabled {"
+            " border-image: none; }"                     # the app skin's button pictures stay out of the film"
             f"QLabel {{ background: transparent; color: {theme.MUTED}; font-size: 10pt; }}")
         row = QHBoxLayout(self.controls)
         row.setContentsMargins(16, 8, 16, 8)
@@ -527,6 +574,9 @@ class CinematicWindow(QWidget):
         r = self.rect()
         for widget in (self.view, self.snapshot, self.cover, self.frame, self.title, self.photo):
             widget.setGeometry(r)
+        if self.credits is not None:
+            self.credits.setGeometry(r)
+            self.credits.area = self.picture_area()
         self.title.setGeometry(0, int(r.height() * 0.5 - r.height() * 0.2), r.width(), int(r.height() * 0.3))
         self.controls.setGeometry(0, r.height() - CONTROLS_HEIGHT, r.width(), CONTROLS_HEIGHT)
         self._layout_bars()
@@ -539,14 +589,18 @@ class CinematicWindow(QWidget):
                               CinemaFrame.target_bar(self.width(), self.height()) + 14)
 
     def _layout_bars(self) -> None:
-        """The top bar's texts, fading in with the bar. They stay inside the window: a child reaching past its
-        edge keeps Windows from showing the window over the whole screen."""
+        """The bars' contents, fading in with the bars: character, zone and moment in the top bar, the experience
+        bar in the bottom one (at the game's own size, a little larger on big windows). They stay inside the
+        window: a child reaching past its edge keeps Windows from showing the window over the whole screen."""
         r = self.rect()
         full = CinemaFrame.target_bar(r.width(), r.height())
         for label in (self.caption, self.place):
             label.adjustSize()
         self.caption.move(32, max(4, (full - self.caption.height()) // 2))
         self.place.move(max(0, r.width() - 32 - self.place.width()), max(4, (full - self.place.height()) // 2))
+        width = int(min(XpBar.WIDTH * clamp(full / 72, 0.9, 2.2), r.width() - 64))
+        height = XpBar.height_for(width)
+        self.xp_bar.setGeometry((r.width() - width) // 2, r.height() - full + int(full * 0.22), width, height)
         for effect in self.caption_effects:
             effect.setOpacity(self.frame.progress ** 2)
 
@@ -599,6 +653,7 @@ class CinematicWindow(QWidget):
         self.view.set_grey(1.0 if self._death_at(self.t) else 0.0)
         self.still_note = 0.0
         self.title.hide()
+        self._stop_credits()
         self._hide_photo()
         self.pending_photo = None
         if self.voyage is not None and self.view_map == maps.WORLD and self.voyage.line is not None:
@@ -611,6 +666,8 @@ class CinematicWindow(QWidget):
         if self.pins:
             self.pins.clear_bursts()
         self._render(jump=True)
+        self.xp_bar.snap()
+        self._update_light(0.0, now=True)
         self._update_music(0.0, now=True)
 
     def _seek_from_bar(self, t: float) -> None:
@@ -712,6 +769,7 @@ class CinematicWindow(QWidget):
         self.frame_dt = dt
         self._age_overlays(dt)
         self._update_grey(dt)
+        self._update_light(dt)
         self._update_music(dt)
         if self.photo_on:
             if not self.photo.advance(dt):
@@ -729,7 +787,10 @@ class CinematicWindow(QWidget):
             self.hold = max(0.0, self.hold - dt)
             self._render()                  # the camera settles meanwhile
             return
-        if self.paused or self.ended:
+        if self.ended:
+            self._advance_credits(dt)
+            return
+        if self.paused:
             return
         self.ramp += dt
         self._update_zone_share(dt)
@@ -755,14 +816,11 @@ class CinematicWindow(QWidget):
                 break
         if t >= self.end:
             t, self.ended = self.end, True
-            # Playing time in the range, breaks left out (as the level-up title's time since the level before).
-            played = self.route.timeline(self.start, self.end, GAP_SKIP).total
-            self._show_title(tr("cine.end"), life=10**9,
-                             subtitle=tr("cine.end_played", time=format_duration(played)))
-            self._sync_controls()
         self.t = t
         self._crossings(before, t)
         self._render()
+        if self.ended:
+            self._finish()
 
     def pace(self) -> float:
         """Share of the chosen speed: slower shortly before a screenshot or a death, back to full speed after
@@ -896,7 +954,7 @@ class CinematicWindow(QWidget):
                 self.pins.burst(self.marker.pos(), GHOST_COLOR, "spirit")
             if before < d.revived <= t:
                 self.pins.burst(self.marker.pos(), QColor(theme.GOLD), "revive")
-                self.sound.play("event")
+                self.sound.play("revive")
 
     def _update_grey(self, dt: float) -> None:
         dead = self._death_at(self.t) is not None
@@ -921,7 +979,7 @@ class CinematicWindow(QWidget):
     def _update_music(self, dt: float, now: bool = False) -> None:
         """Changes to the zone's music once the replay has been there for MUSIC_SETTLE seconds (at once after a
         jump), so passing through a zone changes nothing."""
-        if not self.zone_music or not self.sound.music.active:
+        if not self.zone_music or not self.sound.music.active or self.credits is not None:
             return
         wanted = self._wanted_music()
         if wanted == self.music_now:
@@ -947,6 +1005,7 @@ class CinematicWindow(QWidget):
     # -- scene -----------------------------------------------------------------------------
 
     def _render(self, jump: bool = False) -> None:
+        before, self.rendered_t = self.rendered_t, self.t
         point = self.route.point_at(int(self.t))
         if point is None:
             return
@@ -956,6 +1015,8 @@ class CinematicWindow(QWidget):
             if self.view_map != maps.WORLD:
                 self._show_world()
                 jump = True
+            if not jump and self._start_teleport(before):
+                return
             if zone is not None and zone != self.zone_now:
                 if not jump and self.zone_now is not None and self._start_world_voyage(self.zone_now, zone, point):
                     return
@@ -1087,6 +1148,7 @@ class CinematicWindow(QWidget):
         self.pins = PinsItem(self._pins_for(view))
         scene.addItem(self.pins)
         scene.addItem(self.marker)
+        self._add_sky(scene)
         self.camera = None
         self.last_head = None
         self._apply_zoom()
@@ -1118,6 +1180,7 @@ class CinematicWindow(QWidget):
         self.pins = PinsItem(self._pins_for(maps.WORLD))
         scene.addItem(self.pins)
         scene.addItem(self.marker)
+        self._add_sky(scene)
         self.camera = None
         self.last_head = None
         self._apply_zoom()
@@ -1155,6 +1218,144 @@ class CinematicWindow(QWidget):
                               QPointF(self.last_head), target, [], line)
         self._travel(0.0)
         return True
+
+    def _start_teleport(self, before: float) -> bool:
+        """A teleport left between the last picture and now flies (seamless map): the camera pulls back until
+        both ends are in view, the player crosses on a dotted arc and the camera dives in at the destination.
+        False if none was crossed."""
+        i = bisect.bisect_left(self.teleport_departs, before)
+        if i >= len(self.teleports) or self.teleport_departs[i] >= self.t:
+            return False
+        tp = self.teleports[i]
+        zone = self.route.view_for(self.route.point_at(tp.arrive))
+        frame = self._zone_frame(zone) or self.frame_size
+        if frame is None or self.camera is None or self.last_head is None:
+            return False
+        origin, target = QPointF(self.last_head), QPointF(tp.target[0] * W, tp.target[1] * H)
+        vw, vh = self.view.viewport().width(), self.view.viewport().height()
+        area = self.picture_area()
+        start = self._scale()
+        end = min(vw / frame[0], vh / frame[1]) * ZOOM * self.zoom
+        dx, dy = abs(target.x() - origin.x()), abs(target.y() - origin.y())
+        fit = min(area.width() / max(1e-6, dx * FLIGHT_MARGIN), area.height() / max(1e-6, dy * FLIGHT_MARGIN))
+        over = min(start * 0.8, end * 0.8, fit)
+        kind = "spirit" if tp.spirit else "teleport"
+        color = GHOST_COLOR if tp.spirit else ARCANE_COLOR
+        pen = QPen(with_alpha(color, 210), 2.6)
+        pen.setCosmetic(True)
+        pen.setStyle(Qt.PenStyle.DotLine)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        line = self.view.scene().addPath(QPainterPath(), pen)
+        line.setZValue(3)
+        middle = QPointF((origin.x() + target.x()) / 2, (origin.y() + target.y()) / 2)
+        self.voyage = _Voyage(zone, QPointF(self.camera), middle, target, start, over, end, origin, target, [], line,
+                              kind=kind)
+        self.t = self.rendered_t = float(tp.arrive)
+        self.marker.set_mode("ghost" if tp.spirit else "flight")
+        if self.pins:
+            self.pins.burst(origin, color, "teleport")
+        if not tp.spirit:
+            self.sound.play("teleport")
+        self._travel(0.0)
+        return True
+
+    # -- time of day -----------------------------------------------------------------------
+
+    def _add_sky(self, scene: QGraphicsScene) -> None:
+        self.sky = SkyItem()
+        scene.addItem(self.sky)
+        self.sky.set_light(self.light or (1.0, 1.0, 1.0))
+
+    def _update_light(self, dt: float, now: bool = False) -> None:
+        """Lets the light drift towards the time of day at the current moment (at once after a jump)."""
+        target = daylight.light_at(self.t) if self.daylight else daylight.DAY
+        if now or self.light is None:
+            self.light = target
+        else:
+            k = 1 - math.exp(-dt / LIGHT_SECONDS)
+            self.light = tuple(a + (b - a) * k for a, b in zip(self.light, target))
+        if self.sky is not None:
+            self.sky.set_light(self.light)
+
+    # -- the end ---------------------------------------------------------------------------
+
+    def _finish(self) -> None:
+        """The replay has reached its end: the credits roll (or the end title shows with the playing time)."""
+        self._sync_controls()
+        if self.credits_on and self._start_credits():
+            return
+        # Playing time in the range, breaks left out (as the level-up title's time since the level before).
+        played = self.route.timeline(self.start, self.end, GAP_SKIP).total
+        self._show_title(tr("cine.end"), life=10**9, subtitle=tr("cine.end_played", time=format_duration(played)))
+
+    def _start_credits(self) -> bool:
+        events = self.ctx.repo.events(self.character_id, limit=1_000_000)
+        shots = [c.path for c in self.cues if c.kind == "screenshot" and c.path]
+        journey = journey_credits.journey(self.route, events, self.levels, self.start, self.end, self.deaths,
+                                          self.teleports, len(shots), self.still_spans)
+        title, sections = journey_credits.sections(
+            journey, self.char_name or tr("cine.title"), self.start, self.end,
+            lambda m: self._zone_name(m, None) or "?", lambda i: self._zone_name(None, i) or "?")
+        if not sections:
+            return False
+        self.still_note = 0.0                       # no standstill note over the credits
+        if self.title.isVisible():                  # a last level-up or death title makes way
+            self.title.life = min(self.title.life, self.title.age + FADE_SECONDS)
+        step = max(1, len(shots) // 12 + (1 if len(shots) % 12 else 0))
+        self.credits = CreditsOverlay(self, title, sections, shots[::step])
+        self.credits.setGeometry(self.rect())
+        self.credits.start(self.picture_area())
+        self.controls.raise_()
+        self._start_outro()
+        if self.zone_music and self.sound.music.active:
+            self.music_now = None
+            self.sound.music.play(None)             # the music chosen in the settings (the built-in theme)
+        return True
+
+    def _start_outro(self) -> None:
+        """The camera pulls back until the whole replayed route is in view."""
+        if self.route_item is None or not self.route_item.segs:
+            return
+        xs = [p.x() for seg in self.route_item.segs for p in seg[1]]
+        ys = [p.y() for seg in self.route_item.segs for p in seg[1]]
+        if not xs:
+            return
+        area = self.picture_area()
+        bw, bh = max(1.0, max(xs) - min(xs)), max(1.0, max(ys) - min(ys))
+        start = self._scale()
+        whole = min(area.width() / (W * 0.96), area.height() / (H * 0.96))     # never past the map's edges
+        end = min(start, max(whole, min(area.width() / (bw * OUTRO_MARGIN), area.height() / (bh * OUTRO_MARGIN))))
+        here = self.view.mapToScene(self.view.viewport().rect().center())
+        center = QPointF((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
+        if self.view_map == maps.WORLD:             # the view stays on the world map
+            half_w, half_h = area.width() / end / 2, area.height() / end / 2
+            center = QPointF(min(max(center.x(), half_w), W - half_w) if W > 2 * half_w else W / 2,
+                             min(max(center.y(), half_h), H - half_h) if H > 2 * half_h else H / 2)
+        self.outro = [start, QPointF(here), end, center, 0.0]
+
+    def _advance_credits(self, dt: float) -> None:
+        if self.credits is not None:
+            self.credits.advance(dt)
+        if self.outro is not None and self.outro[4] < OUTRO_SECONDS:
+            self.outro[4] += dt
+            a, ca, b, cb, age = self.outro
+            f = ease_in_out(age / OUTRO_SECONDS)
+            scale = math.exp(math.log(a) + (math.log(b) - math.log(a)) * f)
+            self.view.resetTransform()
+            self.view.scale(scale, scale)
+            self.view.centerOn(QPointF(ca.x() + (cb.x() - ca.x()) * f, ca.y() + (cb.y() - ca.y()) * f))
+            self._update_world(scale)
+
+    def _stop_credits(self) -> None:
+        if self.credits is not None:
+            self.credits.hide()
+            self.credits.deleteLater()
+            self.credits = None
+        self.outro = None
+
+    def credits_seconds(self) -> float:
+        """Seconds the credits take (0 without them): the video export keeps going that long after the end."""
+        return self.credits.duration() + 0.5 if self.credits is not None else 0.0
 
     # -- zone changes ----------------------------------------------------------------------
 
@@ -1224,6 +1425,7 @@ class CinematicWindow(QWidget):
         if self.marker.scene() is scene:
             scene.removeItem(self.marker)
         scene.clear()
+        self.sky = None
         scene.setSceneRect(world.adjusted(-W, -H, W, H))     # room to centre anywhere
         scene.addPixmap(self._pixmap(maps.WORLD))
         details = []
@@ -1295,6 +1497,9 @@ class CinematicWindow(QWidget):
             if self.view_map == maps.WORLD:         # seamless: already there, on the same map
                 if voyage.line is not None:
                     self.view.scene().removeItem(voyage.line)
+                if voyage.kind != "sea" and self.pins:
+                    self.pins.burst(voyage.target, GHOST_COLOR if voyage.kind == "spirit" else ARCANE_COLOR,
+                                    "arrive")
                 self.zone_now = voyage.to_view
                 self.frame_size = None
                 self.camera = None
@@ -1397,6 +1602,7 @@ class CinematicWindow(QWidget):
         left = f"<span style='color:{self.char_color}; font-weight:bold'>{self.char_name}</span>"
         if level:
             left += f"<br><span style='color:{theme.MUTED}; font-size:11pt'>{tr('cine.level', level=level)}</span>"
+        self.xp_bar.set_target(*self.experience.values(self.t))
         where = (f"<span style='color:{theme.GOLD}'>{dungeon}</span><span style='color:{theme.MUTED}'>  ·  "
                  f"{zone_name}</span>") if dungeon else f"<span style='color:#e6c77a'>{zone_name}</span>"
         right = f"{where}<br><span style='color:{theme.MUTED}; font-size:11pt'>{format_datetime(int(self.t))}</span>"
@@ -1431,7 +1637,8 @@ class CinematicWindow(QWidget):
             if self.sound.play("death"):
                 self.sound.music.duck(DEATH_HOLD + 1.5)
             return
-        self.sound.play("event")
+        self.sound.play({"achievement_earned": "achievement", "zone_discovered": "discovery"}.get(cue.event_type,
+                                                                                                "event"))
         if cue.has_screenshot:
             return                          # its picture follows, under a banner that says the same
         toast = AchievementToast(self, cue, TOAST_SECONDS)
@@ -1491,6 +1698,7 @@ class CinematicWindow(QWidget):
                 toast.deleteLater()
                 self._layout_toasts()
         self.title.advance(dt)
+        self.xp_bar.advance(dt)
         self._update_still(dt)
         if self.frame.advance(dt):
             self._layout_bars()

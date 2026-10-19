@@ -7,6 +7,7 @@ then turn "Unreleased" into the uploaded version and date.
 ## Unreleased (0.15.0)
 
 ### New
+- The character's current experience (the bar as it stands) is saved, for the desktop app's experience bar.
 - Deaths name their cause, read from the game's death recap: "Killed by Hogger in Elwynn Forest", or "Drowned",
   "Fell to death" and so on. Hover the entry for the killing blow (spell and damage). Deaths without a recap
   stay "Died in ...".

@@ -9,19 +9,23 @@
   route because the addon records only the death itself.
 - Standstills (still_spans): stretches in which the character stayed in one spot (AFK, waiting, trading), which
   the replay can run through faster or skip.
+- Teleports (teleports): hearthstone, portals and the ghost's release to the graveyard, which the replay shows as a
+  flight across the world map. A jump to the other continent counts only after the player stood still before it
+  (casting); otherwise it was a boat or zeppelin, which the replay shows as a crossing of the sea.
 """
 
 from __future__ import annotations
 
 import bisect
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from ..i18n import tr
 from ..storage.repository import EventRow, PositionPoint
-from . import event_types
-from .route import TELEPORT_DISTANCE, TELEPORT_SPEED, Route
+from . import event_types, maps
+from .route import TELEPORT_DISTANCE, TELEPORT_SPEED, WORLD_PER_CONTINENT, Route
 
 # Event types the replay announces. Quests are left out: there are too many for a replay at speed.
 CUE_EVENT_TYPES = ("level_up", "player_died", "zone_discovered", "achievement_earned", "rare_killed",
@@ -257,3 +261,74 @@ def still_spans(route: Route, start: float, end: float) -> list[tuple[float, flo
         prev = p
     close()
     return spans
+
+
+# -- teleports ------------------------------------------------------------------------------------------------
+
+TELEPORT_GAP = 120         # seconds between vanishing and arriving at most (a loading screen); longer: a logout
+TELEPORT_MIN = 0.03        # continent widths (~450 yards): shorter jumps are not flown
+CAST_SECONDS = 5           # standing this long before a jump to the other continent: a hearthstone or a portal
+
+
+@dataclass(frozen=True)
+class Teleport:
+    depart: int                        # the player vanishes (the end of the last point before) ...
+    arrive: int                        # ... and appears (the first point after)
+    origin: tuple[float, float]        # on the world map (normalized)
+    target: tuple[float, float]
+    spirit: bool = False               # the ghost's release to the graveyard
+
+
+def teleports(route: Route, deaths: Iterable[Death], start: float, end: float) -> list[Teleport]:
+    """The teleports within [start, end], in time order: a step much faster than any mount or flight path, far
+    enough to be worth a flight, with a loading screen at most in between. Inside a dungeon the player counts as
+    standing at its entrance."""
+    releases = {d.released for d in deaths if d.released is not None}
+    result: list[Teleport] = []
+    i = max(1, bisect.bisect_right(route.times, start))
+    for k in range(i, len(route.points)):
+        a, b = route.points[k - 1], route.points[k]
+        if b.time > end:
+            break
+        gap = b.time - a.end
+        if a.end < start or a.taxi or b.taxi or not 0 <= gap <= TELEPORT_GAP:
+            continue
+        wa, wb = _world(route, a), _world(route, b)
+        if wa is None or wb is None:
+            continue
+        d = math.hypot(wb[0] - wa[0], wb[1] - wa[1]) / WORLD_PER_CONTINENT      # continent widths
+        if d < TELEPORT_MIN or d / max(1, gap) <= TELEPORT_SPEED:
+            continue
+        if _continent(route, a) != _continent(route, b) and not _cast(route, k - 1):
+            continue                                                         # a boat or a zeppelin
+        result.append(Teleport(a.end, b.time, wa, wb, b.time in releases))
+    return result
+
+
+def _spot(route: Route, p: PositionPoint):
+    return route.locate(p.map_id, p.x, p.y, p.instance_id)
+
+
+def _world(route: Route, p: PositionPoint) -> tuple[float, float] | None:
+    spot = _spot(route, p)
+    return maps.world_xy(*spot, route.map_infos) if spot else None
+
+
+def _continent(route: Route, p: PositionPoint) -> int | None:
+    spot = _spot(route, p)
+    if spot is None:
+        return None
+    return spot[0] if spot[0] in maps.CONTINENT_IN_WORLD else route.continent(spot[0])
+
+
+def _cast(route: Route, k: int) -> bool:
+    """True when the player stood still for CAST_SECONDS before leaving point k (casting a hearthstone)."""
+    last = route.points[k]
+    began = last.time
+    for j in range(k - 1, -1, -1):
+        p = route.points[j]
+        d = route.distance(p, last)
+        if d is None or d > STILL_REACH or last.end - p.end > CAST_SECONDS * 4:
+            break
+        began = p.time
+    return last.end - began >= CAST_SECONDS

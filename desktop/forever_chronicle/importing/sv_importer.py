@@ -300,6 +300,16 @@ class SavedVariablesImporter:
                     result.invalid += 1
                     continue
                 self.repo.upsert_position(character_id, point)
+        # Metrics: one string per minute with a change, "time,xpEarned,kills,money,level" (Modules/Metrics.lua).
+        for text in as_list(as_dict(streams.get("metrics")).get("records")):
+            try:
+                values = [int(v) for v in text.split(",")] if isinstance(text, str) else []
+            except ValueError:
+                values = []
+            if len(values) == 5:
+                self.repo.upsert_metric(character_id, *values)
+            else:
+                result.invalid += 1
         self._import_professions(character_id, as_dict(as_dict(char.get("snapshots")).get("professions")), result)
         self._import_gear(character_id, as_dict(as_dict(char.get("snapshots")).get("gear")), result)
 

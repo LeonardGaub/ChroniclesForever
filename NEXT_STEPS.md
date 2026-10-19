@@ -6,7 +6,7 @@ at the time (older entries may describe things that changed later). Architecture
 
 ## Current state (2026-10-18)
 - Main addon `addons/ForeverChronicle` 0.15.0, not uploaded yet (last CurseForge build 0.14.1; the changes are
-  collected under "Unreleased" in `CHANGELOG.md`). Companion `addons/ForeverChronicle_Share` 0.14.1, distributed
+  collected under "Unreleased" in `CHANGELOG.md`). Companion `addons/ForeverChronicle_Share` 0.14.4, distributed
   through the git repository (friends with repo access; the sync script installs it after a `git pull`). Release
   both together: since 0.15.0 the saved data is packed (see History).
 - Addon window tabs: Übersicht, Chronik (screenshots shown with their entries), Karte, Berufe, Einstellungen,
@@ -22,7 +22,7 @@ at the time (older entries may describe things that changed later). Architecture
   and link them, `importing/friend_screenshots.py`); the addon and the sync script come from each PC's clone of
   the repository (setup: `sync\Einrichten.bat` there).
 - Tests: `tests/addon` (`npm test`: queue tests and phases 1-15, writes the fixtures) first, then `desktop`
-  (`pytest`, 156 tests). All pass.
+  (`pytest`, 170 tests). All pass.
 
 ## Open items
 1. Dungeon maps: built on 2026-10-18 in the addon and the desktop app, and removed again the same day (the user did
@@ -67,6 +67,71 @@ at the time (older entries may describe things that changed later). Architecture
   format and `snapshots` area.
 
 ## History
+
+### Desktop: the game's UI textures, motion, first-start wizard (2026-10-19)
+- User picks from the brainstorm. Skin: `tools/build_ui_skin.py` reads Classic UI textures from the install and
+  composes them (Pillow) into nine-slice pictures in `ui/assets/skin/` (in git, 21 files, ~340 KB): dialog frame on
+  marble (panels), tooltip border in silver/gold (cards, group boxes, tooltips, menus), UI-Panel-Button
+  up/hover/down/disabled plus a gold-bordered "selected" one (checkable buttons that are on), the character
+  frame's hanging tabs for the bottom tabs, Common-Input-Border (its top 20 px) for fields, UI-CheckBox, the slider
+  gem and UI-Background-Rock for the window. `theme.SKIN_STYLESHEET` is appended when the pictures exist and makes
+  plain widgets transparent, so panels show through. The cinematic controls opt out (`border-image: none`).
+  Form pages (Import, Einstellungen, Diagnose; `Page.scrollable`) now sit in a scroll area, since the frames are
+  thicker; pages hear `Page.leave()` when the window shows another one.
+- Motion (`ui/motion.py`, option `extra.ui_motion` under Einstellungen → Oberfläche): page changes crossfade
+  (snapshot over the new page, 200 ms); buttons, tabs and clickable cards get a gold drop-shadow glow easing in and
+  out (180 ms, only while shown); after an import with new events (`AppContext.imported`, import_ids;
+  `Repository.events_of_imports`) a toast per character slides in at the top right (highest level, else an
+  achievement/dungeon/rare/zone, else the number of entries).
+- First-start wizard (`ui/setup_wizard.py`): welcome + language, game folder (auto or chosen), addon installed and
+  its version against `setup_addon.bundled_addon()` (repo or friends' package; installs/updates with
+  `install_addon`), saved files per account + import now + automatic import, summary. Opens by itself while no
+  character exists and `extra.setup_done` is unset (`AppContext.needs_setup`), before the sound offer; also under
+  Datei → Einrichtung and from the home screen's new "Erste Schritte" card (shown while there are no characters).
+
+### Cinematic: the game's experience bar (2026-10-19)
+- User request. A player frame (portrait, level, health/mana) top left was built and removed again the same day at
+  the user's request, with what only it needed (the addon's `info.sex`, the race portraits and unit frame
+  textures). The top bar shows name and level as before. Do not bring the portrait back without asking.
+- XP bar (`ui/cinematic_hud.py`) in the bottom letterbox bar, as the game draws it: its frame with twenty bubbles
+  (`skin/xp_frame.png`, 1024×15, from UI-MainMenuBar-Dwarf's four pieces) over UI-StatusBar in the game's purple
+  (`skin/xp_fill.png`, 0.58/0/0.55), with "EP: 11510 / 27300" on it (the points count along as the fill glides; a
+  level-up fills up, flashes and wraps). Width 1024 × bar/72 (clamped). `domain/experience.py` `values(t)`: exact
+  from the addon's minute samples (the "metrics" stream, imported since now: table `metrics`, migration 11): a
+  level's size is the experience between its level-ups; the bar as last seen (`info.xp`/`xpMax`/`xpAt`, new in the
+  addon, columns `xp`, `xp_max`, `xp_at`) starts and sizes the current level; other levels use the Classic XP table.
+  Without samples (friends): the share by playing time between level-ups ("EP: 42 %"), nothing in the level still
+  going. Rested experience is not recorded (blue part not shown).
+- Addon (0.15.0, not uploaded): `Progress.lua` saves `info.xp`, `xpMax`, `xpAt` on every XP change and at login;
+  companion 0.14.4 shares them. Copied to the game folder and hash-checked. Until the next login with this version
+  the current level's bar is only known from level-ups inside the samples.
+
+### Cinematic: fly-to teleports, time of day, end credits, the game's sounds (2026-10-19)
+- User picks from a brainstorm. All desktop only; options in Einstellungen → "Kino-Modus" (`extra.cine_daylight`,
+  `cine_credits`) and "Klänge aus dem Spiel" (`extra.game_sounds`), all on by default.
+- Teleports fly (seamless world map): `domain/cinematic.teleports` finds steps much faster than any mount, longer than
+  ~450 yards, with at most 120 s (a loading screen) between. A jump to the other continent counts only after
+  standing ≥ 5 s before it (hearthstone cast); otherwise it is a boat/zeppelin and keeps the sea crossing. The flight
+  reuses `_Voyage` (kind "teleport"/"spirit"): arcane swirl, camera out until both ends fit, a comet on a dotted arc,
+  a flash on arrival, the game's teleport sound. The ghost's release to the graveyard flies as a pale wisp. On the
+  user's data: 4 hearthstones, 3 of them to the same inn (Crossroads), one from Tirisfal across the sea.
+- Fog of war was built the same day and removed again at the user's request (a dark cloud picture over the world
+  map that the route uncovered). Do not bring it back without asking.
+- Time of day (`domain/daylight.py`): keyframes by the recorded local hour (night 21.5–5, dawn 6, dusk 19.5),
+  multiplied onto the map art (`SkyItem`, z 1; route z 2, pins and marker above keep their colours).
+- End credits (`domain/credits.py`, `ui/cinematic_credits.py`): at the end the camera pulls back over the whole route
+  (never past the world map), the map dims, the music switches to the chosen theme, credits roll (playtime, level,
+  km on foot and in flight, teleports, standing time, longest zone, zones, discovered, dungeons, quests,
+  achievements, rares, bosses, screenshots, deaths, most frequent cause) with the screenshots drifting by, and end on
+  a "Journey Forever" card. Distances use continent widths of 36,800 (Kalimdor) and 40,741 (Eastern Kingdoms) yards
+  (community map data, an estimate). Dungeons are instances with a boss kill only: "Ruins of Lordaeron" (Undercity)
+  is an instance too and neither its music nor its entrance tells it apart. The export keeps recording until the
+  credits' last card has stood (`credits_seconds`); a whole replay's video gets ~45 s longer.
+- The game's sounds (`wow/game_sounds.py`): levelup.ogg 567431, iquestcomplete.ogg 567439 (event chime),
+  achievmentsound1.ogg 569143, ignewtaxinodediscovered.ogg 567497 (discovery), iuiinterfacebuttona.ogg 567481
+  (click), resurrection.ogg 568667 (revive), teleport.ogg 569735. Names via the wago.tools listfile API
+  (`https://wago.tools/api/files?search=...`); the root file in this client has no names for sounds. Death and
+  screenshot keep the built-in bell and shutter (the game has none). Not heard yet by the user.
 
 ### Desktop UI: home screen, gallery, card lists, the game's fonts (2026-10-16)
 - User request after the brainstorm. Home screen (`ui/pages/home.py`) with four cards: last session (time, levels,

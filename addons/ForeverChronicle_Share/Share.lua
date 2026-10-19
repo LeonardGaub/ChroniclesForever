@@ -32,7 +32,7 @@ Share.CATEGORIES = { "stats", "chronicle", "routes", "sessions", "professions", 
 local SHOT_FIELDS = { "id", "seq", "trigger", "events", "requestedAt", "capturedAt", "fileStamp", "status" }
 
 local INFO_FIELDS = { "key", "guid", "name", "nameSuffix", "realm", "className", "classFile", "raceName", "raceFile",
-  "faction", "level", "firstSeenAt", "lastSeenAt" }
+  "faction", "level", "xp", "xpMax", "xpAt", "firstSeenAt", "lastSeenAt" }
 
 local function newest(list, n)
   local out = {}

@@ -17,6 +17,9 @@ ForeverChronicleShareDB = {
 				["raceFile"] = "Tauren",
 				["raceName"] = "Tauren",
 				["realm"] = "Classic Beta PvP",
+				["xp"] = 1000,
+				["xpAt"] = 1791961000,
+				["xpMax"] = 5000,
 			},
 			["snapshots"] = {
 				["gear"] = {
