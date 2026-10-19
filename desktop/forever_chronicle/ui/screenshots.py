@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import QRectF, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QImageReader, QKeySequence, QPainter, QPixmap, \
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QImageReader, QKeySequence, QPainter, QPixmap, \
     QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
@@ -27,21 +27,6 @@ from . import theme
 THUMB = QSize(112, 70)
 BATCH = 6
 REPLAY_BEFORE = 120        # the replay from a screenshot starts this many seconds of play before it
-
-
-def placeholder(text: str, size: QSize = THUMB) -> QIcon:
-    pix = QPixmap(size)
-    pix.fill(QColor(theme.PANEL_ALT))
-    painter = QPainter(pix)
-    painter.setPen(QColor(theme.BORDER))
-    painter.drawRect(0, 0, size.width() - 1, size.height() - 1)
-    painter.setPen(QColor(theme.MUTED))
-    font = QFont()
-    font.setPointSize(8)
-    painter.setFont(font)
-    painter.drawText(pix.rect(), Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, text)
-    painter.end()
-    return QIcon(pix)
 
 
 def load_thumbnail(path: str, size: QSize = THUMB) -> QIcon | None:

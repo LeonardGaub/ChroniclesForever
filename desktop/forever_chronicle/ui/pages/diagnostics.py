@@ -15,7 +15,6 @@ STATUS_COLORS = {"confirmed": "#1eff00", "present": theme.GOLD, "missing": theme
 class DiagnosticsPage(Page):
     title_key = "tab.diagnostics"
     scrollable = True
-    needs_character = False
 
     def __init__(self, ctx):
         super().__init__(ctx)

@@ -1,6 +1,6 @@
 """Read-only access to the local WoW game files (CASC storage), enough to take files out by fileDataID.
 
-Used by wow/game_icons.py (event icons) and tools/extract_maps.py. Reads only the user's own install: the build
+Used by wow/game_icons.py, game_fonts.py, game_sounds.py, zone_music.py and the extract tools. Reads only the user's own install: the build
 config of one product (.build.info), the local index files, the data archives, the encoding file and the root file.
 Nothing is written into the game folder.
 
@@ -150,9 +150,6 @@ class LocalStorage:
                 length = struct.unpack_from("<I", entries, i + 14)[0]
                 self.index[key] = (loc >> 30, loc & 0x3FFFFFFF, length)
         self._archives: dict[int, object] = {}
-
-    def has(self, ekey: bytes) -> bool:
-        return ekey[:9] in self.index
 
     def read(self, ekey: bytes, zero_encrypted: bool = False) -> bytes:
         entry = self.index.get(ekey[:9])

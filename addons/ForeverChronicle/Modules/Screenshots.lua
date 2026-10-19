@@ -266,7 +266,7 @@ function Shots:WatchPopups(now)
     if item.watchUntil and not item.popups and now <= item.watchUntil then
       local popups = self:FindPopups(item.baseline)
       if #popups > 0 then
-        item.popups, item.popupAt = popups, now
+        item.popups = popups
         item.eligibleAt = math.min(item.eligibleAt, now + POPUP_SETTLE)
         local names = {}
         for _, f in ipairs(popups) do names[#names + 1] = frameName(f) end

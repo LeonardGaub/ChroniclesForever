@@ -113,7 +113,6 @@ def drop_other_copies(db: Database) -> int:
         if db.conn.execute("SELECT 1 FROM characters WHERE owner_id = ?", (owner_id,)).fetchone() is None:
             db.conn.execute("DELETE FROM owners WHERE owner_id = ?", (owner_id,))
     return dropped
-    return result
 
 
 def _import_friend(db: Database, importer: SavedVariablesImporter, path: Path, share_id: str, name: str,

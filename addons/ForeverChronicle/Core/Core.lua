@@ -11,7 +11,6 @@
 local ADDON, FC = ...
 _G.ForeverChronicle = FC
 
-FC.NAME = ADDON
 FC.VERSION = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version")) or "dev"
 FC.SCHEMA_VERSION = 2 -- 2: streams packed in the saved file (Core/Storage.lua)
 

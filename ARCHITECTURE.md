@@ -30,7 +30,7 @@ desktop: wow/paths ──► wow/lua_parser (literals only) ──► importing/
 
 ### Characters shown in the window (sharing, docs/Sharing_Design.md)
 Recording always writes to the played character (`FC.char`). Pages read through `Core/View.lua`:
-`FC:ViewChar()`, `FC:ViewStream(name)`, `FC:ViewSnapshot(name)`, `FC:IsViewingPlayed()`. Map, instance and
+`FC:ViewChar()`, `FC:ViewStream(name)`, `FC:IsViewingPlayed()`. Map, instance and
 entrance lookups go through `FC:MapInfo`, `FC:InstanceName` and `FC:StoredEntrance`, so friends' data
 counts as well. A new page that reads character data must use these helpers. A stat that needs live state can add
 `fromRecord(char)` for other characters. `UI/ViewBar.lua` is the chooser; `FC_VIEW_CHANGED` calls

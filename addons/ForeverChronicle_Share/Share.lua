@@ -4,7 +4,7 @@
 -- saved variable. The game saves it as its own file (SavedVariables\ForeverChronicle_Share.lua), which the
 -- sync script copies to the shared cloud folder.
 --
--- ForeverChronicleShareDB = { format = 1, addonVersion, name, generatedAt,
+-- ForeverChronicleShareDB = { format = 2, addonVersion, name, generatedAt,
 --   characters = { <character record in the addon's own shape, trimmed> },
 --   maps = { [mapID] = geometry }, instances = { [id] = name }, entrances = { [id] = { mapID, x, y } },
 --   screenshotFiles = { [fileStamp] = "<name>-<realm>" } }

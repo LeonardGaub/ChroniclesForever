@@ -13,4 +13,3 @@ from .timeline import TimelinePage
 
 MAIN_PAGES = [HomePage, OverviewPage, TimelinePage, GalleryPage, MapPage, ProfessionsPage]
 MENU_PAGES = [ImportPage, SettingsPage, DiagnosticsPage]
-PAGES = MAIN_PAGES + MENU_PAGES

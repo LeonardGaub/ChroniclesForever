@@ -106,6 +106,3 @@ def read_db2(data: bytes) -> list[dict]:
         rows.extend(section_rows)
     return rows
 
-
-def table_hash(data: bytes) -> int:
-    return struct.unpack_from("<I", data, 8 + 128 + 16)[0]

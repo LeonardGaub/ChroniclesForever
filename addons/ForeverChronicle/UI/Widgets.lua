@@ -92,15 +92,7 @@ function UI:CheckBox(parent, key, tooltipKey, onClick)
   label:SetPoint("LEFT", cb, "RIGHT", 4, 1)
   cb.label = label
   cb:SetScript("OnClick", function(self) onClick(self:GetChecked() and true or false) end)
-  if tooltipKey then
-    cb:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(L[key], 1, 0.82, 0)
-      GameTooltip:AddLine(L[tooltipKey], 1, 1, 1, true)
-      GameTooltip:Show()
-    end)
-    cb:SetScript("OnLeave", GameTooltip_Hide)
-  end
+  if tooltipKey then self:Tooltip(cb, key, tooltipKey) end
   return cb
 end
 

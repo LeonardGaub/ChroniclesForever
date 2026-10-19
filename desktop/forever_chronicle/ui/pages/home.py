@@ -174,7 +174,6 @@ class Thumb(QLabel):
 
 class HomePage(Page):
     title_key = "tab.home"
-    needs_character = False
 
     def __init__(self, ctx):
         super().__init__(ctx)
@@ -220,7 +219,6 @@ class HomePage(Page):
             card.body.addLayout(body)
             card.body.addStretch(1)
             self.bodies[name] = body
-        self.windows = []          # cinematic windows and viewers opened from here
 
     def refresh(self) -> None:
         repo = self.ctx.repo
@@ -305,7 +303,6 @@ class HomePage(Page):
         stats.setColumnStretch(2, 1)
         body.addWidget(self._heading(tr("home.stats")))
         body.addLayout(stats)
-        self.stats_grid = stats
 
         zones = zone_times(route, start, end)
         if zones:

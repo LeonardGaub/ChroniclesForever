@@ -212,12 +212,6 @@ class Repository:
                c.last_seen_at DESC, c.name""").fetchall()
         return [Character.from_row(r) for r in rows]
 
-    def owners(self) -> list[sqlite3.Row]:
-        """Friends with the number of their characters."""
-        return self.conn.execute(
-            """SELECT o.*, (SELECT COUNT(*) FROM characters c WHERE c.owner_id = o.owner_id) AS characters
-               FROM owners o ORDER BY o.display_name COLLATE NOCASE""").fetchall()
-
     # -- events -----------------------------------------------------------------
 
     def insert_event(self, character_id: str, rec: dict[str, Any], import_id: int, schema_version: int) -> bool:

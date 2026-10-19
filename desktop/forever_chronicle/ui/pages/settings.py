@@ -29,7 +29,6 @@ def slider() -> QSlider:
 class SettingsPage(Page):
     title_key = "tab.settings"
     scrollable = True
-    needs_character = False
 
     def __init__(self, ctx):
         super().__init__(ctx)

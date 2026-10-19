@@ -5,7 +5,6 @@
 local ADDON, FC = ...
 
 FC.locales = {}
-FC.SUPPORTED_LANGUAGES = { "deDE", "enUS" }
 FC.DEFAULT_LANGUAGE = "deDE"
 
 local active = {}

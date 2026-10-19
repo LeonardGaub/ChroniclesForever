@@ -99,11 +99,6 @@ local function serialize(v, out)
     out[#out + 1] = "nil"
   end
 end
-Storage.Serialize = function(v)
-  local out = {}
-  serialize(v, out)
-  return table.concat(out)
-end
 
 -- True if text holds only literal data: strings, numbers, true/false/nil, braces, brackets, keys, "=" and ",".
 -- No names, calls, operators or loops, so compiling it cannot run anything (friends' data arrives packed too).

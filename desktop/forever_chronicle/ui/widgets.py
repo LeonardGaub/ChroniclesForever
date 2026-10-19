@@ -47,10 +47,9 @@ def table(columns: int, stretch_column: int) -> QTableWidget:
 
 
 class Page(QWidget):
-    """A tab of the main window. Pages are listed in ``ui.pages.PAGES``."""
+    """A tab of the main window. Pages are listed in ``ui.pages``."""
 
     title_key = ""
-    needs_character = True
     scrollable = False      # a form that may be taller than the window: the main window puts it in a scroll area
 
     def __init__(self, ctx: AppContext):

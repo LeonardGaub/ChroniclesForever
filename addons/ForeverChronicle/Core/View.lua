@@ -1,7 +1,7 @@
 -- Journey Forever - View
 -- Which character the window shows (docs/Sharing_Design.md, phase 2). Recording always writes to the played
 -- character (FC.char); the pages read through the view instead:
---   FC:ViewChar(), FC:ViewStream(name), FC:ViewSnapshot(name), FC:IsViewingPlayed(), FC:ViewOwner()
+--   FC:ViewChar(), FC:ViewStream(name), FC:IsViewingPlayed(), FC:ViewOwner()
 -- Available characters: every character of this account (FC.db.characters, all in the same SavedVariables)
 -- plus whatever other addons add with FC:RegisterViewSource (characters in the same record shape, read-only).
 -- After login the view is the played character.
@@ -9,7 +9,6 @@
 local ADDON, FC = ...
 
 local View = { key = nil, entry = nil } -- key nil = the played character
-FC.View = View
 
 -- Other addons can add characters to the chooser:
 --   source = { entries = function() -> { { key, char, owner } }   -- owner: group name shown in the list
@@ -93,13 +92,6 @@ function FC:ViewStream(name)
   if type(s) == "table" then FC.Storage.Unpack(s) end
   if type(s) == "table" and type(s.records) == "table" then return s end
   return { nextSeq = 1, dropped = 0, records = {} }
-end
-
-function FC:ViewSnapshot(name)
-  local char = self:ViewChar()
-  if char == self.char then return self.Storage:GetSnapshot(name) end
-  local s = type(char.snapshots) == "table" and char.snapshots[name]
-  return type(s) == "table" and s or {}
 end
 
 -------------------------------------------------------------------------------
