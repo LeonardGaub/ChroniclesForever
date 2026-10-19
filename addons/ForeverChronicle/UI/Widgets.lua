@@ -187,18 +187,23 @@ function UI:Tooltip(frame, title, line)
   frame:SetScript("OnLeave", GameTooltip_Hide)
 end
 
+-- Icon inset 2 px on a dark square. Without size the square fills the parent. Returns square, icon.
+function UI:IconSquare(parent, size)
+  local bg = parent:CreateTexture(nil, "BACKGROUND")
+  if size then bg:SetSize(size, size) else bg:SetAllPoints() end
+  bg:SetColorTexture(0, 0, 0, 0.7)
+  local icon = parent:CreateTexture(nil, "ARTWORK")
+  icon:SetPoint("TOPLEFT", bg, 2, -2)
+  icon:SetPoint("BOTTOMRIGHT", bg, -2, 2)
+  self:CropIcon(icon)
+  return bg, icon
+end
+
 -- Square icon button (action-button style) with tooltip. Use UI:SetSelected for a gold "active" border.
 function UI:IconButton(parent, size, icon, title, line, onClick)
   local b = CreateFrame("Button", nil, parent)
   b:SetSize(size, size)
-  local bg = b:CreateTexture(nil, "BACKGROUND")
-  bg:SetAllPoints()
-  bg:SetColorTexture(0, 0, 0, 0.7)
-  b.bg = bg
-  b.icon = b:CreateTexture(nil, "ARTWORK")
-  b.icon:SetPoint("TOPLEFT", 2, -2)
-  b.icon:SetPoint("BOTTOMRIGHT", -2, 2)
-  self:CropIcon(b.icon)
+  b.bg, b.icon = self:IconSquare(b)
   self:SetIcon(b.icon, icon)
   b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
   b.selection = self:SelectionBorder(b)
