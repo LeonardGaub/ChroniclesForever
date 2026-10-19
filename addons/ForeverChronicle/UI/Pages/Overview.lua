@@ -32,10 +32,9 @@ local function statTile(parent, def)
   t.name:SetPoint("TOPLEFT", bg, "TOPRIGHT", 8, -2)
   t.name:SetPoint("RIGHT", t, "RIGHT")
   t.name:SetWordWrap(false)
-  t.value = t:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  t.value = UI:Label(t, nil, "GameFontHighlight")
   t.value:SetPoint("BOTTOMLEFT", bg, "BOTTOMRIGHT", 8, 2)
   t.value:SetPoint("RIGHT", t, "RIGHT")
-  t.value:SetJustifyH("LEFT")
   t.def = def
   return t
 end

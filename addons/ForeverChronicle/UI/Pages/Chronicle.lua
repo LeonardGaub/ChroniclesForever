@@ -127,15 +127,13 @@ local function createRow(row)
   row.shotStatus:SetSize(13, 13)
   row.shotStatus:SetPoint("BOTTOMRIGHT", row.shot, "BOTTOMRIGHT", 4, -3)
 
-  row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  row.text = UI:Label(row, nil, "GameFontHighlight")
   row.text:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 8, -1)
   row.text:SetPoint("RIGHT", row, "RIGHT", -38, 0)
-  row.text:SetJustifyH("LEFT")
   row.text:SetWordWrap(false)
-  row.sub = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  row.sub = UI:Label(row, nil, "GameFontDisableSmall")
   row.sub:SetPoint("BOTTOMLEFT", row.icon, "BOTTOMRIGHT", 8, 1)
   row.sub:SetPoint("RIGHT", row, "RIGHT", -38, 0)
-  row.sub:SetJustifyH("LEFT")
   row.sub:SetWordWrap(false)
 
   -- Day heading: text with a line on each side (book) or a line to the right (classic).
