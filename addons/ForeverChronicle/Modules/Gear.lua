@@ -58,12 +58,7 @@ function Gear:BySlot(char)
 end
 
 function Gear:ScheduleScan(delay)
-  if self.pending then return end
-  self.pending = true
-  FC:After(delay or 1, function()
-    self.pending = nil
-    self:Scan()
-  end)
+  FC:Debounce(self, "pending", delay or 1, function() self:Scan() end)
 end
 
 function Gear:OnEnable()

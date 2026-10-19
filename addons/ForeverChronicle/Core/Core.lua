@@ -168,6 +168,16 @@ function FC:After(seconds, fn)
   C_Timer.After(seconds, function() FC:SafeCall(fn) end)
 end
 
+-- Runs fn after `seconds` unless a call with the same owner and key is already waiting.
+function FC:Debounce(owner, key, seconds, fn)
+  if owner[key] then return end
+  owner[key] = true
+  self:After(seconds, function()
+    owner[key] = nil
+    fn()
+  end)
+end
+
 function FC:NewTicker(seconds, fn)
   return C_Timer.NewTicker(seconds, function() FC:SafeCall(fn) end)
 end
