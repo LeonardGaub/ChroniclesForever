@@ -21,7 +21,7 @@ function UI:SetClassIcon(tex, classFile)
   local coords = CLASS_ICON_TCOORDS and classFile and CLASS_ICON_TCOORDS[classFile]
   if not coords then
     tex:SetTexture(UI.ICON_FALLBACK)
-    tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    UI:CropIcon(tex)
     return false
   end
   tex:SetTexture(CLASS_ICONS)

@@ -524,7 +524,7 @@ function Canvas:SetPins(pins)
       pin.icon:SetTexCoord(0, 1, 0, 1)
     else
       UI:SetIcon(pin.icon, data.icon)
-      pin.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+      UI:CropIcon(pin.icon)
     end
     pin.title, pin.text, pin.time = data.title, data.text, data.time
     pin.painted = nil

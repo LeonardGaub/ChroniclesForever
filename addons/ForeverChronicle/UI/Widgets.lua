@@ -168,6 +168,11 @@ function UI:SetIcon(tex, path)
   return ok ~= false
 end
 
+-- Trims the dark border baked into the edges of most icon files.
+function UI:CropIcon(tex)
+  tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+end
+
 -- Tooltip with a gold title (locale key or function) and an optional white line (key, text or function).
 function UI:Tooltip(frame, title, line)
   frame:SetScript("OnEnter", function(owner)
@@ -193,7 +198,7 @@ function UI:IconButton(parent, size, icon, title, line, onClick)
   b.icon = b:CreateTexture(nil, "ARTWORK")
   b.icon:SetPoint("TOPLEFT", 2, -2)
   b.icon:SetPoint("BOTTOMRIGHT", -2, 2)
-  b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  self:CropIcon(b.icon)
   self:SetIcon(b.icon, icon)
   b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
   b.selection = self:SelectionBorder(b)
