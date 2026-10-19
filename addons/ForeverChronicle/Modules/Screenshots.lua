@@ -10,6 +10,11 @@ local ADDON, FC = ...
 local Util = FC.Util
 local L = FC.L
 
+-- The triggers players can switch on and off, in the order of the settings and /fjshot. Quest and death start off.
+local TRIGGER_OPTIONS = { "level", "achievement", "rare", "dungeon", "zone", "quest", "death" }
+local triggerDefaults = {}
+for _, name in ipairs(TRIGGER_OPTIONS) do triggerDefaults[name] = name ~= "quest" and name ~= "death" end
+
 local Shots = FC:NewModule("Screenshots", { order = 50, defaults = {
   countdown = true,   -- on-screen countdown; hidden before the capture
   hideUI = "off",     -- hide the interface for the screenshot: "off", "all", "popups" (all but event popups)
@@ -17,7 +22,7 @@ local Shots = FC:NewModule("Screenshots", { order = 50, defaults = {
   cooldown = 30,
   bypass = true,
   capacity = 50,
-  triggers = { level = true, achievement = true, rare = true, dungeon = true, zone = true, quest = false, death = false },
+  triggers = triggerDefaults,
 } })
 
 FC.Storage:DefineStream("screenshots", 2000, "Interface\\Icons\\INV_Misc_Spyglass_02")
@@ -42,9 +47,6 @@ local POPUP_FRAMES = { "EventToastManagerFrame", "LevelUpDisplay", "BossBanner",
 
 Shots.triggers = {}
 Shots.triggerByEvent = {}
-
--- The triggers players can switch on and off, in the order of the settings and /fjshot.
-local TRIGGER_OPTIONS = { "level", "achievement", "rare", "dungeon", "zone", "quest", "death" }
 
 function Shots:RegisterTrigger(name, def)
   def.name = name

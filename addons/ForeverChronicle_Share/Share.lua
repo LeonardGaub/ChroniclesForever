@@ -17,18 +17,21 @@
 local FC = ForeverChronicle -- the main addon (dependency, loaded first)
 local L = FC.L
 
+local CATEGORIES = { "stats", "chronicle", "routes", "sessions", "professions", "gear", "screenshots" }
+local allShared = {}
+for _, cat in ipairs(CATEGORIES) do allShared[cat] = true end
+
 local Share = FC:NewModule("Share", { order = 60, defaults = {
   name = "",
   chars = {},          -- [characterKey] = false to exclude a character
-  cats = { stats = true, chronicle = true, routes = true, sessions = true, professions = true, gear = true,
-    screenshots = true },
+  cats = allShared,
 } })
 
 Share.FORMAT = 2               -- 2: streams packed (FC.Storage.Pack)
 Share.SHARE_ADDON = "ForeverChronicle_Share"
 Share.EVENTS = 200               -- newest chronicle entries per character
 Share.MAX_POINTS = 20000         -- newest route points per character (all sessions; about 1 MB at most)
-Share.CATEGORIES = { "stats", "chronicle", "routes", "sessions", "professions", "gear", "screenshots" }
+Share.CATEGORIES = CATEGORIES
 local SHOT_FIELDS = { "id", "seq", "trigger", "events", "requestedAt", "capturedAt", "fileStamp", "status" }
 
 local INFO_FIELDS = { "key", "guid", "name", "nameSuffix", "realm", "className", "classFile", "raceName", "raceFile",
