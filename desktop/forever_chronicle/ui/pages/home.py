@@ -163,9 +163,9 @@ class Thumb(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background: #f3eee2; border: 1px solid #c9bea6;")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        icon = load_thumbnail(path, size)
-        if icon is not None:
-            self.setPixmap(icon.pixmap(size))
+        pix = load_thumbnail(path, size)
+        if pix is not None:
+            self.setPixmap(pix)
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:

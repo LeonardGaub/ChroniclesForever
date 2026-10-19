@@ -49,7 +49,7 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from PySide6.QtCore import QElapsedTimer, QEvent, QPointF, QRectF, Qt, QTimer
+from PySide6.QtCore import QElapsedTimer, QEvent, QPointF, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QGraphicsOpacityEffect, QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsScene,
                                QGraphicsView, QHBoxLayout, QLabel, QPushButton, QToolTip, QWidget)
@@ -70,7 +70,8 @@ from .cinematic_credits import CreditsOverlay
 from .cinematic_hud import XpBar
 from .cinematic_fx import (ARCANE_COLOR, FADE_SECONDS, GHOST_COLOR, AchievementToast, CinemaFrame, CinemaView,
                            MarkerItem, PhotoOverlay, Pin, PinsItem, RouteItem, SkyItem, TitleCard, clamp, ease_in_out,
-                           load_thumbnail, with_alpha)
+                           with_alpha)
+from .screenshots import load_thumbnail
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
 TICK_MS = 33
@@ -1535,7 +1536,7 @@ class CinematicWindow(QWidget):
 
     def _thumb(self, path: str | None) -> QPixmap | None:
         if path not in self._thumbs:
-            self._thumbs[path] = load_thumbnail(path)
+            self._thumbs[path] = load_thumbnail(path, QSize(96, 60), fill=True)
         return self._thumbs[path]
 
     def _soft_pixmap(self, view: int) -> QPixmap | None:

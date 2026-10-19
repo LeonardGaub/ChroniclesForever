@@ -12,8 +12,9 @@ from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QLinearGradient, 
 from ..domain.credits import Section
 from ..i18n import tr
 from . import theme
-from .cinematic_fx import (BANNER_HEADING, PAPER, PAPER_EDGE, TRIM, _Overlay, clamp, cropped, ease_out, load_thumbnail,
-                           pixel_font, with_alpha)
+from .cinematic_fx import (BANNER_HEADING, PAPER, PAPER_EDGE, TRIM, _Overlay, clamp, cropped, ease_out, pixel_font,
+                           with_alpha)
+from .screenshots import load_thumbnail
 
 SPEED = 0.07               # scrolling, in window heights per second
 DIM_SECONDS = 2.5          # the map dims behind the credits
@@ -29,7 +30,7 @@ class CreditsOverlay(_Overlay):
     def __init__(self, parent, title: list[str], sections: list[Section], photos: list[str] = ()):
         super().__init__(parent)
         self.title, self.sections = title, sections
-        self.photos: list[QPixmap] = [p for p in (load_thumbnail(path, QSize(360, 240))
+        self.photos: list[QPixmap] = [p for p in (load_thumbnail(path, QSize(360, 240), fill=True)
                                                   for path in list(photos)[:MAX_PHOTOS]) if p is not None]
         self.age = 0.0
         self.area = QRectF()            # the picture between the letterbox bars

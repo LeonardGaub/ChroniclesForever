@@ -31,8 +31,8 @@ import bisect
 import math
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import (QBrush, QColor, QFont, QFontMetrics, QImageReader, QLinearGradient, QPainter,
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import (QBrush, QColor, QFont, QFontMetrics, QLinearGradient, QPainter,
                            QPainterPath, QPen, QPixmap, QRadialGradient)
 from PySide6.QtWidgets import QGraphicsColorizeEffect, QGraphicsItem, QGraphicsView, QWidget
 
@@ -110,18 +110,6 @@ def pixel_font(px: float, bold: bool = False, families=None) -> QFont:
         font.setFamilies(families)
     font.setPixelSize(max(6, int(px)))
     return font
-
-
-def load_thumbnail(path: str | None, size: QSize = QSize(96, 60)) -> QPixmap | None:
-    if not path:
-        return None
-    reader = QImageReader(path)
-    full = reader.size()
-    if not full.isValid():
-        return None
-    reader.setScaledSize(full.scaled(size, Qt.AspectRatioMode.KeepAspectRatioByExpanding))
-    image = reader.read()
-    return QPixmap.fromImage(image) if not image.isNull() else None
 
 
 def cropped(pixmap: QPixmap, aspect: float, zoom: float = 1.0, drift: QPointF = QPointF()) -> QRectF:
