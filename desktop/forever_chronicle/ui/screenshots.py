@@ -285,20 +285,8 @@ class ScreenshotViewer(QWidget):
         shot = self.current
         if not (self.ctx and shot.character_id and shot.time):
             return None
-        from .cinematic import CinematicWindow
+        from .cinematic import open_cinematic
         start, end = replay_range(self.ctx, shot.character_id, shot.time)
-        colors = self.ctx.config.extra.get("map_colors") or "level"
-        self.cinematic = keep_open(CinematicWindow(self.ctx, shot.character_id, start, end, 4, colors))
-        self.cinematic.showFullScreen()
+        self.cinematic = open_cinematic(self.ctx, shot.character_id, start, end)
         self.close()
         return self.cinematic
-
-
-_open: list[QWidget] = []
-
-
-def keep_open(window: QWidget) -> QWidget:
-    """Keeps a top-level window alive while it is open (it has no parent that would)."""
-    _open.append(window)
-    window.destroyed.connect(lambda *_: _open.remove(window) if window in _open else None)
-    return window

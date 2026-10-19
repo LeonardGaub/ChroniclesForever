@@ -1718,3 +1718,21 @@ class CinematicWindow(QWidget):
             self.cover_age += dt
             self.cover_effect.setOpacity(max(0.0, 1 - self.cover_age / FADE_SECONDS))
         self._age_controls(dt)
+
+
+_open: list[QWidget] = []
+
+
+def keep_open(window: QWidget) -> QWidget:
+    """Keeps a top-level window alive while it is open (it has no parent that would)."""
+    _open.append(window)
+    window.destroyed.connect(lambda *_: _open.remove(window) if window in _open else None)
+    return window
+
+
+def open_cinematic(ctx, character_id: str, start: int, end: int, speed: int = 4) -> CinematicWindow:
+    """The cinematic mode for [start, end] in full screen, coloured as chosen on the map page."""
+    colors = ctx.config.extra.get("map_colors") or "level"
+    window = keep_open(CinematicWindow(ctx, character_id, start, end, speed, colors))
+    window.showFullScreen()
+    return window

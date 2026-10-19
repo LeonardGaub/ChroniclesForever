@@ -29,7 +29,7 @@ from ...domain.route_colors import MODES, SEGMENT_END, RouteColors, hex_color
 from ...i18n import format_datetime, format_duration, tr
 from ...wow.map_art import find_art
 from .. import icons, theme
-from ..cinematic import CinematicWindow
+from ..cinematic import open_cinematic
 from ..cinematic_export import ExportDialog
 from ..widgets import Page, muted
 
@@ -506,9 +506,7 @@ class MapPage(Page):
             return
         self.timer.stop()
         self._set_play_text()
-        self._cinematic_window = CinematicWindow(self.ctx, self.character_id, self.range[0], self.range[1],
-                                                 self.speed.currentData(), self._color_mode())
-        self._cinematic_window.showFullScreen()
+        open_cinematic(self.ctx, self.character_id, self.range[0], self.range[1], self.speed.currentData())
 
     def _export_video(self) -> None:
         if not self.route or not self.range or not self.character_id:
