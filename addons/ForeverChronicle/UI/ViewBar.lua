@@ -21,7 +21,7 @@ function UI:SetClassIcon(tex, classFile)
   local coords = CLASS_ICON_TCOORDS and classFile and CLASS_ICON_TCOORDS[classFile]
   if not coords then
     tex:SetTexture(UI.ICON_FALLBACK)
-    tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    UI:CropIcon(tex)
     return false
   end
   tex:SetTexture(CLASS_ICONS)
@@ -90,22 +90,19 @@ end
 local function createRow(row)
   row.header = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   row.header:SetPoint("BOTTOMLEFT", 6, 5)
-  row.note = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  row.note = UI:Label(row, nil, "GameFontDisableSmall")
   row.note:SetPoint("LEFT", 8, 0)
   row.note:SetPoint("RIGHT", -8, 0)
-  row.note:SetJustifyH("LEFT")
   row.icon = row:CreateTexture(nil, "ARTWORK")
   row.icon:SetSize(28, 28)
   row.icon:SetPoint("LEFT", 12, 0)
-  row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  row.name = UI:Label(row, nil, "GameFontHighlight")
   row.name:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 8, -1)
   row.name:SetPoint("RIGHT", -8, 0)
-  row.name:SetJustifyH("LEFT")
   row.name:SetWordWrap(false)
-  row.sub = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  row.sub = UI:Label(row, nil, "GameFontDisableSmall")
   row.sub:SetPoint("BOTTOMLEFT", row.icon, "BOTTOMRIGHT", 8, 1)
   row.sub:SetPoint("RIGHT", -8, 0)
-  row.sub:SetJustifyH("LEFT")
   row.sub:SetWordWrap(false)
   row.hl = row:CreateTexture(nil, "HIGHLIGHT")
   row.hl:SetAllPoints()
@@ -147,20 +144,15 @@ function UI:CreateViewBar(f)
   bar:SetHeight(BAR_HEIGHT)
   bar:SetPoint("TOPLEFT", f, "TOPLEFT", 58, -25)
   bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -25)
-  if bar.SetBackdrop then
-    bar:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-    bar:SetBackdropColor(0.08, 0.06, 0.04, 0.95)
-    bar:SetBackdropBorderColor(1, 0.82, 0, 0.7)
-  end
+  UI:Backdrop(bar, { bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } },
+    { 0.08, 0.06, 0.04, 0.95 }, { 1, 0.82, 0, 0.7 })
   bar:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-  bar.name = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  bar.name = UI:Label(bar, nil, "GameFontNormalLarge")
   bar.name:SetPoint("LEFT", 12, 0)
-  bar.name:SetJustifyH("LEFT")
   bar.name:SetWordWrap(false)
-  bar.sub = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  bar.sub = UI:Label(bar, nil, "GameFontHighlightSmall")
   bar.sub:SetPoint("LEFT", bar.name, "RIGHT", 12, -1)
-  bar.sub:SetJustifyH("LEFT")
   bar.sub:SetWordWrap(false)
   bar.arrow = bar:CreateTexture(nil, "OVERLAY")
   bar.arrow:SetSize(24, 24)
@@ -182,12 +174,9 @@ function UI:CreateViewBar(f)
   list:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -2)
   list:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", 0, -2)
   list:SetFrameStrata("DIALOG")
-  if list.SetBackdrop then
-    list:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14, insets = { left = 4, right = 4, top = 4, bottom = 4 } })
-    list:SetBackdropColor(0.05, 0.04, 0.03, 0.97)
-    list:SetBackdropBorderColor(1, 0.82, 0, 0.8)
-  end
+  UI:Backdrop(list, { bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14, insets = { left = 4, right = 4, top = 4, bottom = 4 } },
+    { 0.05, 0.04, 0.03, 0.97 }, { 1, 0.82, 0, 0.8 })
   list:EnableMouse(true)
   list:Hide()
   self.viewList = list

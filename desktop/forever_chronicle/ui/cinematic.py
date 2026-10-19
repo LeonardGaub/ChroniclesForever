@@ -49,7 +49,7 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from PySide6.QtCore import QElapsedTimer, QEvent, QPointF, QRectF, Qt, QTimer
+from PySide6.QtCore import QElapsedTimer, QEvent, QPointF, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QGraphicsOpacityEffect, QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsScene,
                                QGraphicsView, QHBoxLayout, QLabel, QPushButton, QToolTip, QWidget)
@@ -70,7 +70,8 @@ from .cinematic_credits import CreditsOverlay
 from .cinematic_hud import XpBar
 from .cinematic_fx import (ARCANE_COLOR, FADE_SECONDS, GHOST_COLOR, AchievementToast, CinemaFrame, CinemaView,
                            MarkerItem, PhotoOverlay, Pin, PinsItem, RouteItem, SkyItem, TitleCard, clamp, ease_in_out,
-                           load_thumbnail, with_alpha)
+                           with_alpha)
+from .screenshots import load_thumbnail
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
 TICK_MS = 33
@@ -1535,7 +1536,7 @@ class CinematicWindow(QWidget):
 
     def _thumb(self, path: str | None) -> QPixmap | None:
         if path not in self._thumbs:
-            self._thumbs[path] = load_thumbnail(path)
+            self._thumbs[path] = load_thumbnail(path, QSize(96, 60), fill=True)
         return self._thumbs[path]
 
     def _soft_pixmap(self, view: int) -> QPixmap | None:
@@ -1717,3 +1718,21 @@ class CinematicWindow(QWidget):
             self.cover_age += dt
             self.cover_effect.setOpacity(max(0.0, 1 - self.cover_age / FADE_SECONDS))
         self._age_controls(dt)
+
+
+_open: list[QWidget] = []
+
+
+def keep_open(window: QWidget) -> QWidget:
+    """Keeps a top-level window alive while it is open (it has no parent that would)."""
+    _open.append(window)
+    window.destroyed.connect(lambda *_: _open.remove(window) if window in _open else None)
+    return window
+
+
+def open_cinematic(ctx, character_id: str, start: int, end: int, speed: int = 4) -> CinematicWindow:
+    """The cinematic mode for [start, end] in full screen, coloured as chosen on the map page."""
+    colors = ctx.config.extra.get("map_colors") or "level"
+    window = keep_open(CinematicWindow(ctx, character_id, start, end, speed, colors))
+    window.showFullScreen()
+    return window

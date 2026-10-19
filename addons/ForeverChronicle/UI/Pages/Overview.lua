@@ -24,23 +24,17 @@ local WEAPON_SLOTS = { "MainHandSlot", "SecondaryHandSlot", "RangedSlot" }
 local function statTile(parent, def)
   local t = CreateFrame("Frame", nil, parent)
   t:SetSize(TILE_W, TILE_H)
-  local bg = t:CreateTexture(nil, "BACKGROUND")
-  bg:SetSize(34, 34)
+  local bg
+  bg, t.icon = UI:IconSquare(t, 34)
   bg:SetPoint("LEFT")
-  bg:SetColorTexture(0, 0, 0, 0.7)
-  t.icon = t:CreateTexture(nil, "ARTWORK")
-  t.icon:SetPoint("TOPLEFT", bg, 2, -2)
-  t.icon:SetPoint("BOTTOMRIGHT", bg, -2, 2)
-  t.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
   UI:SetIcon(t.icon, def.icon)
   t.name = UI:Label(t, def.labelKey, "GameFontNormalSmall")
   t.name:SetPoint("TOPLEFT", bg, "TOPRIGHT", 8, -2)
   t.name:SetPoint("RIGHT", t, "RIGHT")
   t.name:SetWordWrap(false)
-  t.value = t:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  t.value = UI:Label(t, nil, "GameFontHighlight")
   t.value:SetPoint("BOTTOMLEFT", bg, "BOTTOMRIGHT", 8, 2)
   t.value:SetPoint("RIGHT", t, "RIGHT")
-  t.value:SetJustifyH("LEFT")
   t.def = def
   return t
 end
@@ -189,11 +183,7 @@ local XP_NORMAL, XP_RESTED = { 0.58, 0, 0.55 }, { 0, 0.39, 0.88 }
 local function xpBar(parent, width)
   local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
   f:SetSize(width, 18)
-  if f.SetBackdrop then
-    f:SetBackdrop({ bgFile = UI.WHITE, edgeFile = UI.WHITE, edgeSize = 1 })
-    f:SetBackdropColor(0, 0, 0, 0.65)
-    f:SetBackdropBorderColor(0.55, 0.45, 0.25, 0.9)
-  end
+  UI:Backdrop(f, { bgFile = UI.WHITE, edgeFile = UI.WHITE, edgeSize = 1 }, { 0, 0, 0, 0.65 }, { 0.55, 0.45, 0.25, 0.9 })
   local bar = CreateFrame("StatusBar", nil, f)
   bar:SetPoint("TOPLEFT", 2, -2)
   bar:SetPoint("BOTTOMRIGHT", -2, 2)

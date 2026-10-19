@@ -96,6 +96,14 @@ function UI:CheckBox(parent, key, tooltipKey, onClick)
   return cb
 end
 
+-- Sets a backdrop (nil clears it) with optional { r, g, b, a } colours. No-op where the client has no backdrops.
+function UI:Backdrop(frame, def, bg, border)
+  if not frame.SetBackdrop then return end
+  frame:SetBackdrop(def)
+  if bg then frame:SetBackdropColor(unpack(bg)) end
+  if border then frame:SetBackdropBorderColor(unpack(border)) end
+end
+
 -- Gold border around a selected button (choices, toggles, tabs). nil where the client has no backdrops.
 function UI:SelectionBorder(button)
   local ok, border = pcall(CreateFrame, "Frame", nil, button, "BackdropTemplate")
@@ -160,6 +168,11 @@ function UI:SetIcon(tex, path)
   return ok ~= false
 end
 
+-- Trims the dark border baked into the edges of most icon files.
+function UI:CropIcon(tex)
+  tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+end
+
 -- Tooltip with a gold title (locale key or function) and an optional white line (key, text or function).
 function UI:Tooltip(frame, title, line)
   frame:SetScript("OnEnter", function(owner)
@@ -174,18 +187,23 @@ function UI:Tooltip(frame, title, line)
   frame:SetScript("OnLeave", GameTooltip_Hide)
 end
 
+-- Icon inset 2 px on a dark square. Without size the square fills the parent. Returns square, icon.
+function UI:IconSquare(parent, size)
+  local bg = parent:CreateTexture(nil, "BACKGROUND")
+  if size then bg:SetSize(size, size) else bg:SetAllPoints() end
+  bg:SetColorTexture(0, 0, 0, 0.7)
+  local icon = parent:CreateTexture(nil, "ARTWORK")
+  icon:SetPoint("TOPLEFT", bg, 2, -2)
+  icon:SetPoint("BOTTOMRIGHT", bg, -2, 2)
+  self:CropIcon(icon)
+  return bg, icon
+end
+
 -- Square icon button (action-button style) with tooltip. Use UI:SetSelected for a gold "active" border.
 function UI:IconButton(parent, size, icon, title, line, onClick)
   local b = CreateFrame("Button", nil, parent)
   b:SetSize(size, size)
-  local bg = b:CreateTexture(nil, "BACKGROUND")
-  bg:SetAllPoints()
-  bg:SetColorTexture(0, 0, 0, 0.7)
-  b.bg = bg
-  b.icon = b:CreateTexture(nil, "ARTWORK")
-  b.icon:SetPoint("TOPLEFT", 2, -2)
-  b.icon:SetPoint("BOTTOMRIGHT", -2, 2)
-  b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  b.bg, b.icon = self:IconSquare(b)
   self:SetIcon(b.icon, icon)
   b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
   b.selection = self:SelectionBorder(b)

@@ -16,7 +16,7 @@ from __future__ import annotations
 import html
 import time
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, QUrl
+from PySide6.QtCore import QPointF, QRectF, QSignalBlocker, Qt, QTimer, QUrl
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QGraphicsEllipseItem, QGraphicsItem, QGraphicsPathItem,
                                QGraphicsPixmapItem, QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel, QPushButton,
@@ -29,7 +29,7 @@ from ...domain.route_colors import MODES, SEGMENT_END, RouteColors, hex_color
 from ...i18n import format_datetime, format_duration, tr
 from ...wow.map_art import find_art
 from .. import icons, theme
-from ..cinematic import CinematicWindow
+from ..cinematic import open_cinematic
 from ..cinematic_export import ExportDialog
 from ..widgets import Page, muted
 
@@ -245,13 +245,12 @@ class MapPage(Page):
         self.cinematic.setToolTip(tr("map.cinematic_tip"))
         self.export.setText(tr("cine.export"))
         self.export.setToolTip(tr("cine.export_tip"))
-        self.color_select.blockSignals(True)
-        self.color_select.clear()
-        for mode in MODES:
-            self.color_select.addItem(tr(f"map.colors_{mode}"), mode)
-        self.color_select.setCurrentIndex(MODES.index(self._color_mode()))
-        self.color_select.setToolTip(tr("map.colors_tip"))
-        self.color_select.blockSignals(False)
+        with QSignalBlocker(self.color_select):
+            self.color_select.clear()
+            for mode in MODES:
+                self.color_select.addItem(tr(f"map.colors_{mode}"), mode)
+            self.color_select.setCurrentIndex(MODES.index(self._color_mode()))
+            self.color_select.setToolTip(tr("map.colors_tip"))
 
     def _color_mode(self) -> str:
         mode = self.ctx.config.extra.get("map_colors")
@@ -269,24 +268,22 @@ class MapPage(Page):
             self._update_marker()
 
     def _fill_sessions(self) -> None:
-        self.session_select.blockSignals(True)
-        self.session_select.clear()
-        self.session_select.addItem(tr("map.session_all"), None)
-        for s in self.ctx.repo.sessions(self.character_id):
-            end = s["ended_at"] or int(time.time())
-            label = tr("map.session_item", date=format_datetime(s["started_at"]),
-                       duration=format_duration(end - s["started_at"]))
-            self.session_select.addItem(label, (s["started_at"], end))
-        self.session_select.blockSignals(False)
+        with QSignalBlocker(self.session_select):
+            self.session_select.clear()
+            self.session_select.addItem(tr("map.session_all"), None)
+            for s in self.ctx.repo.sessions(self.character_id):
+                end = s["ended_at"] or int(time.time())
+                label = tr("map.session_item", date=format_datetime(s["started_at"]),
+                           duration=format_duration(end - s["started_at"]))
+                self.session_select.addItem(label, (s["started_at"], end))
 
     def _fill_maps(self) -> None:
-        self.map_select.blockSignals(True)
-        self.map_select.clear()
-        infos = self.route.map_infos if self.route else {}
-        for map_id in (self.route.available_views() if self.route else []):
-            info = infos.get(map_id)
-            self.map_select.addItem(maps.display_name(map_id, info["name"] if info is not None else None), map_id)
-        self.map_select.blockSignals(False)
+        with QSignalBlocker(self.map_select):
+            self.map_select.clear()
+            infos = self.route.map_infos if self.route else {}
+            for map_id in (self.route.available_views() if self.route else []):
+                info = infos.get(map_id)
+                self.map_select.addItem(maps.display_name(map_id, info["name"] if info is not None else None), map_id)
 
     def _clear(self, notice: str) -> None:
         self.view.scene().clear()
@@ -338,9 +335,8 @@ class MapPage(Page):
         self.view_map = map_id
         index = self.map_select.findData(map_id)
         if index >= 0 and index != self.map_select.currentIndex():
-            self.map_select.blockSignals(True)
-            self.map_select.setCurrentIndex(index)
-            self.map_select.blockSignals(False)
+            with QSignalBlocker(self.map_select):
+                self.map_select.setCurrentIndex(index)
         if redraw:
             self._draw()
             self.view.fit()
@@ -506,9 +502,7 @@ class MapPage(Page):
             return
         self.timer.stop()
         self._set_play_text()
-        self._cinematic_window = CinematicWindow(self.ctx, self.character_id, self.range[0], self.range[1],
-                                                 self.speed.currentData(), self._color_mode())
-        self._cinematic_window.showFullScreen()
+        open_cinematic(self.ctx, self.character_id, self.range[0], self.range[1], self.speed.currentData())
 
     def _export_video(self) -> None:
         if not self.route or not self.range or not self.character_id:
@@ -564,9 +558,8 @@ class MapPage(Page):
             if start <= t <= end:
                 index = i
                 break
-        self.session_select.blockSignals(True)
-        self.session_select.setCurrentIndex(index)
-        self.session_select.blockSignals(False)
+        with QSignalBlocker(self.session_select):
+            self.session_select.setCurrentIndex(index)
         self._apply_range()
         zone = self.route.view_for(self.route.point_at(t))
         if zone is not None and zone != self.view_map:

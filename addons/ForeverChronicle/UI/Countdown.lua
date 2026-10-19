@@ -37,11 +37,10 @@ local function create()
   f.icon:SetSize(22, 22)
   f.icon:SetPoint("LEFT", 8, 0)
   f.icon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_02")
-  f.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-  f.text = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  UI:CropIcon(f.icon)
+  f.text = UI:Label(f, nil, "GameFontNormal")
   f.text:SetPoint("LEFT", f.icon, "RIGHT", 8, 0)
   f.text:SetPoint("RIGHT", -8, 0)
-  f.text:SetJustifyH("LEFT")
   f:Hide()
   return f
 end

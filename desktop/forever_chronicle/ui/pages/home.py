@@ -26,7 +26,7 @@ from ...i18n import format_datetime, format_day, format_duration, tr
 from ...wow.map_art import find_art
 from .. import icons, theme
 from ..cards import Card
-from ..screenshots import ScreenshotViewer, file_exists, keep_open, load_thumbnail, make_shot
+from ..screenshots import ScreenshotViewer, file_exists, load_thumbnail, make_shot
 from ..widgets import Page, muted
 
 # Moments counted for the last session, in this order (the type's game icon and the count).
@@ -163,9 +163,9 @@ class Thumb(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background: #f3eee2; border: 1px solid #c9bea6;")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        icon = load_thumbnail(path, size)
-        if icon is not None:
-            self.setPixmap(icon.pixmap(size))
+        pix = load_thumbnail(path, size)
+        if pix is not None:
+            self.setPixmap(pix)
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -416,13 +416,10 @@ class HomePage(Page):
 
     def play(self, start: int, end: int):
         """The cinematic mode for [start, end] (the last session's recap, or everything)."""
-        from ..cinematic import CinematicWindow
+        from ..cinematic import open_cinematic
         if not self.character_id:
             return None
-        colors = self.ctx.config.extra.get("map_colors") or "level"
-        window = keep_open(CinematicWindow(self.ctx, self.character_id, start, end, 4, colors))
-        window.showFullScreen()
-        return window
+        return open_cinematic(self.ctx, self.character_id, start, end)
 
     def _export(self, start: int, end: int) -> None:
         from ..cinematic_export import ExportDialog

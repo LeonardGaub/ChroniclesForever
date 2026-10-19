@@ -291,11 +291,7 @@ function page:CreateControlBar(c)
   bar:SetPoint("TOPLEFT", self.canvas.frame, "BOTTOMLEFT", -1, -5)
   bar:SetPoint("TOPRIGHT", self.canvas.frame, "BOTTOMRIGHT", 1, -5)
   bar:SetHeight(36)
-  if bar.SetBackdrop then
-    bar:SetBackdrop({ bgFile = UI.WHITE, edgeFile = UI.WHITE, edgeSize = 1 })
-    bar:SetBackdropColor(0, 0, 0, 0.45)
-    bar:SetBackdropBorderColor(0.6, 0.5, 0.3, 0.5)
-  end
+  UI:Backdrop(bar, { bgFile = UI.WHITE, edgeFile = UI.WHITE, edgeSize = 1 }, { 0, 0, 0, 0.45 }, { 0.6, 0.5, 0.3, 0.5 })
   self.prevEvent = mediaButton(bar, 24, "prev", function() self:StepEvent(-1) end)
   self.prevEvent:SetPoint("LEFT", 6, 0)
   UI:Tooltip(self.prevEvent, "MAP_PREV_EVENT", "MAP_STEP_TIP")

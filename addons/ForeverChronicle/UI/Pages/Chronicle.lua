@@ -114,7 +114,7 @@ local function createRow(row)
 
   row.iconFrame = row:CreateTexture(nil, "BORDER", nil, 1)
   row.icon = row:CreateTexture(nil, "ARTWORK")
-  row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  UI:CropIcon(row.icon)
   row.iconFrame:SetPoint("TOPLEFT", row.icon, -2, 2)
   row.iconFrame:SetPoint("BOTTOMRIGHT", row.icon, 2, -2)
 
@@ -122,20 +122,18 @@ local function createRow(row)
   row.shot = row:CreateTexture(nil, "ARTWORK")
   row.shot:SetSize(22, 22)
   row.shot:SetPoint("RIGHT", -8, 0)
-  row.shot:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  UI:CropIcon(row.shot)
   row.shotStatus = row:CreateTexture(nil, "OVERLAY")
   row.shotStatus:SetSize(13, 13)
   row.shotStatus:SetPoint("BOTTOMRIGHT", row.shot, "BOTTOMRIGHT", 4, -3)
 
-  row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  row.text = UI:Label(row, nil, "GameFontHighlight")
   row.text:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 8, -1)
   row.text:SetPoint("RIGHT", row, "RIGHT", -38, 0)
-  row.text:SetJustifyH("LEFT")
   row.text:SetWordWrap(false)
-  row.sub = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  row.sub = UI:Label(row, nil, "GameFontDisableSmall")
   row.sub:SetPoint("BOTTOMLEFT", row.icon, "BOTTOMRIGHT", 8, 1)
   row.sub:SetPoint("RIGHT", row, "RIGHT", -38, 0)
-  row.sub:SetJustifyH("LEFT")
   row.sub:SetWordWrap(false)
 
   -- Day heading: text with a line on each side (book) or a line to the right (classic).
@@ -528,11 +526,8 @@ function page:ApplyStyle()
   if book then
     if not UI:SetTextureFirst(self.parchment, PARCHMENT) then self.parchment:SetColorTexture(0.86, 0.76, 0.56, 1) end
     self.parchment:SetVertexColor(1, 1, 1, 1)
-    if paper.SetBackdrop then
-      paper:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 } })
-      paper:SetBackdropBorderColor(0.42, 0.29, 0.15, 1)
-    end
+    UI:Backdrop(paper, { edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14,
+      insets = { left = 4, right = 4, top = 4, bottom = 4 } }, nil, { 0.42, 0.29, 0.15, 1 })
     for _, v in ipairs(self.vignette) do
       local orientation, from, to = unpack(VIGNETTE[v.side])
       local r, g, b = unpack(VIGNETTE_COLOR)
@@ -554,7 +549,7 @@ function page:ApplyStyle()
   else
     self.parchment:Hide()
     for _, v in ipairs(self.vignette) do v:Hide() end
-    if paper.SetBackdrop then paper:SetBackdrop(nil) end
+    UI:Backdrop(paper, nil)
   end
   local st = style()
   for _, label in ipairs({ self.empty, self.emptyShots, self.emptyFiltered }) do

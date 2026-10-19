@@ -23,20 +23,24 @@ from ..domain import event_types
 from ..domain.cinematic import Cue, banner
 from ..i18n import format_datetime, tr
 from . import theme
+from .cards import THUMB_SIZE
 
-THUMB = QSize(112, 70)
 BATCH = 6
 REPLAY_BEFORE = 120        # the replay from a screenshot starts this many seconds of play before it
 
 
-def load_thumbnail(path: str, size: QSize = THUMB) -> QIcon | None:
+def load_thumbnail(path: str | None, size: QSize = THUMB_SIZE, fill: bool = False) -> QPixmap | None:
+    """The picture scaled to fit inside size, or with fill to cover it (for cropping)."""
+    if not path:
+        return None
     reader = QImageReader(path)
     full = reader.size()
     if not full.isValid():
         return None
-    reader.setScaledSize(full.scaled(size, Qt.AspectRatioMode.KeepAspectRatio))
+    mode = Qt.AspectRatioMode.KeepAspectRatioByExpanding if fill else Qt.AspectRatioMode.KeepAspectRatio
+    reader.setScaledSize(full.scaled(size, mode))
     image = reader.read()
-    return QIcon(QPixmap.fromImage(image)) if not image.isNull() else None
+    return QPixmap.fromImage(image) if not image.isNull() else None
 
 
 def file_exists(path: str | None) -> bool:
@@ -46,7 +50,7 @@ def file_exists(path: str | None) -> bool:
 class ThumbnailLoader:
     """Loads thumbnails on a timer and hands each one to its callback. Thumbnails are cached by path."""
 
-    def __init__(self, parent, size: QSize = THUMB):
+    def __init__(self, parent, size: QSize = THUMB_SIZE):
         self.size = size
         self.cache: dict[str, QIcon] = {}
         self._pending: list[tuple[str, Callable[[QIcon], None]]] = []
@@ -73,7 +77,10 @@ class ThumbnailLoader:
                 self._timer.stop()
                 return
             path, apply = self._pending.pop(0)
-            icon = self.cache.get(path) or load_thumbnail(path, self.size)
+            icon = self.cache.get(path)
+            if icon is None:
+                pix = load_thumbnail(path, self.size)
+                icon = QIcon(pix) if pix is not None else None
             if icon:
                 self.cache[path] = icon
                 apply(icon)
@@ -263,20 +270,8 @@ class ScreenshotViewer(QWidget):
         shot = self.current
         if not (self.ctx and shot.character_id and shot.time):
             return None
-        from .cinematic import CinematicWindow
+        from .cinematic import open_cinematic
         start, end = replay_range(self.ctx, shot.character_id, shot.time)
-        colors = self.ctx.config.extra.get("map_colors") or "level"
-        self.cinematic = keep_open(CinematicWindow(self.ctx, shot.character_id, start, end, 4, colors))
-        self.cinematic.showFullScreen()
+        self.cinematic = open_cinematic(self.ctx, shot.character_id, start, end)
         self.close()
         return self.cinematic
-
-
-_open: list[QWidget] = []
-
-
-def keep_open(window: QWidget) -> QWidget:
-    """Keeps a top-level window alive while it is open (it has no parent that would)."""
-    _open.append(window)
-    window.destroyed.connect(lambda *_: _open.remove(window) if window in _open else None)
-    return window

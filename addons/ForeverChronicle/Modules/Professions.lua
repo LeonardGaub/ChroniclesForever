@@ -243,12 +243,7 @@ function Professions:Update(snap, skillLine, info, now)
 end
 
 function Professions:ScheduleScan(delay, setBaseline)
-  if self.scanPending then return end
-  self.scanPending = true
-  FC:After(delay or 1, function()
-    self.scanPending = nil
-    self:Scan(setBaseline)
-  end)
+  FC:Debounce(self, "scanPending", delay or 1, function() self:Scan(setBaseline) end)
 end
 
 -------------------------------------------------------------------------------
@@ -334,11 +329,8 @@ function Professions:CaptureRecipes()
 end
 
 function Professions:ScheduleCapture()
-  if self.capturePending then return end
-  self.capturePending = true
   local wait = math.max(0.5, (self.lastCapture or -math.huge) + CAPTURE_INTERVAL - GetTime())
-  FC:After(wait, function()
-    self.capturePending = nil
+  FC:Debounce(self, "capturePending", wait, function()
     if self.windowOpen then self:CaptureRecipes() end
   end)
 end

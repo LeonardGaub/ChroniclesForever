@@ -31,8 +31,8 @@ import bisect
 import math
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import (QBrush, QColor, QFont, QFontMetrics, QImageReader, QLinearGradient, QPainter,
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import (QBrush, QColor, QFont, QFontMetrics, QLinearGradient, QPainter,
                            QPainterPath, QPen, QPixmap, QRadialGradient)
 from PySide6.QtWidgets import QGraphicsColorizeEffect, QGraphicsItem, QGraphicsView, QWidget
 
@@ -110,18 +110,6 @@ def pixel_font(px: float, bold: bool = False, families=None) -> QFont:
         font.setFamilies(families)
     font.setPixelSize(max(6, int(px)))
     return font
-
-
-def load_thumbnail(path: str | None, size: QSize = QSize(96, 60)) -> QPixmap | None:
-    if not path:
-        return None
-    reader = QImageReader(path)
-    full = reader.size()
-    if not full.isValid():
-        return None
-    reader.setScaledSize(full.scaled(size, Qt.AspectRatioMode.KeepAspectRatioByExpanding))
-    image = reader.read()
-    return QPixmap.fromImage(image) if not image.isNull() else None
 
 
 def cropped(pixmap: QPixmap, aspect: float, zoom: float = 1.0, drift: QPointF = QPointF()) -> QRectF:
@@ -705,6 +693,31 @@ class _Overlay(QWidget):
         self.setStyleSheet("background: transparent;")
 
 
+class _TimedOverlay(_Overlay):
+    """An overlay shown for life seconds; advance() counts its age up."""
+
+    def __init__(self, parent, life: float = 0.0):
+        super().__init__(parent)
+        self.age, self.life = 0.0, life
+
+    def restart(self) -> None:
+        """Shows it from the start, on top."""
+        self.age = 0.0
+        self.show()
+        self.raise_()
+        self.update()
+
+    def advance(self, dt: float) -> bool:
+        """False once its life is over."""
+        self.age += dt
+        self.update()
+        return self.age < self.life
+
+    def leaving(self, seconds: float = FADE_SECONDS) -> float:
+        """0 until the last `seconds` of its life, then eased up to 1."""
+        return ease_in((self.age - (self.life - seconds)) / seconds)
+
+
 class CinemaFrame(_Overlay):
     """Vignette over the map and letterbox bars that slide in when the replay starts."""
 
@@ -754,7 +767,7 @@ class CinemaFrame(_Overlay):
         painter.end()
 
 
-class TitleCard(_Overlay):
+class TitleCard(_TimedOverlay):
     """A large centred title: a small heading between gold lines, the title in gold with a glow and a passing
     shine, and a subtitle. It scales in and fades out."""
 
@@ -770,25 +783,17 @@ class TitleCard(_Overlay):
         super().__init__(parent)
         self.heading = self.text = self.subtitle = ""
         self.tone = "gold"
-        self.age, self.life = 0.0, 0.0
         self.hide()
 
     def show_text(self, text: str, life: float, heading: str = "", subtitle: str = "", tone: str = "gold") -> None:
         self.text, self.heading, self.subtitle = text, heading, subtitle
         self.tone = tone if tone in self.TONES else "gold"
-        self.age, self.life = 0.0, life
-        self.show()
-        self.raise_()
-        self.update()
+        self.life = life
+        self.restart()
 
     def advance(self, dt: float) -> None:
-        if not self.isVisible():
-            return
-        self.age += dt
-        if self.age >= self.life:
+        if self.isVisible() and not super().advance(dt):
             self.hide()
-        else:
-            self.update()
 
     def paintEvent(self, event) -> None:
         if not self.text:
@@ -1071,16 +1076,15 @@ def draw_ribbon(painter: QPainter, rect: QRectF, text: str, shine: float = -1.0)
     painter.restore()
 
 
-class AchievementToast(_Overlay):
+class AchievementToast(_TimedOverlay):
     """An event as a small achievement alert: slides in from the right, moves up when older ones go, and
     fades out."""
 
     SLIDE = 0.45
 
     def __init__(self, parent, cue: Cue, life: float):
-        super().__init__(parent)
+        super().__init__(parent, life)
         self.parts = banner_parts(cue, with_time=False)
-        self.age, self.life = 0.0, life
         self.right = 0.0                # where its right edge rests
         self.y: float | None = None     # current top, eased towards target_y
         self.target_y = 0.0
@@ -1093,24 +1097,22 @@ class AchievementToast(_Overlay):
 
     def advance(self, dt: float) -> bool:
         """False once it is gone."""
-        self.age += dt
+        alive = super().advance(dt)
         if self.y is not None:
             self.y += (self.target_y - self.y) * min(1.0, dt * 10)
         self._move()
-        self.update()
-        return self.age < self.life
+        return alive
 
     def _move(self) -> None:
         enter = ease_out(self.age / self.SLIDE)
-        leave = ease_in((self.age - (self.life - FADE_SECONDS)) / FADE_SECONDS)
+        leave = self.leaving()
         # A short slide only: a child reaching past the window's edge breaks full screen on Windows.
         x = self.right - self.width() + 24 * max(1 - enter, leave)     # right rests 24 px from the edge
         self.move(int(x), int(self.y or 0))
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
-        painter.setOpacity(min(1.0, self.age / 0.2) * (1 - ease_in((self.age - (self.life - FADE_SECONDS))
-                                                                   / FADE_SECONDS)))
+        painter.setOpacity(min(1.0, self.age / 0.2) * (1 - self.leaving()))
         draw_banner(painter, QRectF(self.rect()), *self.parts)
         painter.end()
 
@@ -1126,7 +1128,7 @@ class _Shot:
     drift: QPointF = field(default_factory=QPointF)
 
 
-class PhotoOverlay(_Overlay):
+class PhotoOverlay(_TimedOverlay):
     """A screenshot as a polaroid: a white flash, then the picture flies out from the marker to the centre,
     turning to a slight tilt; an achievement banner drops in above it. While it is shown the picture zooms in
     and pans slowly; at the end it flies back to the marker, where its pin stays."""
@@ -1135,9 +1137,7 @@ class PhotoOverlay(_Overlay):
     FLASH = 0.3
 
     def __init__(self, parent, life: float):
-        super().__init__(parent)
-        self.life = life
-        self.age = 0.0
+        super().__init__(parent, life)
         self.shot: _Shot | None = None
         self.area = QRectF()            # the picture between the letterbox bars
         self.hide()
@@ -1148,16 +1148,7 @@ class PhotoOverlay(_Overlay):
         drift = QPointF(1 if seed & 1 else -1, -0.6 if seed & 2 else 0.6)
         self.area = area
         self.shot = _Shot(cue, pixmap, QPointF(origin), tilt, drift)
-        self.age = 0.0
-        self.show()
-        self.raise_()
-        self.update()
-
-    def advance(self, dt: float) -> bool:
-        """False once the picture is back at its pin."""
-        self.age += dt
-        self.update()
-        return self.age < self.life
+        self.restart()
 
     def layout(self) -> tuple[QRectF, QRectF, QRectF]:
         """Paper, picture (both centred on 0, 0) and banner (in widget coordinates)."""
@@ -1187,7 +1178,7 @@ class PhotoOverlay(_Overlay):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         shot, age, life = self.shot, self.age, self.life
         fly_in = ease_out(age / self.FLY)
-        fly_out = ease_in((age - (life - self.FLY)) / self.FLY)
+        fly_out = self.leaving(self.FLY)
         presence = fly_in * (1 - fly_out)
 
         painter.fillRect(self.rect(), QColor(0, 0, 0, int(150 * presence)))
