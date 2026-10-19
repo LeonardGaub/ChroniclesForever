@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QSignalBlocker, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QPushButton,
                                QSlider, QVBoxLayout)
@@ -168,17 +168,14 @@ class SettingsPage(Page):
         for key, box in self.cine_options:
             box.setText(tr(f"settings.{key}"))
             box.setToolTip(tr(f"settings.{key}_tip"))
-            box.blockSignals(True)
-            box.setChecked(config.extra.get(key, True) is not False)
-            box.blockSignals(False)
+            with QSignalBlocker(box):
+                box.setChecked(config.extra.get(key, True) is not False)
         self.ui_box.setTitle(tr("settings.ui_box"))
         self.motion.setText(tr("settings.ui_motion"))
-        self.motion.blockSignals(True)
-        self.motion.setChecked(config.extra.get("ui_motion", True) is not False)
-        self.motion.blockSignals(False)
-        self.game_sounds.blockSignals(True)
-        self.game_sounds.setChecked(game_sounds_on(config))
-        self.game_sounds.blockSignals(False)
+        with QSignalBlocker(self.motion):
+            self.motion.setChecked(config.extra.get("ui_motion", True) is not False)
+        with QSignalBlocker(self.game_sounds):
+            self.game_sounds.setChecked(game_sounds_on(config))
         self.effects_label.setText(tr("settings.volume"))
         for name, button in self.test_buttons:
             button.setText(tr(f"settings.test.{name}"))
@@ -186,9 +183,8 @@ class SettingsPage(Page):
         self.music.setText(tr("settings.music"))
         self.zone_music.setText(tr("settings.zone_music"))
         self.zone_music.setToolTip(tr("settings.zone_music_tip"))
-        self.zone_music.blockSignals(True)
-        self.zone_music.setChecked(config.extra.get("cine_music", "zone") == "zone")
-        self.zone_music.blockSignals(False)
+        with QSignalBlocker(self.zone_music):
+            self.zone_music.setChecked(config.extra.get("cine_music", "zone") == "zone")
         self.music_label.setText(tr("settings.volume"))
         self.source_label.setText(tr("settings.source"))
         self.choose_file.setText(tr("settings.choose_file"))
@@ -201,12 +197,11 @@ class SettingsPage(Page):
         for widget, value in ((self.clicks, config.click_sounds), (self.events, config.event_sounds),
                               (self.music, config.music), (self.effects_volume, config.effects_volume),
                               (self.music_volume, config.music_volume)):
-            widget.blockSignals(True)
-            if isinstance(widget, QSlider):
-                widget.setValue(value)
-            else:
-                widget.setChecked(value)
-            widget.blockSignals(False)
+            with QSignalBlocker(widget):
+                if isinstance(widget, QSlider):
+                    widget.setValue(value)
+                else:
+                    widget.setChecked(value)
         self.effects_value.setText(f"{config.effects_volume} %")
         self.music_value.setText(f"{config.music_volume} %")
         self._show_source()
@@ -228,9 +223,8 @@ class SettingsPage(Page):
 
     def _sync_preview(self) -> None:
         playing = self.sound.music.active
-        self.preview.blockSignals(True)
-        self.preview.setChecked(playing)
-        self.preview.blockSignals(False)
+        with QSignalBlocker(self.preview):
+            self.preview.setChecked(playing)
         self.preview.setText(tr("settings.preview_stop") if playing else tr("settings.preview"))
 
     # -- changes --------------------------------------------------------------------------
