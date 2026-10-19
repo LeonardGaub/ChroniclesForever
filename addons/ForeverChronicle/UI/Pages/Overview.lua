@@ -184,11 +184,7 @@ local XP_NORMAL, XP_RESTED = { 0.58, 0, 0.55 }, { 0, 0.39, 0.88 }
 local function xpBar(parent, width)
   local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
   f:SetSize(width, 18)
-  if f.SetBackdrop then
-    f:SetBackdrop({ bgFile = UI.WHITE, edgeFile = UI.WHITE, edgeSize = 1 })
-    f:SetBackdropColor(0, 0, 0, 0.65)
-    f:SetBackdropBorderColor(0.55, 0.45, 0.25, 0.9)
-  end
+  UI:Backdrop(f, { bgFile = UI.WHITE, edgeFile = UI.WHITE, edgeSize = 1 }, { 0, 0, 0, 0.65 }, { 0.55, 0.45, 0.25, 0.9 })
   local bar = CreateFrame("StatusBar", nil, f)
   bar:SetPoint("TOPLEFT", 2, -2)
   bar:SetPoint("BOTTOMRIGHT", -2, 2)

@@ -528,11 +528,8 @@ function page:ApplyStyle()
   if book then
     if not UI:SetTextureFirst(self.parchment, PARCHMENT) then self.parchment:SetColorTexture(0.86, 0.76, 0.56, 1) end
     self.parchment:SetVertexColor(1, 1, 1, 1)
-    if paper.SetBackdrop then
-      paper:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 } })
-      paper:SetBackdropBorderColor(0.42, 0.29, 0.15, 1)
-    end
+    UI:Backdrop(paper, { edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14,
+      insets = { left = 4, right = 4, top = 4, bottom = 4 } }, nil, { 0.42, 0.29, 0.15, 1 })
     for _, v in ipairs(self.vignette) do
       local orientation, from, to = unpack(VIGNETTE[v.side])
       local r, g, b = unpack(VIGNETTE_COLOR)
@@ -554,7 +551,7 @@ function page:ApplyStyle()
   else
     self.parchment:Hide()
     for _, v in ipairs(self.vignette) do v:Hide() end
-    if paper.SetBackdrop then paper:SetBackdrop(nil) end
+    UI:Backdrop(paper, nil)
   end
   local st = style()
   for _, label in ipairs({ self.empty, self.emptyShots, self.emptyFiltered }) do

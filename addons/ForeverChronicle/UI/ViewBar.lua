@@ -147,12 +147,9 @@ function UI:CreateViewBar(f)
   bar:SetHeight(BAR_HEIGHT)
   bar:SetPoint("TOPLEFT", f, "TOPLEFT", 58, -25)
   bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -25)
-  if bar.SetBackdrop then
-    bar:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-    bar:SetBackdropColor(0.08, 0.06, 0.04, 0.95)
-    bar:SetBackdropBorderColor(1, 0.82, 0, 0.7)
-  end
+  UI:Backdrop(bar, { bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } },
+    { 0.08, 0.06, 0.04, 0.95 }, { 1, 0.82, 0, 0.7 })
   bar:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
   bar.name = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   bar.name:SetPoint("LEFT", 12, 0)
@@ -182,12 +179,9 @@ function UI:CreateViewBar(f)
   list:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -2)
   list:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", 0, -2)
   list:SetFrameStrata("DIALOG")
-  if list.SetBackdrop then
-    list:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14, insets = { left = 4, right = 4, top = 4, bottom = 4 } })
-    list:SetBackdropColor(0.05, 0.04, 0.03, 0.97)
-    list:SetBackdropBorderColor(1, 0.82, 0, 0.8)
-  end
+  UI:Backdrop(list, { bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14, insets = { left = 4, right = 4, top = 4, bottom = 4 } },
+    { 0.05, 0.04, 0.03, 0.97 }, { 1, 0.82, 0, 0.8 })
   list:EnableMouse(true)
   list:Hide()
   self.viewList = list

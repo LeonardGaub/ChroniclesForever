@@ -104,6 +104,14 @@ function UI:CheckBox(parent, key, tooltipKey, onClick)
   return cb
 end
 
+-- Sets a backdrop (nil clears it) with optional { r, g, b, a } colours. No-op where the client has no backdrops.
+function UI:Backdrop(frame, def, bg, border)
+  if not frame.SetBackdrop then return end
+  frame:SetBackdrop(def)
+  if bg then frame:SetBackdropColor(unpack(bg)) end
+  if border then frame:SetBackdropBorderColor(unpack(border)) end
+end
+
 -- Gold border around a selected button (choices, toggles, tabs). nil where the client has no backdrops.
 function UI:SelectionBorder(button)
   local ok, border = pcall(CreateFrame, "Frame", nil, button, "BackdropTemplate")
