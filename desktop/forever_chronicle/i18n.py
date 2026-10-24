@@ -219,8 +219,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "setup.game.title": "Das Spiel",
         "setup.game.text": "Die App liest die Daten des Addons aus deinem WoW-Forever-Ordner.",
         "setup.game_found": "WoW Forever gefunden",
-        "setup.game_missing": "WoW Forever wurde nicht automatisch gefunden. Wähle den Ordner, in dem WowB.exe liegt "
-                              "(z. B. …\\World of Warcraft\\_classic_beta_).",
+        "setup.game_missing": "WoW Forever wurde nicht automatisch gefunden. Wähle den Ordner World of Warcraft "
+                              "oder den Client-Ordner darin (z. B. …\\World of Warcraft\\_classic_beta_).",
         "setup.choose": "Ordner wählen ...",
         "setup.choose_other": "Anderen Ordner wählen ...",
         "setup.addon.title": "Das Addon",
@@ -735,8 +735,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "setup.game.title": "The game",
         "setup.game.text": "The app reads the addon's data from your WoW Forever folder.",
         "setup.game_found": "WoW Forever found",
-        "setup.game_missing": "WoW Forever was not found automatically. Choose the folder with WowB.exe "
-                              "(e.g. …\\World of Warcraft\\_classic_beta_).",
+        "setup.game_missing": "WoW Forever was not found automatically. Choose the World of Warcraft folder "
+                              "or the client folder in it (e.g. …\\World of Warcraft\\_classic_beta_).",
         "setup.choose": "Choose folder ...",
         "setup.choose_other": "Choose another folder ...",
         "setup.addon.title": "The addon",

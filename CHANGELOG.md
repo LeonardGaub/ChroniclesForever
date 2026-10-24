@@ -4,6 +4,10 @@ Player-facing changes to the main addon (`addons/ForeverChronicle`), collected f
 Add an entry with every addon change. When uploading, paste the section into the CurseForge changelog field,
 then turn "Unreleased" into the uploaded version and date.
 
+## Unreleased
+
+- Ready for the release client: the addon also counts as up to date on game versions 1.60.2, 1.60.3 and 1.61.0.
+
 ## Unreleased (0.15.0)
 
 ### New

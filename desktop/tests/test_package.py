@@ -7,7 +7,7 @@ from pathlib import Path
 
 from forever_chronicle import setup_addon
 from forever_chronicle.config import AppConfig
-from forever_chronicle.wow import map_art
+from forever_chronicle.wow import map_art, paths
 from forever_chronicle.wow.paths import ClientInstall
 
 REPO = Path(__file__).resolve().parents[2]
@@ -66,7 +66,7 @@ def test_install_addon_keeps_friends_file(tmp_path):
 
 def test_setup_main_asks_when_not_found(tmp_path, monkeypatch):
     monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path / "home"))
-    monkeypatch.setattr(setup_addon, "find_forever_installs", lambda: [])
+    monkeypatch.setattr(paths, "find_forever_installs", lambda *_args: [])
     client = fake_client(tmp_path)
     answers = iter([str(tmp_path / "nowhere"), str(tmp_path / "WoW")])
     code = setup_addon.main([str(REPO / "addons" / "ForeverChronicle")], ask=lambda _prompt: next(answers))

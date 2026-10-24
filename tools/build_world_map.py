@@ -135,9 +135,9 @@ def placement(install: Path) -> dict[int, tuple[float, float, float, float]]:
     import struct
 
     import db2
-    from forever_chronicle.wow import casc
+    from forever_chronicle.wow import casc, paths
 
-    rows = db2.read_db2(casc.Casc(install, "wow_classic_beta").read_fdid(UI_MAP_ASSIGNMENT, zero_encrypted=True))
+    rows = db2.read_db2(casc.Casc(install, paths.forever_product(install)).read_fdid(UI_MAP_ASSIGNMENT, zero_encrypted=True))
     real = lambda bits: struct.unpack("<f", struct.pack("<I", bits))[0]  # noqa: E731
     assigned: dict[int, list] = {}
     for r in rows:    # UiMin[2], UiMax[2], Region[6] (min x, y, z, max x, y, z), ID, UiMapID, OrderIndex, MapID

@@ -17,7 +17,7 @@ from .storage.jsonl import ExportResult, JsonlImportResult, export_jsonl, import
 from .storage.repository import Repository
 from .ui.sound import Sound
 from .wow import game_icons
-from .wow.paths import ClientInstall, SavedVariablesFile, client_from_path, find_forever_installs, find_saved_variables
+from .wow.paths import ClientInstall, SavedVariablesFile, client_from_path, find_saved_variables, pick_client
 
 
 class AppContext(QObject):
@@ -48,11 +48,7 @@ class AppContext(QObject):
         if self._client or self._client_searched:
             return self._client
         self._client_searched = True
-        if self.config.client_dir:
-            self._client = client_from_path(Path(self.config.client_dir))
-        if not self._client:
-            installs = find_forever_installs()
-            self._client = installs[0] if installs else None
+        self._client = pick_client(self.config.client_dir)
         return self._client
 
     def set_client_dir(self, path: Path) -> ClientInstall | None:

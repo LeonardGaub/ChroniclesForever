@@ -40,7 +40,10 @@ $ShareFile = 'ForeverChronicle_Share.lua'
 $FriendsFile = 'FriendsData.lua'
 $MaxFriendBytes = 8MB
 $MaxTotalBytes = 60MB
+# Product flavors known to run Forever. The live flavor was not known before the release (2026-11-04), so a client of any
+# other flavor counts too when its build is 1.60 or newer (Forever's version line; Classic Era is 1.15).
 $ForeverFlavors = @('wow_classic_beta')
+$ForeverVersion = [version]'1.60'
 # Player files: <name>-<id>-<account>.lua, or <shareId>-<account>.lua from scripts before 2026-10-16.
 $PlayerFileName = [regex]::new(
   '^(?:(?<name>[\p{L}\p{N}_]{1,24})-(?<id>[0-9a-f]{8})|(?<id>[0-9a-f]{32}))-(?<account>[0-9a-f]{8})\.lua$')
@@ -105,13 +108,53 @@ function Get-Flavor([string]$Folder) {
   return $null
 }
 
-function Find-ClientIn([string]$Root) {
-  if (-not $Root -or -not (Test-Path -LiteralPath $Root -PathType Container)) { return $null }
-  if ($ForeverFlavors -contains (Get-Flavor $Root)) { return $Root }
-  foreach ($child in Get-ChildItem -LiteralPath $Root -Directory -ErrorAction SilentlyContinue) {
-    if ($ForeverFlavors -contains (Get-Flavor $child.FullName)) { return $child.FullName }
+# Beta or PTR client: a live client is preferred over it.
+function Test-TestFlavor([string]$Flavor) { return $Flavor -match '_(beta|ptr)$' }
+
+# Client version of a product from the .build.info in the World of Warcraft folder, or $null.
+function Get-BuildVersion([string]$Root, [string]$Flavor) {
+  if (-not $Root) { return $null }
+  $info = Join-Path $Root '.build.info'
+  if (-not (Test-Path -LiteralPath $info)) { return $null }
+  $lines = @(Get-Content -LiteralPath $info -ErrorAction SilentlyContinue)
+  if ($lines.Count -lt 2) { return $null }
+  $names = @($lines[0].Split('|') | ForEach-Object { $_.Split('!')[0] })
+  $p = [array]::IndexOf($names, 'Product')
+  $v = [array]::IndexOf($names, 'Version')
+  if ($p -lt 0 -or $v -lt 0) { return $null }
+  foreach ($line in $lines[1..($lines.Count - 1)]) {
+    $cells = $line.Split('|')
+    if ($cells.Count -gt [math]::Max($p, $v) -and $cells[$p] -eq $Flavor) {
+      $parsed = $null
+      if ([version]::TryParse($cells[$v], [ref]$parsed)) { return $parsed }
+      return $null
+    }
   }
   return $null
+}
+
+function Test-Forever([string]$Root, [string]$Flavor) {
+  if (-not $Flavor) { return $false }
+  if ($ForeverFlavors -contains $Flavor) { return $true }
+  $version = Get-BuildVersion $Root $Flavor
+  return $null -ne $version -and $version.Major -eq $ForeverVersion.Major -and $version -ge $ForeverVersion
+}
+
+# The Forever client in a folder: the folder itself, or a subfolder (live clients before beta and PTR clients).
+function Find-ClientIn([string]$Root) {
+  if (-not $Root -or -not (Test-Path -LiteralPath $Root -PathType Container)) { return $null }
+  if (Test-Forever (Split-Path $Root) (Get-Flavor $Root)) { return $Root }
+  $found = @(Get-ChildItem -LiteralPath $Root -Directory -ErrorAction SilentlyContinue |
+             Where-Object { Test-Forever $Root (Get-Flavor $_.FullName) })
+  if (-not $found) { return $null }
+  $live = @($found | Where-Object { -not (Test-TestFlavor (Get-Flavor $_.FullName)) })
+  return @($live + $found)[0].FullName
+}
+
+# A folder the user chose: a client folder counts whatever its flavor; in a World of Warcraft folder only Forever.
+function Resolve-ChosenClient([string]$Folder) {
+  if ($Folder -and (Get-Flavor $Folder)) { return $Folder }
+  return Find-ClientIn $Folder
 }
 
 # Install folders Battle.net knows: product.db (paths as plain strings), Battle.net.config, uninstall entries.
@@ -513,6 +556,15 @@ function Invoke-Sync {
     $config | Add-Member -Force -NotePropertyName 'scriptVersion' -NotePropertyValue $ScriptVersion
     Write-Json $ConfigPath $config
   }
+  # The beta folder stays after the release: move to the live client next to it once there is one.
+  if ((Test-TestFlavor (Get-Flavor $config.client)) -and (Test-Path -LiteralPath $config.client)) {
+    $live = Find-ClientIn (Split-Path $config.client)
+    if ($live -and -not (Test-TestFlavor (Get-Flavor $live))) {
+      Write-Log "client: $($config.client) -> $live (live client)"
+      $config | Add-Member -Force -NotePropertyName 'client' -NotePropertyValue $live
+      Write-Json $ConfigPath $config
+    }
+  }
   if (-not (Test-Path $config.cloud)) { Write-Log "cloud folder not available: $($config.cloud)"; return }
   $state = Read-Json $StatePath
   if (-not $state) { $state = [pscustomobject]@{} }
@@ -564,8 +616,8 @@ function Invoke-Setup {
   if (-not $ClientFolder) {
     Add-Type -AssemblyName System.Windows.Forms
     $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $dialog.Description = 'WoW-Forever-Ordner waehlen (World of Warcraft oder _classic_beta_)'
-    if ($dialog.ShowDialog() -eq 'OK') { $ClientFolder = Find-ClientIn $dialog.SelectedPath }
+    $dialog.Description = 'WoW-Forever-Ordner waehlen (World of Warcraft oder der Client-Ordner darin)'
+    if ($dialog.ShowDialog() -eq 'OK') { $ClientFolder = Resolve-ChosenClient $dialog.SelectedPath }
   }
   if (-not $ClientFolder) { throw 'WoW Forever wurde nicht gefunden.' }
   $shareId = if ($old -and $old.shareId -match '^[0-9a-f]{32}$') { $old.shareId } else { [guid]::NewGuid().ToString('N') }

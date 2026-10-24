@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import AppConfig
-from .wow.paths import ADDON_NAME, ClientInstall, client_from_path, find_forever_installs
+from .wow.paths import ADDON_NAME, ClientInstall, client_from_path, pick_client
 
 KEEP = {Path("Friends") / "FriendsData.lua"}   # written by the desktop app in the game folder
 
@@ -75,13 +75,9 @@ def install_addon(source: Path, client: ClientInstall) -> InstallResult:
 
 
 def find_client(config: AppConfig, ask=input) -> ClientInstall | None:
-    if config.client_dir:
-        client = client_from_path(Path(config.client_dir))
-        if client:
-            return client
-    installs = find_forever_installs()
-    if installs:
-        return installs[0]
+    client = pick_client(config.client_dir)
+    if client:
+        return client
     print("WoW Forever wurde nicht automatisch gefunden.")
     while True:
         answer = ask("Pfad zum Spielordner (z. B. D:\\Spiele\\World of Warcraft), leer = abbrechen: ").strip().strip('"')
@@ -90,8 +86,8 @@ def find_client(config: AppConfig, ask=input) -> ClientInstall | None:
         client = client_from_path(Path(answer))
         if client:
             return client
-        print("In diesem Ordner ist kein WoW-Forever-Client. Bitte den Ordner 'World of Warcraft' oder "
-              "'_classic_beta_' angeben.")
+        print("In diesem Ordner ist kein WoW-Forever-Client. Bitte den Ordner 'World of Warcraft' oder den "
+              "Client-Ordner darin (z. B. '_classic_beta_') angeben.")
 
 
 def main(argv: list[str] | None = None, ask=input) -> int:

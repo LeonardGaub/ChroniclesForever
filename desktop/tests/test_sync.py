@@ -288,3 +288,26 @@ def test_screenshots_uploaded_per_character_scaled_down(world):
     once(world)
     assert list((world["cloud"] / "screenshots").iterdir()) == []
     assert "failed" not in log(world)
+
+
+def test_moves_from_the_beta_to_the_live_client_next_to_it(world):
+    setup(world)
+    root = world["client"].parent
+    era = root / "_classic_era_"                                  # another game version: never chosen
+    era.mkdir()
+    (era / ".flavor.info").write_text("#Flavor\nwow_classic_era\n")
+    (root / ".build.info").write_text("Branch!STRING:0|Version!STRING:0|Product!STRING:0\n"
+                                      "eu|1.15.9.70003|wow_classic_era\neu|1.60.1.70532|wow_classic_beta\n")
+    once(world)
+    config = json.loads((world["data"] / "config.json").read_text(encoding="utf-8-sig"))
+    assert config["client"] == str(world["client"])               # no live client yet: stays on the beta
+    live = root / "_forever_"                                     # the live flavor was unknown before the release
+    live.mkdir()
+    (live / ".flavor.info").write_text("#Flavor\nwow_forever\n")
+    with (root / ".build.info").open("a") as f:
+        f.write("eu|1.60.2.71000|wow_forever\n")
+    once(world)
+    config = json.loads((world["data"] / "config.json").read_text(encoding="utf-8-sig"))
+    assert config["client"] == str(live)
+    assert (live / "Interface" / "AddOns" / "ForeverChronicle_Share" / "ForeverChronicle_Share.toc").is_file()
+    assert f"-> {live} (live client)" in log(world)

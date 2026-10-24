@@ -1,4 +1,4 @@
-## Interface: 16001
+## Interface: 16001, 16002, 16003, 16100
 ## Title: Journey Forever
 ## Notes: Your personal adventure history: sessions, level-ups, quests, deaths, achievements, zones, routes, professions and screenshots.
 ## Notes-deDE: Deine persönliche Abenteuerchronik: Sitzungen, Stufenaufstiege, Quests, Tode, Erfolge, Gebiete, Routen, Berufe und Screenshots.

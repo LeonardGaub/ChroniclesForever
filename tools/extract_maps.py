@@ -21,11 +21,10 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import db2  # noqa: E402
-from forever_chronicle.wow import casc  # noqa: E402
+from forever_chronicle.wow import casc, paths  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INSTALL = Path(r"C:\Program Files (x86)\World of Warcraft")
-PRODUCT = "wow_classic_beta"
 OUT_SIZE = (1002, 668)  # desktop/forever_chronicle/domain/maps.py ART_WIDTH, ART_HEIGHT
 TILE = 256
 
@@ -40,7 +39,7 @@ WORLD_MAP_OVERLAY_TILE = 1957212  # RowIndex, ColIndex, LayerIndex, FileDataID; 
 
 class MapSource:
     def __init__(self, install: Path):
-        self.casc = casc.Casc(install, PRODUCT)
+        self.casc = casc.Casc(install, paths.forever_product(install))
 
         def table(fdid):
             return db2.read_db2(self.casc.read_fdid(fdid))

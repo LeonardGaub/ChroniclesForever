@@ -14,10 +14,9 @@ import sys
 from pathlib import Path
 
 from forever_chronicle.domain import event_types
-from forever_chronicle.wow import game_icons
+from forever_chronicle.wow import game_icons, paths
 
 DEFAULT_INSTALL = Path(r"C:\Program Files (x86)\World of Warcraft")
-PRODUCT = "wow_classic_beta"
 
 
 def main() -> int:
@@ -26,7 +25,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=game_icons.BUNDLED)
     args = parser.parse_args()
     icons = event_types.all_icons()
-    written = set(game_icons.extract(args.install, PRODUCT, icons, args.out))
+    written = set(game_icons.extract(args.install, paths.forever_product(args.install), icons, args.out))
     for icon in icons:
         name = game_icons.name_of(icon)
         print(f"  {name}.png" if name in written else f"  {icon}: not in the game files")

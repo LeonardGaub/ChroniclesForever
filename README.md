@@ -15,7 +15,7 @@ German UI by default, English switchable.
 ## Install and run
 
 - Addon: copy `addons/ForeverChronicle` (and, for the friend group, `addons/ForeverChronicle_Share`) into
-  `<WoW>\_classic_beta_\Interface\AddOns\`.
+  `<WoW>\<client folder>\Interface\AddOns\` (the beta's is `_classic_beta_`).
 - Desktop: `cd desktop`, `python -m venv .venv`, `.venv\Scripts\pip install -e .[dev]`, then start
   `desktop\Forever Chronicle.bat` (or `.venv\Scripts\python -m forever_chronicle`). Friends use
   `Journey Forever starten.bat` from the package built by `tools/package_for_friend.py`.

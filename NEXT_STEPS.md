@@ -39,6 +39,22 @@ at the time (older entries may describe things that changed later). Architecture
    damage, overkill) in the `player_died` event. Unverified in Forever: whether the recap exists there and is
    readable (not secret). After the next death, check the Chronik entry; if it still says "Gestorben in ...",
    the recap is missing or hidden.
+8. Release (2026-11-04), prepared on 2026-10-24: the live client's product flavor and folder were unknown, so the
+   desktop app (`wow/paths.py`), the sync script and the CASC tools accept any client whose `.build.info` version
+   is 1.60 or newer (Classic Era is 1.15) and prefer a live client over the beta (a saved beta folder moves to the
+   live client next to it). A folder the user picks counts whatever its flavor. The TOCs list Interface 16001,
+   16002, 16003 and 16100. At release: read the live client's `.flavor.info` and version, add the flavor to
+   `FOREVER_FLAVORS` (paths.py) and `$ForeverFlavors` (ForeverSync.ps1), and add its Interface number to the TOCs
+   if missing. Friends get the sync change with `git pull`. `tools/build_world_map.py --openmap` still defaults to
+   the beta folder's OpenMap.
+   Settings port (`tools/port_settings.py`, built 2026-10-24, dry run unless `--apply`, WoW closed, backups in
+   `<live>\PortBackup\`): `account` (keybinds, macros, interface settings, Edit Mode, other addons and their
+   SavedVariables, Config.wtf without portal/login/cache lines), then log in once with each new character and
+   `characters --map OLD=NEW`. Unverified: whether the first login keeps the copied `-cache` files or replaces them
+   with the server's (Blizzard syncs bindings/macros/settings); if replaced, `server-sync off`, copy again, log in,
+   `server-sync on`. The `synchronize*` CVar names are from retail and unconfirmed in Forever. Edit Mode's own
+   export/import is the fallback for the layout. Beta addons whose TOC lacks the live Interface number load as out
+   of date.
 ## Confirmed client facts
 - Install: `C:\Program Files (x86)\World of Warcraft\_classic_beta_\` (`WowB.exe`, client 1.60.1). TOC Interface 16001.
 - SavedVariables: `WTF\Account\131324136#1\SavedVariables\` plus `.lua.bak`.
