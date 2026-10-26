@@ -4,6 +4,14 @@ The session notes that used to be the "History" section of `NEXT_STEPS.md`, newe
 at the time: older entries may describe things that changed or were removed later. The current state is in
 `NEXT_STEPS.md`.
 
+### Map tab on the seamless world map (2026-10-26)
+- User request: the Karte tab shows the same seamless (OpenMap) world map as the cinematic mode. Every zone,
+  continent and Azeroth (new entry in the map list) is a place on it: picking a map or following the player only
+  moves the view there, the route crosses from zone to zone, detail tiles load as you zoom or drag, and a city's
+  own map lies over it while the marker is in the city. You can zoom out to the whole world from any zone.
+- Places the world map does not show (Zephras Isle, maps without geometry) and installs without `maps/world/`
+  keep the old per-zone art. `soft_edges` moved from the cinematic into `ui/world_art.py` for both.
+
 ### Video export as sharp as the cinematic mode (2026-10-26)
 - User compared a frame of the cinematic mode with the same moment of an exported video: photos, chat text and
   titles were much softer in the video. Cause: their screen is 4K at 150 % (2560×1440 logical), so the cinematic

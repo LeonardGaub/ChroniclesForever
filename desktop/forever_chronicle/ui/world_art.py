@@ -1,5 +1,6 @@
-"""The seamless world map in a graphics scene (cinematic mode): every zone on one picture of Azeroth, so the
-camera glides from one zone into the next instead of switching maps (wow/map_art.py, tools/build_world_map.py).
+"""The seamless world map in a graphics scene (cinematic mode and the map page): every zone on one picture of
+Azeroth, so the camera glides from one zone into the next instead of switching maps (wow/map_art.py,
+tools/build_world_map.py).
 
 The scene's unit is the world unit (the world map 947 at ART_WIDTH x ART_HEIGHT, as every map of the replay).
 Under everything lies the whole world at BASE_PX; where the camera is close, the sharp detail tiles come in, loaded
@@ -14,7 +15,7 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap
 from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene
 
 from ..domain import maps
@@ -25,11 +26,30 @@ W, H = maps.ART_WIDTH, maps.ART_HEIGHT
 DETAIL_FROM = map_art.BASE_PX * 1.1   # screen px per world unit where the detail tiles come in
 KEEP = 1.5                            # tiles stay loaded this many tile widths past the view
 CITY_FADE = 0.8                       # seconds a city's map takes to fade in or out
+SOFT_EDGE = 0.09                      # share of a city map's width and height that fades out (hides its frame)
 Z_BASE, Z_TILES, Z_CITIES = -3.0, -2.0, -1.0
 
 
 def available() -> bool:
     return map_art.world_base() is not None
+
+
+def soft_edges(pixmap: QPixmap) -> QPixmap:
+    """A map's art fading out towards its edges, to lie on a coarser map without showing its frame."""
+    soft = QPixmap(pixmap.size())
+    soft.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(soft)
+    painter.drawPixmap(0, 0, pixmap)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+    for horizontal in (True, False):
+        size = pixmap.width() if horizontal else pixmap.height()
+        edge = QLinearGradient(0, 0, size, 0) if horizontal else QLinearGradient(0, 0, 0, size)
+        for at, alpha in ((0, 0), (SOFT_EDGE * 0.35, 0), (SOFT_EDGE, 255), (1 - SOFT_EDGE, 255),
+                          (1 - SOFT_EDGE * 0.35, 0), (1, 0)):
+            edge.setColorAt(at, QColor(0, 0, 0, alpha))
+        painter.fillRect(soft.rect(), edge)
+    painter.end()
+    return soft
 
 
 class WorldArt:

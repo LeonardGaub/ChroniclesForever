@@ -4,8 +4,9 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QBuffer, QIODevice  # noqa: E402
+from PySide6.QtCore import QBuffer, QIODevice, QRectF  # noqa: E402
 from PySide6.QtGui import QColor, QImage  # noqa: E402
+from PySide6.QtWidgets import QGraphicsPathItem  # noqa: E402
 
 from forever_chronicle.domain.route import GAP_SECONDS, Route  # noqa: E402
 from forever_chronicle.importing.sv_importer import SavedVariablesImporter  # noqa: E402
@@ -137,6 +138,36 @@ def test_map_page_replay_and_timeline_focus(ctx, imported, tmp_path):
     assert page.current_t == death_time
     window.close()
 
+
+def test_map_page_on_the_seamless_world_map(ctx, imported, tmp_path):
+    """With the seamless world map every map is a place on it, as in cinematic mode (user request 2026-10-26)."""
+    from forever_chronicle.domain import maps
+    from forever_chronicle.ui.pages.map_page import MapPage
+
+    (tmp_path / "maps" / "world").mkdir(parents=True)
+    (tmp_path / "maps" / "world" / "base.jpg").write_bytes(_jpeg_bytes())
+    (tmp_path / "maps" / "1413.jpg").write_bytes(_jpeg_bytes("#775533"))
+    page = MapPage(ctx)
+    page.resize(900, 600)
+    page.character_id = ctx.repo.list_characters()[0].character_id
+    page.refresh()
+
+    assert page.view_map == 1413 and page.scene_map == maps.WORLD and page.world is not None
+    assert page.world.base is not None and page._art_notice is None
+    assert page.map_select.findData(maps.WORLD) >= 0                  # Azeroth itself to pick
+    barrens = page.view.area
+    assert barrens != QRectF(0, 0, maps.ART_WIDTH, maps.ART_HEIGHT)    # the view shows the Barrens' place
+    world = page.world
+    page.map_select.setCurrentIndex(page.map_select.findData(1414))
+    assert page.view_map == 1414 and page.world is world, "picking a map only moves the view"
+    assert page.view.area.contains(barrens.center())
+    page._toggle_play()
+    for _ in range(5):
+        page._tick()
+    page._toggle_play()
+    assert page.marker.isVisible()
+    segments = [item for item in page.view.scene().items() if isinstance(item, QGraphicsPathItem)]
+    assert segments, "the route is drawn on the world map"
 
 def test_continent_points_open_the_zone():
     """The client reports only the continent between zones; the map still shows the zone (user request)."""

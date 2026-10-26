@@ -67,7 +67,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QElapsedTimer, QEvent, QPointF, QRectF, QSize, Qt, QTimer
-from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QGraphicsOpacityEffect, QGraphicsPathItem, QGraphicsScene, QGraphicsView, QHBoxLayout,
                                QLabel, QPushButton, QToolTip, QWidget)
 
@@ -129,7 +129,6 @@ DEATH_COLOR = QColor("#ff3333")
 # Trips to the other continent (boat, zeppelin, portal), shown on the world map.
 VOYAGE_OUT, VOYAGE_TRAVEL, VOYAGE_IN = 1.0, 1.8, 1.0   # out to the world map, across the sea, into the zone
 VOYAGE_GAP = 10 * 60       # a continent change after a longer break fades in from black instead
-SOFT_EDGE = 0.09           # share of a city map's width and height that fades out (hides its parchment frame)
 CROSS_SECONDS = 0.4        # crossfade from the last picture to the new place (a cut)
 VOYAGE_LINE = QColor(232, 226, 208, 220)
 # The seamless world map (ui/world_art.py): one picture of every zone. Places it does not show (Forever's islands
@@ -1670,22 +1669,7 @@ class CinematicWindow(QWidget):
         """A map's art fading out towards its edges, to lie on a coarser map without showing its frame."""
         if view not in self._soft:
             pixmap = self._pixmap(view)
-            soft = None
-            if pixmap is not None:
-                soft = QPixmap(pixmap.size())
-                soft.fill(Qt.GlobalColor.transparent)
-                painter = QPainter(soft)
-                painter.drawPixmap(0, 0, pixmap)
-                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
-                for horizontal in (True, False):
-                    size = pixmap.width() if horizontal else pixmap.height()
-                    edge = QLinearGradient(0, 0, size, 0) if horizontal else QLinearGradient(0, 0, 0, size)
-                    for at, alpha in ((0, 0), (SOFT_EDGE * 0.35, 0), (SOFT_EDGE, 255), (1 - SOFT_EDGE, 255),
-                                      (1 - SOFT_EDGE * 0.35, 0), (1, 0)):
-                        edge.setColorAt(at, QColor(0, 0, 0, alpha))
-                    painter.fillRect(soft.rect(), edge)
-                painter.end()
-            self._soft[view] = soft
+            self._soft[view] = world_art.soft_edges(pixmap) if pixmap is not None else None
         return self._soft[view]
 
     def _pixmap(self, view: int) -> QPixmap | None:

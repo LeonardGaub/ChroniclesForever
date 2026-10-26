@@ -6,6 +6,10 @@
 - Time slider and playback (1x = one minute of play time per second; gaps are skipped).
 - The marker shows the nearest recorded point; inside dungeons there is no position, so a notice is shown.
 - Selecting an event in the Chronicle moves the map to that moment (AppContext.focus_time).
+- With the seamless world map (ui/world_art.py, as in cinematic mode) every zone, continent and Azeroth itself is
+  shown on it: picking a map only moves the view there, the route crosses from zone to zone, and a city's own map
+  lies over it while the marker is inside the city. Places it does not show (Forever's islands in the sky, maps
+  without geometry) keep their own map.
 - Without artwork for a map a schematic grid is drawn instead.
 - Cinematic mode plays the selected range full screen with events and screenshots (ui/cinematic.py); "Video"
   saves the same replay as an MP4 file (ui/cinematic_export.py).
@@ -28,10 +32,11 @@ from ...domain.route import Route
 from ...domain.route_colors import MODES, SEGMENT_END, RouteColors, hex_color
 from ...i18n import format_datetime, format_duration, tr
 from ...wow.map_art import find_art
-from .. import icons, theme
+from .. import icons, theme, world_art
 from ..cinematic import open_cinematic
 from ..cinematic_export import ExportDialog
 from ..widgets import Page, muted
+from ..world_art import WorldArt
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
 BASE_SPEED = 60          # game seconds per real second at 1x
@@ -99,22 +104,40 @@ class MapView(QGraphicsView):
         self.setBackgroundBrush(QColor(theme.PANEL_ALT))
         self.setStyleSheet(f"border: 1px solid {theme.BORDER};")
         self.zoomed = False
+        self.area = QRectF(0, 0, W, H)   # what fit() shows: the map, or the picked map's place on the world map
+        self.moved = lambda: None        # called whenever the visible part changes
 
-    def fit(self) -> None:
+    def fit(self, area: QRectF | None = None) -> None:
+        if area is not None:
+            self.area = area
         self.zoomed = False
-        self.fitInView(QRectF(0, 0, W, H), Qt.AspectRatioMode.KeepAspectRatio)
+        self.fitInView(self.area, Qt.AspectRatioMode.KeepAspectRatio)
+        self.moved()
+
+    def _fit_scale(self, rect: QRectF) -> float:
+        return min(self.viewport().width() / rect.width(), self.viewport().height() / rect.height())
 
     def wheelEvent(self, event) -> None:
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
         scale = self.transform().m11() * factor
-        fit_scale = min(self.viewport().width() / W, self.viewport().height() / H)
-        if scale < fit_scale:
-            self.fit()
+        whole = self.sceneRect()
+        if scale < self._fit_scale(whole):   # never smaller than the whole map
+            if whole == self.area:
+                self.fit()
+            else:
+                self.zoomed = True
+                self.fitInView(whole, Qt.AspectRatioMode.KeepAspectRatio)
+                self.moved()
             return
-        if scale > fit_scale * 10:
+        if scale > self._fit_scale(self.area) * 10:
             return
         self.zoomed = True
         self.scale(factor, factor)
+        self.moved()
+
+    def scrollContentsBy(self, dx: int, dy: int) -> None:
+        super().scrollContentsBy(dx, dy)
+        self.moved()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -129,6 +152,10 @@ class MapPage(Page):
         super().__init__(ctx)
         self.route: Route | None = None
         self.view_map: int | None = None
+        self.scene_map: int | None = None   # what the scene shows: maps.WORLD (seamless) or view_map's own art
+        self.world: WorldArt | None = None
+        self.seamless = False
+        self._zone_now: int | None = None   # zone of the marker (its city's map shows on the seamless map)
         self._last_zone: int | None = None  # zone of the last shown point (map follow)
         self.range: tuple[int, int] | None = None
         self.current_t: int | None = None
@@ -168,6 +195,7 @@ class MapPage(Page):
         root.addLayout(top)
 
         self.view = MapView()
+        self.view.moved = self._update_world
         root.addWidget(self.view, 1)
         self.notice = QLabel(self.view)
         self.notice.setStyleSheet(f"background: rgba(9,8,7,200); color: {theme.GOLD}; padding: 6px 10px;"
@@ -219,6 +247,8 @@ class MapPage(Page):
             self._clear("")
             return
         repo = self.ctx.repo
+        self.seamless = world_art.available()
+        self.scene_map = None
         self.route = Route.load(repo, self.character_id)
         char = repo.character(self.character_id)
         self.colors = RouteColors(self.ctx.map_colors,
@@ -275,13 +305,18 @@ class MapPage(Page):
         with QSignalBlocker(self.map_select):
             self.map_select.clear()
             infos = self.route.map_infos if self.route else {}
-            for map_id in (self.route.available_views() if self.route else []):
+            views = self.route.available_views() if self.route else []
+            if self.seamless and views:
+                views.append(maps.WORLD)
+            for map_id in views:
                 self.map_select.addItem(maps.zone_name(map_id, infos), map_id)
 
     def _clear(self, notice: str) -> None:
         self.view.scene().clear()
         self.marker = None
+        self.world = None
         self.view_map = None
+        self.scene_map = None
         self.legend.hide()
         self.slider.setEnabled(False)
         self.play.setEnabled(False)
@@ -320,19 +355,37 @@ class MapPage(Page):
     def _map_selected(self) -> None:
         map_id = self.map_select.currentData()
         if map_id is not None and map_id != self.view_map:
-            self._set_view(map_id, redraw=True)
+            self._set_view(map_id)
             if self.current_t is not None:
                 self._set_time(self.current_t)
 
-    def _set_view(self, map_id: int | None, redraw: bool) -> None:
+    def _set_view(self, map_id: int | None, redraw: bool = False) -> None:
+        """Shows map_id: on the seamless world map by moving the view there, else on its own art (redraw: the
+        range or the toggles changed, so the route is drawn again)."""
         self.view_map = map_id
         index = self.map_select.findData(map_id)
         if index >= 0 and index != self.map_select.currentIndex():
             with QSignalBlocker(self.map_select):
                 self.map_select.setCurrentIndex(index)
-        if redraw:
+        area = self._world_area(map_id)
+        scene_map = maps.WORLD if area is not None else map_id
+        if redraw or scene_map != self.scene_map:
+            self.scene_map = scene_map
             self._draw()
-            self.view.fit()
+        self.view.fit(area if area is not None else QRectF(0, 0, W, H))
+
+    def _world_area(self, map_id: int | None) -> QRectF | None:
+        """Where map_id lies on the seamless world map (scene units), or None without it."""
+        if not self.seamless or map_id is None or not self.route:
+            return None
+        if map_id == maps.WORLD:
+            return QRectF(0, 0, W, H)
+        rect = maps.world_rect(map_id, self.route.map_infos)
+        if rect is None:
+            return None
+        # The continents' rectangles reach past the world map's edge (Kalimdor's west): only the map is shown.
+        area = QRectF(rect[0] * W, rect[1] * H, (rect[2] - rect[0]) * W, (rect[3] - rect[1]) * H)
+        return area.intersected(QRectF(0, 0, W, H)) if map_id in maps.CONTINENT_IN_WORLD else area
 
     def _slider_moved(self, value: int) -> None:
         if not self._updating and self.range:
@@ -365,10 +418,13 @@ class MapPage(Page):
         zone = self.route.view_for(point)
         moved_zone = zone != self._last_zone
         self._last_zone = zone
-        xy = self.route.project(*spot, self.view_map) if self.view_map else None
+        if zone != self._zone_now:
+            self._zone_now = zone
+            self._update_world()
+        xy = self.route.project(*spot, self.scene_map) if self.scene_map else None
         if self.follow.isChecked() and zone is not None and zone != self.view_map and (moved_zone or xy is None):
-            self._set_view(zone, redraw=True)
-            xy = self.route.project(*spot, self.view_map)
+            self._set_view(zone)
+            xy = self.route.project(*spot, self.scene_map)
         if xy is None:
             if self.marker:
                 self.marker.hide()
@@ -391,23 +447,28 @@ class MapPage(Page):
         scene = self.view.scene()
         scene.clear()
         self.marker = None
-        if not self.route or self.view_map is None:
+        self.world = None
+        if not self.route or self.scene_map is None:
             return
         scene.setSceneRect(QRectF(0, 0, W, H))
-        art = find_art(self.view_map)
-        pixmap = QPixmap(str(art)) if art else QPixmap()
-        if not pixmap.isNull():
-            if pixmap.width() != W or pixmap.height() != H:
-                pixmap = pixmap.scaled(W, H, Qt.AspectRatioMode.IgnoreAspectRatio,
-                                       Qt.TransformationMode.SmoothTransformation)
-            scene.addPixmap(pixmap)
+        start, end = self.range or (None, None)
+        if self.scene_map == maps.WORLD:
+            self.world = WorldArt(scene)
+            for city in sorted({p.map_id for p in self.route.points if p.map_id in maps.CITIES}):
+                area, pixmap = self._world_area(city), self._art(city)
+                if area is not None and pixmap is not None:
+                    self.world.add_city(city, world_art.soft_edges(pixmap), area)
             self._art_notice = None
         else:
-            self._draw_schematic(scene)
-            self._art_notice = tr("map.no_art")
+            pixmap = self._art(self.scene_map)
+            if pixmap is not None:
+                scene.addPixmap(pixmap)
+                self._art_notice = None
+            else:
+                self._draw_schematic(scene)
+                self._art_notice = tr("map.no_art")
 
-        start, end = self.range or (None, None)
-        segments = self.route.segments(self.view_map, start, end) if self.show_trail.isChecked() else []
+        segments = self.route.segments(self.scene_map, start, end) if self.show_trail.isChecked() else []
         for seg in segments:
             self._draw_segment(scene, seg)
         self._show_legend(self.colors.legend(segments) if self.colors else [])
@@ -417,6 +478,25 @@ class MapPage(Page):
         self.marker.setZValue(10)
         scene.addItem(self.marker)
         self._show_notice(self._art_notice)
+        self._update_world()
+
+    @staticmethod
+    def _art(map_id: int) -> QPixmap | None:
+        """A map's own art at the map size, or None without it."""
+        art = find_art(map_id)
+        pixmap = QPixmap(str(art)) if art else QPixmap()
+        if pixmap.isNull():
+            return None
+        if pixmap.width() != W or pixmap.height() != H:
+            pixmap = pixmap.scaled(W, H, Qt.AspectRatioMode.IgnoreAspectRatio,
+                                   Qt.TransformationMode.SmoothTransformation)
+        return pixmap
+
+    def _update_world(self) -> None:
+        """The seamless map's detail tiles for the visible part, and the city map of the marker's city."""
+        if self.world is not None:
+            self.world.update(self.view.mapToScene(self.view.viewport().rect()).boundingRect(),
+                              self.view.transform().m11(), self._zone_now)
 
     def _draw_schematic(self, scene: QGraphicsScene) -> None:
         scene.addRect(QRectF(0, 0, W, H), QPen(QColor(theme.BORDER)), QBrush(QColor(theme.PANEL)))
@@ -425,7 +505,7 @@ class MapPage(Page):
             scene.addLine(x, 0, x, H, grid)
         for y in range(0, H, 100):
             scene.addLine(0, y, W, y, grid)
-        label = scene.addSimpleText(maps.display_name(self.view_map))
+        label = scene.addSimpleText(maps.display_name(self.scene_map))
         font = theme.heading_font(28)
         label.setFont(font)
         label.setBrush(QBrush(QColor(theme.MUTED)))
@@ -476,7 +556,7 @@ class MapPage(Page):
             if (start is not None and e.occurred_at < start) or (end is not None and e.occurred_at > end):
                 continue
             spot = self.route.locate(e.map_id, e.x, e.y, e.instance_id)  # dungeon events: at the entrance
-            xy = self.route.project(*spot, self.view_map) if spot else None
+            xy = self.route.project(*spot, self.scene_map) if spot else None
             if xy is None:
                 continue
             et = event_types.get(e.event_type)
@@ -556,7 +636,7 @@ class MapPage(Page):
         self._apply_range()
         zone = self.route.view_for(self.route.point_at(t))
         if zone is not None and zone != self.view_map:
-            self._set_view(zone, redraw=True)
+            self._set_view(zone)
         self._set_time(t)
 
     def showEvent(self, event) -> None:
