@@ -120,10 +120,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "settings.cine_credits_tip": "Spielzeit, Strecke, Flüge, Gebiete, Dungeons, Taten und Tode des Zeitraums.",
         "settings.music_box": "Musik im Kino-Modus",
         "settings.music": "Hintergrundmusik abspielen",
-        "settings.zone_music": "Musik der Gebiete aus dem Spiel (wechselt mit der Zone)",
-        "settings.zone_music_tip": "Die Musikdateien kommen beim ersten Abspielen aus deiner WoW-Installation. Wo "
-                                   "ein Gebiet keine eigene Musik hat, läuft die bisherige weiter; ohne Spiel "
-                                   "spielt die unten gewählte Musik.",
+        "settings.adventure_music": "Abenteuermusik aus dem Spiel (wechselt alle paar Stufen)",
+        "settings.adventure_music_tip": "Wald, Ebenen, Berge, Dschungel, Wüste …: ein Thema nach dem anderen, in "
+                                        "den ersten Stufen seltener, später öfter. Die Musikdateien kommen beim "
+                                        "ersten Abspielen aus deiner WoW-Installation; ohne Spiel spielt die unten "
+                                        "gewählte Musik.",
         "settings.source": "Musik",
         "settings.source_builtin": "Eingebautes Thema „Journey Forever“",
         "settings.source_missing": "({path} wurde nicht gefunden)",
@@ -641,10 +642,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "settings.cine_credits_tip": "Playtime, distance, flights, zones, dungeons, deeds and deaths of the range.",
         "settings.music_box": "Music in cinematic mode",
         "settings.music": "Play background music",
-        "settings.zone_music": "The zones' music from the game (changes with the zone)",
-        "settings.zone_music_tip": "The music files come from your WoW install the first time they play. Where a "
-                                   "zone has no music of its own, the music playing goes on; without the game the "
-                                   "music chosen below plays.",
+        "settings.adventure_music": "Adventure music from the game (changes every few levels)",
+        "settings.adventure_music_tip": "Forest, plains, mountains, jungle, desert …: one theme after another, less "
+                                        "often in the first levels, more often later. The music files come from "
+                                        "your WoW install the first time they play; without the game the music "
+                                        "chosen below plays.",
         "settings.source": "Music",
         "settings.source_builtin": "Built-in theme \"Journey Forever\"",
         "settings.source_missing": "({path} was not found)",

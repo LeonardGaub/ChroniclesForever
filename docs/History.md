@@ -4,6 +4,16 @@ The session notes that used to be the "History" section of `NEXT_STEPS.md`, newe
 at the time: older entries may describe things that changed or were removed later. The current state is in
 `NEXT_STEPS.md`.
 
+### Cinematic: adventure music by level instead of zone music (2026-10-26)
+- The zone music switched too often when crossing zones. A plan by stays in one place (switch only for stays of
+  10 s real time, flights and day/night kept) was built and rejected by the user the same day, not committed.
+- Now one adventure music: the day music of Elwynn Forest, Mulgore, Dun Morogh, the Barrens, Stranglethorn Vale,
+  Ashenvale, Tanaris and Stormwind (`zone_music.ADVENTURE`), one theme per chapter, starting again after the last.
+  A chapter begins at the levels in `CHAPTER_LEVELS` (1, 8, 15, 21, 27, 32, 37, 41, 45, 49, 52, 55, 58): long
+  early, short late, where a level takes much longer. The switch is at the level-up itself (the old theme fades
+  out under the fanfare). Dungeons and cities play it too. The option keeps its value `cine_music: "zone"`.
+- Theme choice and order are a first pick, not yet listened to in the app.
+
 ### Cinematic: opening dive, flights, level-up textures, footprints, smooth own maps (2026-10-26)
 - User picks from the brainstorm, "to test them all but may revert them later": one commit each, so each can be
   reverted on its own: opening dive a7d6507, smooth own maps b359622, flights 1f800d4, level-up 60c3de8,

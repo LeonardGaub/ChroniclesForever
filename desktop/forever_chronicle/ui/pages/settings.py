@@ -84,8 +84,8 @@ class SettingsPage(Page):
         ml = QGridLayout(self.music_box)
         self.music = QCheckBox()
         self.music.toggled.connect(lambda on: self._set("music", on))
-        self.zone_music = QCheckBox()       # the game's zone music in the cinematic mode (wow/zone_music.py)
-        self.zone_music.toggled.connect(self._set_zone_music)
+        self.adventure_music = QCheckBox()  # the game's adventure music in the cinematic mode (wow/zone_music.py)
+        self.adventure_music.toggled.connect(self._set_adventure_music)
         self.music_label = QLabel()
         self.music_volume = slider()
         self.music_volume.valueChanged.connect(self._set_music_volume)
@@ -112,7 +112,7 @@ class SettingsPage(Page):
         buttons.addStretch(1)
         self.music_hint = muted()
         ml.addWidget(self.music, 0, 0, 1, 4, Qt.AlignmentFlag.AlignLeft)
-        ml.addWidget(self.zone_music, 1, 0, 1, 4, Qt.AlignmentFlag.AlignLeft)
+        ml.addWidget(self.adventure_music, 1, 0, 1, 4, Qt.AlignmentFlag.AlignLeft)
         ml.addWidget(self.music_label, 2, 0)
         ml.addWidget(self.music_volume, 2, 1)
         ml.addWidget(self.music_value, 2, 2)
@@ -175,10 +175,10 @@ class SettingsPage(Page):
             button.setText(tr(f"settings.test.{name}"))
         self.music_box.setTitle(tr("settings.music_box"))
         self.music.setText(tr("settings.music"))
-        self.zone_music.setText(tr("settings.zone_music"))
-        self.zone_music.setToolTip(tr("settings.zone_music_tip"))
-        with QSignalBlocker(self.zone_music):
-            self.zone_music.setChecked(config.extra.get("cine_music", "zone") == "zone")
+        self.adventure_music.setText(tr("settings.adventure_music"))
+        self.adventure_music.setToolTip(tr("settings.adventure_music_tip"))
+        with QSignalBlocker(self.adventure_music):
+            self.adventure_music.setChecked(config.extra.get("cine_music", "zone") == "zone")
         self.music_label.setText(tr("settings.volume"))
         self.source_label.setText(tr("settings.source"))
         self.choose_file.setText(tr("settings.choose_file"))
@@ -235,7 +235,7 @@ class SettingsPage(Page):
         self.music_value.setText(f"{value} %")
         self.sound.music.volume_changed()
 
-    def _set_zone_music(self, on: bool) -> None:
+    def _set_adventure_music(self, on: bool) -> None:
         self._set("cine_music", "zone" if on else "chosen")
 
     def _set_music_path(self, path: str | None) -> None:

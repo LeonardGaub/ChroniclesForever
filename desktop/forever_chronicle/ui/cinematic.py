@@ -35,8 +35,8 @@
 - Breaks without route points (logouts, long pauses) are skipped. The replay slows down shortly before each
   screenshot and gets back to speed afterwards. Standstills (AFK, waiting) play normally, much faster or are
   skipped (option; the moments inside them are still shown).
-- Music: the zone's music from the game (wow/zone_music.py), changing with the zone after a moment there, or
-  the music chosen in the settings (option "cine_music").
+- Music: the adventure music from the game (wow/zone_music.py: one outdoor theme after another, the next at the
+  level-up that begins a new chapter), or the music chosen in the settings (option "cine_music").
 - Controls (play/pause, speeds, standstills, music, video export, a timeline with marks for events and
   screenshots) appear while the mouse moves and fade out after a moment without movement; the mouse pointer
   hides with them.
@@ -99,7 +99,6 @@ STILL_NOTE = 2.4           # seconds a skipped standstill is named
 DEATH_SECONDS = 3.2        # the death title
 DEATH_HOLD = 1.4           # real seconds the replay holds at a death
 GREY_IN, GREY_OUT = 0.9, 1.6   # seconds for the colour to drain at a death and to return on coming back
-MUSIC_SETTLE = 2.5         # real seconds in a zone before its music starts (passing through changes nothing)
 TOAST_SECONDS = 4.0
 LEVEL_SECONDS = 3.6
 LEVEL_HOLD = 2.8           # a screenshot right after a level-up waits this long into the level-up title
@@ -425,15 +424,15 @@ class CinematicWindow(QWidget):
         self._soft: dict[int, QPixmap | None] = {}
         self._thumbs: dict[str, QPixmap | None] = {}
 
-        # Zone music: the files of every place in the range come out of the game in the background (the export
-        # takes them first); until a zone's files are there, the music playing goes on.
-        self.zone_music = ctx.config.extra.get("cine_music", "zone") == "zone"
+        # Adventure music: the files of the range's chapters come out of the game in the background (the export
+        # takes them first); until a chapter's files are there, the music playing goes on. ("zone" is the
+        # option's value from when the music followed the zone.)
+        self.adventure_music = ctx.config.extra.get("cine_music", "zone") == "zone"
         self.music_now: tuple[Path, ...] | None = None
-        self.music_next: tuple[Path, ...] | None = None
-        self.music_wait = 0.0
-        music_files = zone_music.all_file_ids(
-            (r.map_id if r.map_id is not None else self.route.view_for(self.route.point_at(int(r.start))),
-             r.instance_id) for r in self.route.zone_runs(self.start, self.end)) if self.zone_music else []
+        first, last = (zone_music.chapter(self.levels.at(t)) for t in (self.start, self.end))
+        chapters = range(first, last + 1)
+        music_files = list(dict.fromkeys(
+            f for c in chapters for f in zone_music.adventure_file_ids(c))) if self.adventure_music else []
         if zone_music.missing(music_files) and ctx.client():
             if exporting:
                 zone_music.extract_missing(ctx.client(), music_files)
@@ -695,7 +694,7 @@ class CinematicWindow(QWidget):
         self._render(jump=True)
         self.xp_bar.snap()
         self._update_light(0.0, now=True)
-        self._update_music(0.0, now=True)
+        self._update_music()
 
     def _seek_from_bar(self, t: float) -> None:
         self.wake_controls()
@@ -797,7 +796,7 @@ class CinematicWindow(QWidget):
         self._age_overlays(dt)
         self._update_grey(dt)
         self._update_light(dt)
-        self._update_music(dt)
+        self._update_music()
         if self.photo_on:
             if not self.photo.advance(dt):
                 self._hide_photo()
@@ -994,31 +993,20 @@ class CinematicWindow(QWidget):
     # -- music -------------------------------------------------------------------------------
 
     def _wanted_music(self) -> tuple[Path, ...] | None:
-        """The zone's music at the current moment (None: the music chosen in the settings). Where a place has
-        none of its own, or its files are not there yet, the music playing goes on."""
-        if not self.zone_music:
+        """The adventure chapter's music at the current level (None: the music chosen in the settings). Until its
+        files are there, the music playing goes on."""
+        if not self.adventure_music:
             return None
-        point = self.route.point_at(int(self.t))
-        if point is None:
-            return self.music_now
-        files = zone_music.file_ids(self.route.view_for(point), point.instance_id, self.t)
-        found = tuple(zone_music.paths(files))
-        return found or self.music_now
+        files = zone_music.adventure_file_ids(zone_music.chapter(self.levels.at(self.t)))
+        return tuple(zone_music.paths(files)) or self.music_now
 
-    def _update_music(self, dt: float, now: bool = False) -> None:
-        """Changes to the zone's music once the replay has been there for MUSIC_SETTLE seconds (at once after a
-        jump), so passing through a zone changes nothing."""
-        if not self.zone_music or not self.sound.music.active or self.credits is not None:
+    def _update_music(self) -> None:
+        """Changes to the next chapter's music at the level-up that begins it (fading under its fanfare)."""
+        if not self.adventure_music or not self.sound.music.active or self.credits is not None:
             return
         wanted = self._wanted_music()
-        if wanted == self.music_now:
-            self.music_next, self.music_wait = None, 0.0
-            return
-        if wanted != self.music_next:
-            self.music_next, self.music_wait = wanted, 0.0
-        self.music_wait += dt
-        if now or self.music_wait >= MUSIC_SETTLE:
-            self.music_now, self.music_next = wanted, None
+        if wanted != self.music_now:
+            self.music_now = wanted
             self.sound.music.play(list(wanted) if wanted else None)
 
     def _skip_gap(self, t: float) -> float:
@@ -1432,7 +1420,7 @@ class CinematicWindow(QWidget):
         self.credits.start(self.picture_area())
         self.controls.raise_()
         self._start_outro()
-        if self.zone_music and self.sound.music.active:
+        if self.adventure_music and self.sound.music.active:
             self.music_now = None
             self.sound.music.play(None)             # the music chosen in the settings (the built-in theme)
         return True

@@ -1,8 +1,8 @@
 """Time of day in the cinematic replay: the light over the map at a recorded moment (option "cine_daylight").
 
 The map is multiplied by a colour per channel (1: unchanged): bright by day, a pink dawn, an orange dusk turning
-purple, and a cold blue night. Hours are the recorded moment's local time, as the zone music's day and night
-(wow/zone_music.py: night from 21 to 6 o'clock). Between the keyframes the colour blends smoothly.
+purple, and a cold blue night. Hours are the recorded moment's local time. Between the keyframes the colour
+blends smoothly.
 """
 
 from __future__ import annotations

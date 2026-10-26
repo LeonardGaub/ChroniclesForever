@@ -344,11 +344,14 @@ def test_zone_music_table_and_cache(tmp_path, monkeypatch):
     assert durotar and durotar["day"] and durotar["night"], "the table in git knows Durotar's music"
     assert zone_music.entry(None, 36), "the Deadmines have their own"
     assert zone_music.entry(1411, 99999) == durotar, "a dungeon without music keeps the zone's"
-    noon = 1760608800
-    assert zone_music.file_ids(1411, None, noon) in (tuple(durotar["day"]), tuple(durotar["night"]))
-    assert zone_music.file_ids(1455, None, noon) == (), "Ironforge has no zone music of its own"
-    files = zone_music.all_file_ids([(1411, None), (1412, None)])
-    assert len(files) == len(set(files)) and set(durotar["day"]) <= set(files)
+    assert all(zone_music.adventure_file_ids(c) for c in range(len(zone_music.ADVENTURE))), "every theme is there"
+    themes = [zone_music.adventure_file_ids(c) for c in range(len(zone_music.ADVENTURE))]
+    assert len(set(themes)) == len(themes), "each theme is music of its own"
+    assert zone_music.adventure_file_ids(len(themes)) == themes[0], "the themes start again"
+    assert [zone_music.chapter(lv) for lv in (None, 1, 7, 8, 59, 60)] == [0, 0, 0, 1, 12, 12]
+    widths = [b - a for a, b in zip(zone_music.CHAPTER_LEVELS, zone_music.CHAPTER_LEVELS[1:])]
+    assert widths == sorted(widths, reverse=True) and widths[0] > widths[-1], "chapters get shorter"
+    files = list(themes[0] + themes[1])
 
     cache = zone_music.cache_dir()
     cache.mkdir(parents=True)
@@ -365,18 +368,30 @@ def test_cinematic_deaths_standstills_and_music(app, ctx, imported, tmp_path, mo
     cid = ctx.repo.list_characters()[0].character_id
     points = ctx.repo.positions(cid)
     start, end = points[0].time, max(p.end for p in points)
-    # Zone music files for every zone (the game is not there in tests).
+    # The adventure music's files (the game is not there in tests).
     cache = zone_music.cache_dir()
     cache.mkdir(parents=True)
-    for fdid in zone_music.all_file_ids((p.map_id, p.instance_id) for p in points):
-        (cache / f"{fdid}.mp3").write_bytes(b"ID3")
+    for c in range(len(zone_music.ADVENTURE)):
+        for fdid in zone_music.adventure_file_ids(c):
+            (cache / f"{fdid}.mp3").write_bytes(b"ID3")
 
     window = CinematicWindow(ctx, cid, start, end, speed=4)
     window.resize(900, 600)
     window.show()
     window.timer.stop()
-    assert window.music_now and all(p.parent == cache for p in window.music_now), "the zone's music from the game"
+    assert window.music_now and all(p.parent == cache for p in window.music_now), "adventure music from the game"
     assert set(ctx.sound.music.tracks) == set(window.music_now)
+    # A new chapter's music begins at its level-up, and only there.
+    window.levels = Levels([E(window.t + 100, "level_up", level=8), E(window.t + 200, "level_up", level=9)])
+    window.seek(window.t + 50)
+    chapter_0 = window.music_now
+    assert chapter_0 == tuple(zone_music.paths(zone_music.adventure_file_ids(0)))
+    window.seek(window.t + 100)
+    assert window.music_now == tuple(zone_music.paths(zone_music.adventure_file_ids(1))) != chapter_0
+    player = ctx.sound.music
+    assert sorted(player.pending or player.tracks) == sorted(window.music_now), "the player has the next theme"
+    window.seek(window.t + 100)
+    assert window.music_now == tuple(zone_music.paths(zone_music.adventure_file_ids(1))), "level 9: same chapter"
 
     # A death: the replay holds, the world turns grey, the marker lies as a headstone, then walks as a ghost.
     t = int(window.t) + 200

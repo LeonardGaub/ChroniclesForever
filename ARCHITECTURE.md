@@ -153,7 +153,7 @@ Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `
 
 | Package | Role |
 |---|---|
-| `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`), game files (`casc.py`), the event, profession and recipe icons (`game_icons.py`), fonts (`game_fonts.py`: Friz Quadrata, Morpheus) and sound effects (`game_sounds.py`) from them (never in git), the zones' music (`zone_music.py`, table `zone_music.json` from `tools/extract_zone_music.py`) |
+| `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`), game files (`casc.py`), the event, profession and recipe icons (`game_icons.py`), fonts (`game_fonts.py`: Friz Quadrata, Morpheus) and sound effects (`game_sounds.py`) from them (never in git), the cinematic's adventure music from the zones' music (`zone_music.py`, table `zone_music.json` from `tools/extract_zone_music.py`) |
 | `importing/` | SavedVariables → SQLite, validation, gaps, `.bak` fallback |
 | `storage/` | `database.py` (schema migrations + backups), `repository.py` (all SQL), `jsonl.py` (export/import) |
 | `domain/` | pure logic, no Qt: registries `event_types.py` (how events are shown) and `stats.py` (overview statistics); `route.py`, `route_colors.py`, `maps.py` (the map); `cinematic.py` (what a replay announces, deaths, standstills and teleports), `daylight.py` (the light by time of day), `credits.py` (the end credits' numbers), `experience.py` (the XP bar's fill) |
@@ -166,8 +166,10 @@ Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `
 `ctx.sound.music` (QMediaPlayer with fades and `duck(seconds)`). Cinematic mode starts and stops the music and plays
 `level_up`, `screenshot`, `event`, `death`, `achievement`, `discovery`, `revive` and `teleport` (`sound.ALL_EFFECTS`;
 the last four fall back to the built-in `event`). The Settings tab holds the switches, volumes and the music choice
-(the game's zone music, else the built-in theme, own file, or own folder as a shuffled playlist). With zone music the
-cinematic mode switches playlists (`music.play(tracks)`: fade out, fade in) after a moment in a new zone. The video
+(the game's adventure music, else the built-in theme, own file, or own folder as a shuffled playlist). The adventure
+music is the outdoor themes of `zone_music.ADVENTURE` one after another; the cinematic mode switches playlists
+(`music.play(tracks)`: fade out, fade in) at the level-up that begins a new chapter (`zone_music.CHAPTER_LEVELS`:
+every 7 levels at first, every 3 at the end). The video
 export drives a silent `MusicPlayer(audible=False)` frame by frame and mixes the logged music and effects itself.
 
 - Built-in sounds in `ui/assets/sounds` are synthesized by `tools/generate_sounds.py` (original, no third-party

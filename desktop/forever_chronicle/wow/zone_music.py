@@ -1,17 +1,19 @@
-"""Zone music from the game: which music files the game plays in a zone or dungeon, and the files themselves.
+"""Music from the game for the cinematic mode: the adventure music (the outdoor themes of some zones, a new one
+every few levels) and the music files themselves.
 
 - forever_chronicle/zone_music.json (kept in git, written by tools/extract_zone_music.py): per uiMapID ("zones")
   and per instance map ID ("instances") the fileDataIDs of the day and the night music.
+- Adventure music: chapter by chapter (CHAPTER_LEVELS) the day music of the zones in ADVENTURE, in that order;
+  after the last theme they start again. Chapters are long in the first levels and get shorter later, where a
+  level takes much longer to play.
 - The MP3 files come out of the player's own install when needed (extract_missing) into
   %APPDATA%\\ForeverChronicle\\music\\<fileDataID>.mp3. Needs numpy (wow/casc.py); without it, or without the
   game, the cinematic mode plays the built-in theme instead.
-- Zones without music of their own (Ironforge, Undercity) have no entry; dungeons without one keep the music of
-  the zone around them (the cinematic shows that zone too).
 """
 
 from __future__ import annotations
 
-import datetime
+import bisect
 import json
 from functools import lru_cache
 from pathlib import Path
@@ -21,7 +23,11 @@ from ..config import app_home
 from .paths import ClientInstall
 
 TABLE = Path(__file__).resolve().parents[1] / "zone_music.json"
-NIGHT_FROM, NIGHT_UNTIL = 21, 6   # local hours of the recorded moment counted as night
+# The adventure themes (uiMapIDs whose music plays): Elwynn Forest (forest), Mulgore (plains), Dun Morogh
+# (mountains), the Barrens, Stranglethorn Vale (jungle), Ashenvale (night elf forest), Tanaris (desert), Stormwind.
+ADVENTURE = (1429, 1412, 1426, 1413, 1434, 1440, 1446, 1453)
+# The levels a new chapter (the next theme) begins at: every 7 levels at first, every 3 at the end.
+CHAPTER_LEVELS = (1, 8, 15, 21, 27, 32, 37, 41, 45, 49, 52, 55, 58)
 
 _failed: set[int] = set()         # not readable from the game files (this session): not tried again
 
@@ -48,28 +54,15 @@ def entry(map_id: int | None, instance_id: int | None = None) -> dict | None:
     return None
 
 
-def is_night(t: float) -> bool:
-    hour = datetime.datetime.fromtimestamp(t).hour
-    return hour >= NIGHT_FROM or hour < NIGHT_UNTIL
+def chapter(level: int | None) -> int:
+    """The adventure chapter of a level (0 while the level is unknown)."""
+    return max(0, bisect.bisect_right(CHAPTER_LEVELS, level) - 1) if level is not None else 0
 
 
-def file_ids(map_id: int | None, instance_id: int | None, t: float) -> tuple[int, ...]:
-    """The music files the game plays there at that moment (day or night by the recorded local time)."""
-    found = entry(map_id, instance_id)
-    if not found:
-        return ()
-    return tuple(found["night" if is_night(t) else "day"])
-
-
-def all_file_ids(places: Iterable[tuple[int | None, int | None]]) -> list[int]:
-    """Day and night music of the given (map_id, instance_id) places, without repeats."""
-    result: list[int] = []
-    for map_id, instance_id in places:
-        found = entry(map_id, instance_id)
-        for fdid in (found["day"] + found["night"]) if found else []:
-            if fdid not in result:
-                result.append(fdid)
-    return result
+def adventure_file_ids(chapter_index: int) -> tuple[int, ...]:
+    """The music files of an adventure chapter: the day music of its theme (the themes repeat)."""
+    found = entry(ADVENTURE[chapter_index % len(ADVENTURE)])
+    return tuple(found["day"]) if found else ()
 
 
 def find(fdid: int) -> Path | None:
