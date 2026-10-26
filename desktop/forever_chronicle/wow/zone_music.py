@@ -1,15 +1,17 @@
-"""Music from the game for the cinematic mode: the adventure music (the outdoor themes of some zones, a new one
-every few levels) and the music files themselves.
+"""Music and ambience from the game for the cinematic mode: the adventure music (the outdoor themes of some zones,
+a new one every few levels), the zones' ambience (wind, birds, insects: one loop by day, one by night) and the
+files themselves.
 
 - forever_chronicle/zone_music.json (kept in git, written by tools/extract_zone_music.py): per uiMapID ("zones")
-  and per instance map ID ("instances") the fileDataIDs of the day and the night music.
+  and per instance map ID ("instances") the fileDataIDs of the day and the night music; the same for the ambience
+  under "ambience".
 - Adventure music: chapter by chapter (CHAPTER_LEVELS) the day music of the zones in ADVENTURE, in that order;
   after the last theme they start again. Chapters are long in the first levels and get shorter later, where a
   level takes much longer to play. With a known race every other chapter is a theme of its people's lands
   (RACE_THEMES: the undead get Tirisfal, the Plaguelands and Felwood), starting with the first chapter.
-- The MP3 files come out of the player's own install when needed (extract_missing) into
-  %APPDATA%\\ForeverChronicle\\music\\<fileDataID>.mp3. Needs numpy (wow/casc.py); without it, or without the
-  game, the cinematic mode plays the built-in theme instead.
+- The files (MP3 music, OGG ambience) come out of the player's own install when needed (extract_missing) into
+  %APPDATA%\\ForeverChronicle\\music\\<fileDataID>.mp3 (or .ogg). Needs numpy (wow/casc.py); without it, or
+  without the game, the cinematic mode plays the built-in theme instead, and no ambience.
 """
 
 from __future__ import annotations
@@ -64,6 +66,15 @@ def entry(map_id: int | None, instance_id: int | None = None) -> dict | None:
     if map_id is not None:
         return data.get("zones", {}).get(str(map_id))
     return None
+
+
+def ambience_file_ids(map_id: int | None, instance_id: int | None = None, night: bool = False) -> tuple[int, ...]:
+    """The ambience of a dungeon, else of a zone, by day or night (() for none)."""
+    data = table().get("ambience", {})
+    found = data.get("instances", {}).get(str(instance_id)) if instance_id is not None else None
+    if found is None and map_id is not None:
+        found = data.get("zones", {}).get(str(map_id))
+    return tuple(found["night" if night else "day"]) if found else ()
 
 
 def chapter(level: int | None) -> int:

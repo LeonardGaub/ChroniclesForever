@@ -3,10 +3,11 @@
 - A CinematicWindow runs off screen at the video's size and is moved on by exactly one frame at a time; every
   frame is grabbed and piped into ffmpeg. So the video shows what the cinematic mode shows: the same speed,
   standstills, pauses at screenshots, titles and music.
-- Sound: a Recorder stands in for the app's sound (ui/sound.py). It keeps the music's state with a silent
-  MusicPlayer (playlist, fades, ducking) frame by frame and notes each effect with its moment. After the pictures,
-  music and effects are mixed as they would have played (numpy, 48 kHz stereo) and added to the video. This
-  needs no QtMultimedia, so it works where the app itself plays no sound.
+- Sound: a Recorder stands in for the app's sound (ui/sound.py). It keeps the state of the music and of the sound
+  beds under it (ambience, wind) with silent players (playlist, fades, ducking) frame by frame and notes each
+  effect with its moment. After the pictures, music, beds and effects are mixed as they would have played (numpy,
+  48 kHz stereo) and added to the video. This needs no QtMultimedia, so it works where the app itself plays no
+  sound.
 - ffmpeg comes from the pip package imageio-ffmpeg (the program is inside), else from the PATH. Where it is
   missing (friends' setups from "Journey Forever starten.bat"), the dialog offers to install it.
 - Takes about as long as the video plays, or longer at 1080p; the progress dialog can cancel it.
@@ -32,7 +33,8 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QLabel, QLineEdit, QMessageBox, QProgressDialog, QPushButton, QVBoxLayout)
 
 from ..i18n import format_datetime, tr
-from .sound import TRIM, EffectGate, MusicPlayer, effect_path, gain, game_sounds_on
+from .sound import (AMBIENCE_FADES, AMBIENCE_LEVEL, TRIM, WIND_FADES, WIND_LEVEL, EffectGate, LoopPlayer, MusicPlayer,
+                    effect_path, gain, game_sounds_on)
 from .widgets import busy
 
 FPS = 30
@@ -73,14 +75,17 @@ def install_ffmpeg() -> bool:
 
 class Recorder(EffectGate):
     """Stands in for ui.sound.Sound during an export: effects are noted with their moment (clock, in seconds of
-    video), the music's state is kept by a silent MusicPlayer and logged per frame by step()."""
+    video); the music's and the sound beds' states are kept by silent players and logged per frame by step()."""
 
     def __init__(self, config):
         super().__init__(config)
         self.clock = 0.0
         self.effects: list[tuple[float, str]] = []
         self.music = MusicPlayer(config, self, audible=False)
-        self.music_log: list[tuple[tuple[Path, ...], float]] = []   # per frame: playlist, volume at its end
+        self.ambience = LoopPlayer(config, self, audible=False, level=AMBIENCE_LEVEL, fades=AMBIENCE_FADES)
+        self.wind = LoopPlayer(config, self, audible=False, level=WIND_LEVEL, fades=WIND_FADES)
+        # Per player and frame: its playlist and its volume at the frame's end.
+        self.logs: list[list[tuple[tuple[Path, ...], float]]] = [[], [], []]
 
     def now(self) -> float:
         return self.clock
@@ -92,16 +97,21 @@ class Recorder(EffectGate):
         return True
 
     def step(self, dt: float) -> None:
-        """One frame of video time: the music fades and ducks on, and its state is logged."""
-        self.music.step(dt)
+        """One frame of video time: the music and the beds fade and duck on, and their states are logged."""
         self.clock += dt
-        level = self.music.level()
-        self.music_log.append((tuple(self.music.tracks) if level > 0 else (), level))
+        for player, log in zip((self.music, self.ambience, self.wind), self.logs):
+            player.step(dt)
+            level = player.level()
+            log.append((tuple(player.tracks) if level > 0 else (), level))
+
+    @property
+    def frames(self) -> int:
+        return len(self.logs[0])
 
 
 # -- sound mix ------------------------------------------------------------------------------------------------
 
-@lru_cache(maxsize=4)
+@lru_cache(maxsize=12)
 def decode(ffmpeg: str, path: str) -> np.ndarray:
     """An audio file as 16-bit stereo samples at RATE, shape (n, 2)."""
     result = subprocess.run([ffmpeg, "-v", "error", "-i", path, "-f", "s16le", "-ac", "2", "-ar", str(RATE), "-"],
@@ -111,41 +121,53 @@ def decode(ffmpeg: str, path: str) -> np.ndarray:
     return np.frombuffer(result.stdout, np.int16).reshape(-1, 2)
 
 
+class _Stream:
+    """One logged player in the mix: its playlist's tracks one after the other (each looping round), its volume
+    ramping from frame to frame."""
+
+    def __init__(self, ffmpeg: str):
+        self.ffmpeg = ffmpeg
+        self.playlist: tuple[Path, ...] = ()
+        self.index = self.position = 0
+        self.level_before = 0.0
+
+    def add(self, chunk: np.ndarray, tracks: tuple[Path, ...], level: float) -> None:
+        if tracks:
+            if tracks != self.playlist:
+                self.playlist, self.index, self.position = tracks, 0, 0
+            part = np.zeros_like(chunk)
+            filled = 0
+            for _ in range(len(self.playlist) + 1):           # a track may end within the frame
+                track = decode(self.ffmpeg, str(self.playlist[self.index]))
+                if len(track) == 0:
+                    self.index = (self.index + 1) % len(self.playlist)
+                    continue
+                take = min(SAMPLES - filled, len(track) - self.position)
+                part[filled:filled + take] = track[self.position:self.position + take] / 32768.0
+                filled += take
+                self.position += take
+                if self.position >= len(track):
+                    self.index, self.position = (self.index + 1) % len(self.playlist), 0
+                if filled >= SAMPLES:
+                    break
+            chunk += part * np.linspace(self.level_before, level, SAMPLES, endpoint=False, dtype=np.float32)[:, None]
+        self.level_before = level if tracks else 0.0
+
+
 def mix(recorder: Recorder, ffmpeg: str, out: Path) -> None:
-    """Writes the export's sound as a WAV file: the logged music (the playlist's tracks one after the other, its
-    volume ramping from frame to frame) and the noted effects."""
+    """Writes the export's sound as a WAV file: the logged music and sound beds, and the noted effects."""
     effects = sorted(recorder.effects)
     next_effect = 0
     playing: list[list] = []            # [samples, position, gain]
-    playlist: tuple[Path, ...] = ()
-    index = position = 0
-    level_before = 0.0
+    streams = [_Stream(ffmpeg) for _ in recorder.logs]
     with wave.open(str(out), "wb") as wav:
         wav.setnchannels(2)
         wav.setsampwidth(2)
         wav.setframerate(RATE)
-        for frame, (tracks, level) in enumerate(recorder.music_log):
+        for frame in range(recorder.frames):
             chunk = np.zeros((SAMPLES, 2), np.float32)
-            if tracks:
-                if tracks != playlist:
-                    playlist, index, position = tracks, 0, 0
-                ramp = np.linspace(level_before, level, SAMPLES, endpoint=False, dtype=np.float32)[:, None]
-                filled = 0
-                for _ in range(len(playlist) + 1):           # a track may end within the frame
-                    track = decode(ffmpeg, str(playlist[index]))
-                    if len(track) == 0:
-                        index = (index + 1) % len(playlist)
-                        continue
-                    take = min(SAMPLES - filled, len(track) - position)
-                    chunk[filled:filled + take] += track[position:position + take] / 32768.0
-                    filled += take
-                    position += take
-                    if position >= len(track):
-                        index, position = (index + 1) % len(playlist), 0
-                    if filled >= SAMPLES:
-                        break
-                chunk *= ramp
-            level_before = level if tracks else 0.0
+            for stream, log in zip(streams, recorder.logs):
+                stream.add(chunk, *log[frame])
             start = frame / FPS
             while next_effect < len(effects) and effects[next_effect][0] < start + 1 / FPS:
                 _, name = effects[next_effect]
@@ -218,7 +240,7 @@ def export_video(ctx, character_id: str, start: int, end: int, path: Path, size:
         error = encoder.stderr.read().decode("utf-8", "replace").strip()
         if encoder.wait() != 0:
             raise ExportError(error or f"ffmpeg {encoder.returncode}")
-        if with_sound and recorder.music_log:
+        if with_sound and recorder.frames:
             if progress:
                 progress(1.0)
             mix(recorder, ffmpeg, audio)

@@ -118,6 +118,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "settings.cine_daylight_tip": "Nach der Uhrzeit, zu der du gespielt hast (Nacht von 21 bis 6 Uhr).",
         "settings.cine_credits": "Abspann am Ende, mit dem, was die Reise ergeben hat",
         "settings.cine_credits_tip": "Spielzeit, Strecke, Flüge, Gebiete, Dungeons, Taten und Tode des Zeitraums.",
+        "settings.cine_ambience": "Umgebungsgeräusche der Gebiete und Wind auf Flugrouten",
+        "settings.cine_ambience_tip": "Aus dem Spiel, bei Tag und Nacht; leise unter der Musik, in der Lautstärke der "
+                                      "Klangeffekte.",
         "settings.music_box": "Musik im Kino-Modus",
         "settings.music": "Hintergrundmusik abspielen",
         "settings.adventure_music": "Abenteuermusik aus dem Spiel (wechselt alle paar Stufen)",
@@ -644,6 +647,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "settings.cine_daylight_tip": "By the time of day you played (night from 9 pm to 6 am).",
         "settings.cine_credits": "End credits with what the journey added up to",
         "settings.cine_credits_tip": "Playtime, distance, flights, zones, dungeons, deeds and deaths of the range.",
+        "settings.cine_ambience": "Zone ambience and wind on flight paths",
+        "settings.cine_ambience_tip": "From the game, by day and night; quiet under the music, at the sound effects' "
+                                      "volume.",
         "settings.music_box": "Music in cinematic mode",
         "settings.music": "Play background music",
         "settings.adventure_music": "Adventure music from the game (changes every few levels)",

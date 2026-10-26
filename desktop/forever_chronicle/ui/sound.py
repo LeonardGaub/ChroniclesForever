@@ -3,13 +3,18 @@
 - Effects are WAV files played with QSoundEffect (low latency). The built-in ones are in ui/assets/sounds and are
   made by tools/generate_sounds.py; a file of the same name in %APPDATA%\\ForeverChronicle\\sounds replaces one.
 - The game's own sounds (wow/game_sounds.py: level-up, quest complete, achievement, discovery, button click,
-  resurrection, teleport) are taken from the install once and turned into WAV (install_game_sounds, a background
-  thread); they play instead of the built-in ones while the option "game_sounds" is on (the default). Effects
-  without a built-in file of their own (achievement, discovery, revive, teleport) fall back to the built-in alert.
+  resurrection, teleport, the flight sounds and the wind) are taken from the install once and turned into WAV
+  (install_game_sounds, a background thread); they play instead of the built-in ones while the option
+  "game_sounds" is on (the default). Effects without a built-in file of their own (achievement, discovery, revive,
+  teleport) fall back to the built-in alert.
 - Clicks: an application-wide event filter plays "click" when a button, tab, drop-down or menu entry is clicked.
 - Music: the built-in theme, or the player's own file, or a folder of files (shuffled), with fades and ducking
-  under big moments. QMediaPlayer plays MP3, OGG, FLAC, WAV and M4A. The cinematic mode switches to the zone's
+  under big moments. QMediaPlayer plays MP3, OGG, FLAC, WAV and M4A. The cinematic mode switches to the adventure
   music from the game (MusicPlayer.play: the old music fades out, the new one in).
+- Sound beds under the music (LoopPlayer, cinematic mode): the zone's ambience from the game and the wind on a
+  flight path. They loop at the effects' volume while sound effects are on; what plays is the cinematic's choice.
+- Flight sounds (the game's, no built-in ones): the gryphon's or wind rider's call at take-off, wing flaps and
+  a glide at landing.
 - Settings are in AppConfig (click_sounds, event_sounds, music, effects_volume, music_volume, music_path).
 - FOREVER_CHRONICLE_SILENT=1 keeps everything quiet (tests); what would have played is still recorded in `played`.
 - QtMultimedia comes with PySide6-Addons. With PySide6-Essentials alone the app runs without sound (AUDIO is False).
@@ -41,11 +46,14 @@ EFFECTS = ("click", "screenshot", "level_up", "event", "death")       # each has
 MORE_EFFECTS = ("achievement", "discovery", "revive", "teleport")   # the game's, else the built-in alert
 ALL_EFFECTS = EFFECTS + MORE_EFFECTS
 FALLBACK = {name: "event" for name in MORE_EFFECTS}
+# The cinematic's flight sounds: the game's only (silent without them), not in the settings' test buttons.
+FLIGHT_EFFECTS = ("gryphon_call", "wind_rider_call", "wing_flap", "wing_flap_soft", "wing_glide")
 WAV_RATE = 44100
 BUILTIN_MUSIC = ASSETS / "cinematic_theme.ogg"
 MUSIC_SUFFIXES = (".mp3", ".ogg", ".flac", ".wav", ".m4a", ".opus")
-TRIM = {"click": 0.55}            # the click is heard very often: quieter than the alerts
-MIN_GAP = {"click": 0.03}         # seconds before the same sound may start again
+TRIM = {"click": 0.55,            # the click is heard very often: quieter than the alerts
+        "gryphon_call": 0.7, "wind_rider_call": 0.6, "wing_flap": 0.55, "wing_flap_soft": 0.25}
+MIN_GAP = {"click": 0.03, "wing_flap": 0.3, "wing_flap_soft": 0.3}   # seconds before it may start again
 DEFAULT_GAP = 0.35
 
 FADE_IN = 3.0                     # seconds
@@ -53,6 +61,10 @@ FADE_OUT = 1.2
 SWITCH_OUT, SWITCH_IN = 1.6, 2.2  # seconds: other music (a zone change) fades the old one out, the new one in
 DUCK = 0.35                       # music level under a big moment
 DUCK_IN, DUCK_OUT = 0.25, 1.2
+AMBIENCE_LEVEL = 0.9              # the zone's ambience, a share of the effects' volume (the game's files are quiet)
+AMBIENCE_FADES = (2.5, 2.5, 2.5, 3.5)   # seconds: fade in, fade out, switch out, switch in (a slow crossfade)
+WIND_LEVEL = 0.32                 # the wind on a flight path (the game's wind loops are loud)
+WIND_FADES = (0.5, 1.6, 0.5, 0.5)       # quick in, a gust's tail out
 STEP_MS = 30
 
 
@@ -79,23 +91,35 @@ def game_sounds_on(config: AppConfig) -> bool:
 def install_game_sounds(client) -> threading.Thread | None:
     """Takes the game's sounds out of the install and turns them into WAV, in a background thread (opening the
     game files takes a few seconds). Does nothing once they are all there."""
-    if not AUDIO or client is None or not game_sounds.missing():
+    if not AUDIO or client is None or not (game_sounds.missing() or game_sounds.missing_loops()):
         return None
 
     def work() -> None:
         for name in game_sounds.extract_missing(client):
             source, target = game_sounds.ogg_path(name), game_sounds.cache_dir() / f"{name}.wav"
             if decode_to_wav(source, target):
-                try:
-                    source.unlink()
-                except OSError:
-                    pass
+                _remove(source)
             else:
                 game_sounds.mark_failed(name)
+        for name in game_sounds.missing_loops():
+            pieces = game_sounds.extract_loop_pieces(client, name)
+            wavs = [piece.with_suffix(".wav") for piece in pieces]
+            if not (pieces and all(decode_to_wav(a, b) for a, b in zip(pieces, wavs))
+                    and game_sounds.join_loop(wavs, game_sounds.cache_dir() / f"{name}.wav")):
+                game_sounds.mark_failed(name)
+            for path in pieces + wavs:
+                _remove(path)
 
     thread = threading.Thread(target=work, daemon=True)
     thread.start()
     return thread
+
+
+def _remove(path: Path) -> None:
+    try:
+        path.unlink()
+    except OSError:
+        pass
 
 
 def decode_to_wav(source: Path, target: Path, timeout_ms: int = 8000) -> bool:
@@ -199,6 +223,8 @@ class Sound(EffectGate):
         self._clock = QElapsedTimer()
         self._clock.start()
         self._music: MusicPlayer | None = None
+        self._ambience: LoopPlayer | None = None
+        self._wind: LoopPlayer | None = None
 
     # -- effects --------------------------------------------------------------------------
 
@@ -254,6 +280,23 @@ class Sound(EffectGate):
             self._music = MusicPlayer(self.config, self)
         return self._music
 
+    @property
+    def ambience(self) -> "LoopPlayer":
+        if self._ambience is None:
+            self._ambience = LoopPlayer(self.config, self, level=AMBIENCE_LEVEL, fades=AMBIENCE_FADES)
+        return self._ambience
+
+    @property
+    def wind(self) -> "LoopPlayer":
+        if self._wind is None:
+            self._wind = LoopPlayer(self.config, self, level=WIND_LEVEL, fades=WIND_FADES)
+        return self._wind
+
+    def volume_changed(self) -> None:
+        for player in (self._music, self._ambience, self._wind):
+            if player is not None:
+                player.volume_changed()
+
 
 def is_click_target(widget, pos) -> bool:
     """Whether a left-button release at pos (widget coordinates) clicks something."""
@@ -286,6 +329,7 @@ class MusicPlayer(QObject):
         self.target = 0.0
         self.duck_level = 1.0
         self.duck_left = 0.0      # seconds the music stays ducked
+        self.fade_in, self.fade_out, self.switch_out, self.switch_in = FADE_IN, FADE_OUT, SWITCH_OUT, SWITCH_IN
         self._player = None
         self._output = None
         self.timer = QTimer(self)
@@ -353,15 +397,15 @@ class MusicPlayer(QObject):
         self.duck_level = _approach(self.duck_level, duck_target,
                                     dt * (1 - DUCK) / (DUCK_IN if duck_target < self.duck_level else DUCK_OUT))
         if self.pending is not None:
-            self.fade = _approach(self.fade, 0.0, dt / SWITCH_OUT)
+            self.fade = _approach(self.fade, 0.0, dt / self.switch_out)
             if self.fade == 0:
                 new, self.pending = self.pending, None
                 self.switched = True
                 self._use(new)
         elif self.target > self.fade:
-            self.fade = _approach(self.fade, self.target, dt / (SWITCH_IN if self.switched else FADE_IN))
+            self.fade = _approach(self.fade, self.target, dt / (self.switch_in if self.switched else self.fade_in))
         else:
-            self.fade = _approach(self.fade, self.target, dt / FADE_OUT)
+            self.fade = _approach(self.fade, self.target, dt / self.fade_out)
         if self.fade >= self.target:
             self.switched = False
         self._apply()
@@ -435,6 +479,63 @@ class MusicPlayer(QObject):
             self.stop_now()
             return
         self.index = self.index % len(self.tracks)
+        self._set_source()
+        if self.active:
+            self._player.play()
+
+
+class LoopPlayer(MusicPlayer):
+    """A sound bed under the music (the zone's ambience, the wind on a flight path): files on a loop at the
+    effects' volume times level, only while sound effects are on. Its owner says what it wants (want), and how far
+    another bed covers it (set_under: the ambience under the wind). fades: seconds to fade in, out, and to cross
+    from one sound to another (out, in)."""
+
+    def __init__(self, config: AppConfig, parent=None, audible: bool = True, level: float = 1.0,
+                 fades: tuple[float, float, float, float] = (FADE_IN, FADE_OUT, SWITCH_OUT, SWITCH_IN)):
+        super().__init__(config, parent, audible)
+        self.base = level
+        self.under = 1.0
+        self.fade_in, self.fade_out, self.switch_out, self.switch_in = fades
+
+    def want(self, tracks: list[Path] | None) -> None:
+        """Plays these files (crossing over from the ones playing), or fades out (None, or sound effects off)."""
+        if not tracks or not self.config.event_sounds or self.config.effects_volume <= 0:
+            if self.target > 0 or self.fade > 0:
+                self.stop()
+            return
+        new = list(tracks)
+        if self.fade > 0:
+            if sorted(new) != sorted(self.pending if self.pending is not None else self.tracks):
+                self.pending = new          # the old sound fades out first, then the new one in (step)
+        else:
+            self.pending = None
+            self._use(new)
+        self.target = 1.0
+        if not self._quiet():
+            self._ensure_player()
+            if self._player.playbackState() != self._player.PlaybackState.PlayingState:
+                self._player.play()
+        self.timer.start()
+
+    def set_under(self, share: float) -> None:
+        if share != self.under:
+            self.under = share
+            self._apply()
+
+    def level(self) -> float:
+        return gain(self.config.effects_volume) * self.base * self.under * self.fade * self.duck_level
+
+    def _playlist(self, tracks: list[Path] | None) -> list[Path]:
+        return list(tracks or [])
+
+    def _error(self, *_args) -> None:
+        """A file that cannot be played is left out; with none left the bed is silent (never the music)."""
+        if self.tracks:
+            self.tracks.pop(self.index)
+        if not self.tracks:
+            self.stop_now()
+            return
+        self.index %= len(self.tracks)
         self._set_source()
         if self.active:
             self._player.play()

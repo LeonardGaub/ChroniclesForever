@@ -135,3 +135,28 @@ def test_music_switches_with_a_fade(app, tmp_path):
     quiet.stop_now()
     quiet.play([b])
     assert quiet.tracks == [b] and quiet.pending is None, "not playing: loaded for the next start"
+
+
+def test_loop_players_cross_over_and_follow_the_effects(app, tmp_path):
+    from forever_chronicle.ui.sound import LoopPlayer
+    a, b = tmp_path / "a.ogg", tmp_path / "b.ogg"
+    config = AppConfig()
+    bed = LoopPlayer(config, level=0.5, fades=(1.0, 2.0, 1.0, 1.5))
+    bed.want([a])
+    bed.step(1.0)
+    assert bed.tracks == [a] and bed.fade == 1.0 and bed.level() == pytest.approx(gain(config.effects_volume) * 0.5)
+    bed.set_under(0.4)
+    assert bed.level() == pytest.approx(gain(config.effects_volume) * 0.2), "lower under another bed"
+    bed.want([b])
+    assert bed.pending == [b] and bed.tracks == [a], "the old sound fades out first"
+    bed.step(1.0)
+    assert bed.tracks == [b] and bed.fade == 0.0
+    bed.step(1.5)
+    assert bed.fade == 1.0, "then the new one fades in"
+    bed.want(None)
+    assert not bed.active
+    bed.step(2.0)
+    assert bed.fade == 0.0 and not bed.timer.isActive()
+    config.event_sounds = False
+    bed.want([a])
+    assert not bed.active, "sound effects off: no beds"

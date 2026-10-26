@@ -19,6 +19,28 @@ at the time: older entries may describe things that changed or were removed late
   common list. Undead: Tirisfal, Elwynn, Plaguelands, Mulgore, Felwood, Dun Morogh, Tirisfal, ... `Character`
   now carries `race_file` (the column was already there).
 
+### Cinematic: profession toasts, quest pops, zone ambience, flight sounds (2026-10-26)
+- User picks from the second brainstorm ("try out the quest pops"): profession progress cfd44de, quest pops
+  6123480 (the experimental one, its own commit), ambience and flight sounds together (they share the new
+  `LoopPlayer`, the export's mixing and the window's sound methods). The postcards were already there: a
+  screenshot flies back to the marker and stays as a small polaroid pin, also through the outro.
+- Checked with tests and rendered frames; not yet listened to in the app.
+- Professions: `profession_learned` and `profession_rank` are cue types (toast, pin, timeline mark).
+- Quests: `Interface\GossipFrame\ActiveQuestIcon` (16 px, `quest_turnin.png`) drawn at 34 px on a dark halo
+  and gold glow (burst kind "quest", `PinsItem.quest`: several at once are staggered by `QUEST_STAGGER`).
+- Ambience: `AreaTable.AmbienceID` (column 7) -> `SoundAmbience` (DB2 1310628, `AmbienceID[2]` day/night
+  SoundKits) -> `SoundKitEntry`; one ~60 s OGG loop per zone and time of day (51 files), in `zone_music.json`
+  under "ambience". `AMBIENCE_SETTLE` 2.5 real seconds before a new place's ambience plays; crossfade 2.5 s out,
+  3.5 s in. Night from 20:30 to 6:00 (`daylight.night`). Option `cine_ambience`, at the effects' volume.
+- Flight sounds, found without the listfile (the sound files have no names in the root): `TaxiNodes`
+  `MountCreatureID` = 541 (gryphon), 2224 (wind rider), 3837 (hippogryph), 3574 (bat); `CreatureModelData` rows
+  named by their M2 header (Gryphon, Wyvern), `SoundID` column 13 -> `CreatureSoundData` 145 / 85 (column 0 is
+  the ID). Aggro calls 551348 / 564754, wing flap 564176, glide 564172. The wind: `SoundAmbience`'s extra kit
+  292700 = ten 5 s wind loops, joined into one 44 s seamless loop (`game_sounds.join_loop`).
+- Short flights: the wind blows at least `WIND_HOLD` (1.6 s) after take-off, so a flight lasting a moment at speed
+  is one call and one gust; landing glide only after `LAND_AFTER` (2 s); no call within `CALL_GAP` (6 s) of a
+  landing (connecting flights). Flaps follow the marker's drawn beats (`MarkerItem.take_off`, `pop_beats`).
+
 ### Cinematic: opening dive, flights, level-up textures, footprints, smooth own maps (2026-10-26)
 - User picks from the brainstorm, "to test them all but may revert them later": one commit each, so each can be
   reverted on its own: opening dive a7d6507, smooth own maps b359622, flights 1f800d4, level-up 60c3de8,

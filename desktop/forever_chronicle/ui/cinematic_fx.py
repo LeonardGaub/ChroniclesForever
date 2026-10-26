@@ -603,6 +603,9 @@ class MarkerItem(QGraphicsItem):
 
     TAXI_COLOR = QColor(hex_color(TAXI))      # the flight paths' blue
     PORTAL_COLOR = QColor("#a87bff")
+    # The flying mount's wings: a cycle of beats (one every FLAP_BEAT seconds until FLAP_UNTIL), then a glide.
+    FLAP_CYCLE, FLAP_BEAT, FLAP_UNTIL = 3.4, 0.55, 1.4
+    FLAP_AT = 0.15             # seconds into a beat where it is heard (the wings at their widest)
 
     def __init__(self):
         super().__init__()
@@ -615,6 +618,8 @@ class MarkerItem(QGraphicsItem):
         self.motion = 0.0            # 0..1: how visible the arrow is (only while moving)
         self.moving = False
         self.clock = 0.0
+        self.flap_from = 0.0         # the clock at take-off: the wings' cycle starts with beats there
+        self.beats: list[int] = []   # wing beats since the last pop_beats(): the cycle each belongs to
 
     def boundingRect(self) -> QRectF:
         return QRectF(-72, -72, 144, 144)          # a flying mount's wings and shadow
@@ -631,9 +636,27 @@ class MarkerItem(QGraphicsItem):
             target = math.degrees(math.atan2(dy, dx))
             self.angle += ((target - self.angle + 180) % 360 - 180) * 0.3
 
+    def take_off(self) -> None:
+        """The flying mount sets off: its wings start a cycle of beats now."""
+        self.flap_from = self.clock
+        self.beats.clear()
+
+    def pop_beats(self) -> list[int]:
+        beats, self.beats = self.beats, []
+        return beats
+
     def tick(self, dt: float) -> None:
+        before = self.clock - self.flap_from
         self.clock += dt
         self.motion = clamp(self.motion + (dt * 4 if self.moving else -dt * 2))
+        if self.mode == "taxi":
+            after = self.clock - self.flap_from
+            for cycle in range(int(before // self.FLAP_CYCLE), int(after // self.FLAP_CYCLE) + 1):
+                at = cycle * self.FLAP_CYCLE + self.FLAP_AT
+                while at - cycle * self.FLAP_CYCLE < self.FLAP_UNTIL:
+                    if before < at <= after:
+                        self.beats.append(cycle)
+                    at += self.FLAP_BEAT
         self.update()
 
     def paint(self, painter: QPainter, option, widget=None) -> None:
@@ -729,8 +752,8 @@ class MarkerItem(QGraphicsItem):
     def _gryphon(self, painter: QPainter, pulse: float) -> None:
         self._halo(painter, self.TAXI_COLOR, 22 + 3 * pulse, 90)
         # Two or three wing beats, then a glide with the wings held out (a beat every ~3.5 s).
-        cycle = self.clock % 3.4
-        beat = math.sin(cycle * 2 * math.pi / 0.55) if cycle < 1.4 else 0.0
+        cycle = (self.clock - self.flap_from) % self.FLAP_CYCLE
+        beat = math.sin(cycle * 2 * math.pi / self.FLAP_BEAT) if cycle < self.FLAP_UNTIL else 0.0
         spread = 0.86 + 0.14 * beat * (1 - ease_in(clamp((cycle - 1.1) / 0.3)))
         painter.save()
         painter.rotate(self.angle)

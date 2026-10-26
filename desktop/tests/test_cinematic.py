@@ -524,3 +524,84 @@ def test_cinematic_quest_pops(app, ctx, imported):
     assert len([b for b in window.pins.bursts if b.kind == "quest"]) == 3, "nothing handed in meanwhile"
     window.close()
 
+
+def test_cinematic_ambience_and_flights(app, ctx, imported, tmp_path, monkeypatch):
+    from forever_chronicle.domain import daylight
+    from forever_chronicle.wow import game_sounds, zone_music
+    window = _window(ctx)
+
+    # Ambience: the place's own, by day or night, once its files are there.
+    point = window.route.point_at(int(window.t))
+    files = zone_music.ambience_file_ids(window.route.view_for(point), point.instance_id, daylight.night(window.t))
+    if files:
+        assert window._wanted_ambience() is None, "not taken from the game yet"
+        cache = zone_music.cache_dir()
+        cache.mkdir(parents=True, exist_ok=True)
+        for fdid in files:
+            (cache / f"{fdid}.ogg").write_bytes(b"OggS")
+        assert window._wanted_ambience() == tuple(zone_music.paths(files))
+    # A quick pass through another place keeps the ambience playing; a stay changes it.
+    a, b = (tmp_path / "a.ogg",), (tmp_path / "b.ogg",)
+    wanted = [a]
+    monkeypatch.setattr(window, "_wanted_ambience", lambda: wanted[0])
+    window._update_ambience(0.0, now=True)
+    assert window.ambience_now == a and ctx.sound.ambience.tracks == list(a)
+    wanted[0] = b
+    for _ in range(3):
+        window._update_ambience(cine.AMBIENCE_SETTLE / 4)
+    wanted[0] = a
+    window._update_ambience(0.1)
+    assert window.ambience_now == a, "a quick pass through another zone keeps the ambience"
+    wanted[0] = b
+    for _ in range(6):
+        window._update_ambience(cine.AMBIENCE_SETTLE / 4)
+    assert window.ambience_now == b and b[0] in (ctx.sound.ambience.pending or ctx.sound.ambience.tracks)
+
+    # Flight paths: the mount's call and wing beats, the wind, a glide at the landing.
+    wind = tmp_path / "wind.wav"
+    monkeypatch.setattr(game_sounds, "loop_path", lambda name: wind)
+    call = "wind_rider_call" if window.marker.flyer == "wyvern" else "gryphon_call"
+    played = ctx.sound.played
+    played.clear()
+    ctx.sound._last.clear()
+    clock = [0.0]                                    # the sound's clock follows the replay's steps
+    monkeypatch.setattr(ctx.sound, "now", lambda: clock[0])
+
+    def fly(seconds: float) -> None:
+        for _ in range(round(seconds / 0.1)):
+            clock[0] += 0.1
+            window.marker.tick(0.1)
+            window._update_flight_sounds(0.1)
+
+    window._set_flying(True, jump=False)
+    window.marker.set_mode("taxi")
+    assert list(played) == [call]
+    fly(2.0)
+    assert played.count("wing_flap") == 3 and "wing_flap_soft" not in played, "the first beats, with the marker's"
+    assert ctx.sound.wind.target == 1.0 and ctx.sound.wind.tracks == [wind]
+    ctx.sound.wind.step(1.0)
+    window._update_flight_sounds(0.0)
+    assert ctx.sound.ambience.under == pytest.approx(cine.AMBIENCE_UNDER_WIND), "the ambience steps back"
+    fly(2.0)
+    assert "wing_flap_soft" in played, "later beats are softer"
+    window._set_flying(False, jump=False)
+    window.marker.set_mode("walk")
+    assert played[-1] == "wing_glide", "a longer flight glides in"
+    window._update_flight_sounds(0.1)
+    assert not window.wind_on and ctx.sound.wind.target == 0.0, "the wind dies away"
+
+    # A connecting flight is not called again, and a short one is one gust without a landing.
+    played.clear()
+    ctx.sound._last.clear()
+    window._set_flying(True, jump=False)
+    window._update_flight_sounds(0.1)
+    window._set_flying(False, jump=False)
+    window._update_flight_sounds(0.1)
+    assert call not in played and "wing_glide" not in played
+    assert window.wind_on, "the gust blows on after the short flight"
+    for _ in range(int(cine.WIND_HOLD / 0.1) + 1):
+        window._update_flight_sounds(0.1)
+    assert not window.wind_on
+    window._set_flying(True, jump=True)
+    assert not played or played[-1] != call, "a jump into a flight is no take-off"
+    window.close()

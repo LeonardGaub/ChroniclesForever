@@ -48,6 +48,13 @@
 - Sound (ui/sound.py): music fades in with the window and out when it closes; level-ups play a fanfare (the music
   ducks under it), screenshots a shutter, alerts a chime (achievements and discoveries their own sound), deaths a
   bell, coming back to life the resurrection and teleports their sound; the game's own sounds where taken.
+- Ambience (option "cine_ambience"): under the music, the game's ambience of the zone or dungeon the player is in,
+  by day or night. A place's ambience plays only once the replay has stayed there AMBIENCE_SETTLE seconds, so
+  passing through zones quickly keeps the one playing; the change is a slow crossfade.
+- Flight paths: at take-off the faction's mount calls (gryphon or wind rider) and its wings beat with the marker's
+  (softer after the first beats); the wind rises under the ambience while flying and dies away after landing,
+  where a glide is heard after a longer flight. A short flight (at speed, a flight lasts a moment) is one call and
+  one gust: the wind blows at least WIND_HOLD seconds and the landing is left out; connecting flights call once.
 - The video export (ui/cinematic_export.py) runs the same window off screen, frame by frame.
 """
 
@@ -72,7 +79,7 @@ from ..domain.experience import Experience
 from ..domain.route import Route, Timeline
 from ..domain.route_colors import RouteColors, zone_colors
 from ..i18n import format_datetime, format_duration, tr
-from ..wow import zone_music
+from ..wow import game_sounds, zone_music
 from ..wow.map_art import find_art
 from . import icons, theme, world_art
 from .world_art import WorldArt
@@ -144,6 +151,12 @@ OUTRO_SECONDS = 4.0        # the camera pulling back over the whole route at the
 OUTRO_MARGIN = 1.3
 INTRO_HOLD = 1.2           # real seconds the opening shows the whole map under the character's title ...
 INTRO_DIVE = 2.4           # ... and the camera then takes to dive to where the replay starts
+# Sound beds and flight sounds (ui/sound.py).
+AMBIENCE_SETTLE = 2.5      # real seconds a place's ambience must be wanted before it plays (quick passes keep the old)
+AMBIENCE_UNDER_WIND = 0.35  # the ambience's share while the wind blows
+WIND_HOLD = 1.6            # real seconds the wind blows at least: a short flight is one gust
+CALL_GAP = 6.0             # real seconds after a landing in which a take-off is not called again (connecting flights)
+LAND_AFTER = 2.0           # real seconds a flight lasts at least before its landing is heard
 
 
 @dataclass
@@ -439,12 +452,29 @@ class CinematicWindow(QWidget):
         chapters = range(first, last + 1)
         music_files = list(dict.fromkeys(
             f for c in chapters for f in zone_music.adventure_file_ids(c, self.race))) if self.adventure_music else []
-        if zone_music.missing(music_files) and ctx.client():
+        # The zones' ambience (day and night) the same way.
+        self.ambience_on = ctx.config.flag("cine_ambience")
+        self.ambience_now: tuple[Path, ...] | None = None     # playing
+        self.ambience_next: tuple[Path, ...] | None = None    # wanted, for ambience_wait seconds
+        self.ambience_wait = 0.0
+        self._ambience_paths: dict[tuple[int, ...], tuple[Path, ...]] = {}
+        places = {(r.map_id, r.instance_id) for r in self.route.zone_runs(self.start, self.end)}
+        ambience_files = list(dict.fromkeys(
+            f for m, i in places for night in (False, True)
+            for f in zone_music.ambience_file_ids(m, i, night))) if self.ambience_on else []
+        files = music_files + ambience_files
+        if zone_music.missing(files) and ctx.client():
             if exporting:
-                zone_music.extract_missing(ctx.client(), music_files)
+                zone_music.extract_missing(ctx.client(), files)
             else:
-                threading.Thread(target=zone_music.extract_missing, args=(ctx.client(), music_files),
+                threading.Thread(target=zone_music.extract_missing, args=(ctx.client(), files),
                                  daemon=True).start()
+        # Flight paths: the state the sounds follow (real seconds).
+        self.flying = False
+        self.flight_age = 0.0               # since take-off
+        self.since_landing = math.inf
+        self.wind_left = 0.0                # the wind blows at least this much longer
+        self.wind_on = False
 
         self.view = CinemaView(self)
         self.view.setScene(QGraphicsScene(self.view))
@@ -587,10 +617,13 @@ class CinematicWindow(QWidget):
                 self.start_playback()
             self.music_now = self._wanted_music()
             self.sound.music.start(tracks=list(self.music_now) if self.music_now else None)
+            self._update_ambience(0.0, now=True)
 
     def closeEvent(self, event) -> None:
         self.timer.stop()
         self.sound.music.stop()
+        self.sound.ambience.want(None)
+        self.sound.wind.want(None)
         super().closeEvent(event)
 
     def resizeEvent(self, event) -> None:
@@ -701,6 +734,7 @@ class CinematicWindow(QWidget):
         self.xp_bar.snap()
         self._update_light(0.0, now=True)
         self._update_music()
+        self._update_ambience(0.0, now=True)
 
     def _seek_from_bar(self, t: float) -> None:
         self.wake_controls()
@@ -803,6 +837,8 @@ class CinematicWindow(QWidget):
         self._update_grey(dt)
         self._update_light(dt)
         self._update_music()
+        self._update_ambience(dt)
+        self._update_flight_sounds(dt)
         if self.photo_on:
             if not self.photo.advance(dt):
                 self._hide_photo()
@@ -1018,6 +1054,72 @@ class CinematicWindow(QWidget):
             self.music_now = wanted
             self.sound.music.play(list(wanted) if wanted else None)
 
+    # -- ambience and flights -----------------------------------------------------------------
+
+    def _wanted_ambience(self) -> tuple[Path, ...] | None:
+        """The ambience of the place at the current moment, by day or night (None: none, or not taken yet)."""
+        if not self.ambience_on or self.credits is not None or self.ended:
+            return None
+        point = self.route.point_at(int(self.t))
+        if point is None:
+            return self.ambience_next
+        files = zone_music.ambience_file_ids(self.route.view_for(point), point.instance_id, daylight.night(self.t))
+        if files not in self._ambience_paths:
+            found = tuple(zone_music.paths(files))
+            if len(found) < len(files):
+                return None                 # still coming out of the game
+            self._ambience_paths[files] = found
+        return self._ambience_paths[files] or None
+
+    def _update_ambience(self, dt: float, now: bool = False) -> None:
+        """Changes the ambience once the replay has stayed AMBIENCE_SETTLE seconds where another one is wanted (at
+        once after a jump)."""
+        wanted = self._wanted_ambience()
+        if wanted != self.ambience_next:
+            self.ambience_next, self.ambience_wait = wanted, 0.0
+        else:
+            self.ambience_wait += dt
+        if self.ambience_next != self.ambience_now and (now or self.ambience_wait >= AMBIENCE_SETTLE):
+            self.ambience_now = self.ambience_next
+            self.sound.ambience.want(list(self.ambience_now) if self.ambience_now else None)
+
+    def _set_flying(self, taxi: bool, jump: bool) -> None:
+        """Take-off and landing on a flight path (a jump only changes the state): the mount's call unless it just
+        landed from a connecting flight, a gust of wind, and a glide at the end of a longer flight."""
+        if taxi == self.flying:
+            return
+        self.flying = taxi
+        if taxi:
+            self.marker.take_off()
+            self.flight_age = 0.0
+            if not jump:
+                self.wind_left = WIND_HOLD
+                if self.since_landing >= CALL_GAP:
+                    self.sound.play("wind_rider_call" if self.marker.flyer == "wyvern" else "gryphon_call")
+        else:
+            if not jump and self.flight_age >= LAND_AFTER:
+                self.sound.play("wing_glide")
+            self.since_landing = 0.0
+
+    def _update_flight_sounds(self, dt: float) -> None:
+        """The wings beat with the marker's (only while the replay moves), the wind blows while flying (and at
+        least WIND_HOLD after a take-off), and the ambience steps back under it."""
+        moving = not (self.paused or self.ended or self.photo_on or self.hold > 0)
+        if self.flying:
+            self.flight_age += dt
+        else:
+            self.since_landing += dt
+        self.wind_left = max(0.0, self.wind_left - dt)
+        for cycle in self.marker.pop_beats():
+            if moving:
+                self.sound.play("wing_flap" if cycle == 0 else "wing_flap_soft")
+        blowing = self.ambience_on and self.credits is None and (self.flying and moving or self.wind_left > 0)
+        if blowing != self.wind_on:
+            self.wind_on = blowing
+            wind = game_sounds.loop_path("wind")
+            self.sound.wind.want([wind] if blowing and wind else None)
+        self.sound.ambience.set_under(1 - (1 - AMBIENCE_UNDER_WIND) * self.sound.wind.fade)
+
     def _skip_gap(self, t: float) -> float:
         """Time without points (logout, a long break) is skipped."""
         times = self.route.times
@@ -1069,6 +1171,7 @@ class CinematicWindow(QWidget):
         death = self._death_at(self.t)
         self.marker.set_mode("dungeon" if point.instance_id is not None else "taxi" if point.taxi
                              else ("ghost" if death.ghost(self.t) else "dead") if death else "walk")
+        self._set_flying(self.marker.mode == "taxi", jump)
         if head is not None:
             moved = 0.0
             if self.last_head is not None and not jump:
@@ -1432,6 +1535,7 @@ class CinematicWindow(QWidget):
         if self.adventure_music and self.sound.music.active:
             self.music_now = None
             self.sound.music.play(None)             # the music chosen in the settings (the built-in theme)
+        self._update_ambience(0.0, now=True)        # the ambience fades out under the credits
         return True
 
     def _advance_intro(self, dt: float) -> None:

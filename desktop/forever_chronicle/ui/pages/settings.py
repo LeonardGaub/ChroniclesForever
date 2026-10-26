@@ -123,10 +123,10 @@ class SettingsPage(Page):
         ml.setColumnStretch(3, 1)
         root.addWidget(self.music_box)
 
-        # Cinematic mode: time of day, end credits (ui/cinematic.py; on by default)
+        # Cinematic mode: time of day, end credits, ambience (ui/cinematic.py; on by default)
         self.cine_box = QGroupBox()
         cl = QVBoxLayout(self.cine_box)
-        for key in ("cine_daylight", "cine_credits"):
+        for key in ("cine_daylight", "cine_credits", "cine_ambience"):
             cl.addWidget(self._option(key), 0, Qt.AlignmentFlag.AlignLeft)
         root.addWidget(self.cine_box)
 
@@ -229,11 +229,12 @@ class SettingsPage(Page):
     def _set_effects_volume(self, value: int) -> None:
         self._set("effects_volume", value)
         self.effects_value.setText(f"{value} %")
+        self.sound.volume_changed()             # the cinematic's sound beds follow the effects' volume
 
     def _set_music_volume(self, value: int) -> None:
         self._set("music_volume", value)
         self.music_value.setText(f"{value} %")
-        self.sound.music.volume_changed()
+        self.sound.volume_changed()
 
     def _set_adventure_music(self, on: bool) -> None:
         self._set("cine_music", "zone" if on else "chosen")

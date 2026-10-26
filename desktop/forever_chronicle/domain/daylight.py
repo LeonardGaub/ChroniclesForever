@@ -15,6 +15,7 @@ DAWN = (1.0, 0.84, 0.8)
 DUSK = (1.0, 0.8, 0.58)
 TWILIGHT = (0.74, 0.64, 0.8)
 # (local hour, colour), from midnight to midnight.
+NIGHT_FROM, NIGHT_UNTIL = 20.5, 6.0
 KEYFRAMES = ((0.0, NIGHT), (5.0, NIGHT), (6.0, DAWN), (7.2, DAY), (18.0, DAY), (19.5, DUSK), (20.5, TWILIGHT),
              (21.5, NIGHT), (24.0, NIGHT))
 
@@ -37,3 +38,9 @@ def light(hour: float) -> tuple[float, float, float]:
 
 def light_at(t: float) -> tuple[float, float, float]:
     return light(hour_of(t))
+
+
+def night(t: float) -> bool:
+    """Whether the recorded moment was at night (from the dusk's twilight to dawn): the night's ambience plays."""
+    hour = hour_of(t)
+    return hour >= NIGHT_FROM or hour < NIGHT_UNTIL

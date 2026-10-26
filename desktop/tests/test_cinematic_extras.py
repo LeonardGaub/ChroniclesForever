@@ -257,3 +257,49 @@ def test_flight_marker_is_the_factions_mount(app):
         assert frames[0] != frames[1], "the wings beat"
         drawn[kind] = frames[2]
     assert drawn["wyvern"] != drawn["gryphon"], "each faction its own mount"
+
+
+def test_flight_sounds_and_the_wind_loop(tmp_path, monkeypatch, app):
+    import numpy as np
+    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
+    from forever_chronicle.wow import game_sounds
+
+    assert set(sound.FLIGHT_EFFECTS) <= set(game_sounds.SOUNDS), "every flight sound comes from the game"
+    assert not sound.effect_path("wing_flap").is_file(), "without the game the flights stay quiet (no stand-in)"
+    assert game_sounds.missing_loops() == ["wind"] and game_sounds.loop_path("wind") is None
+    assert game_sounds.extract_loop_pieces(None, "wind") == []
+
+    # Three pieces of noise-like sound join into one loop without a seam.
+    rate, n = 8000, 8000
+    pieces = []
+    for i, freq in enumerate((220, 330, 440)):
+        path = tmp_path / f"piece{i}.wav"
+        wave_ = (np.sin(np.arange(n) * 2 * np.pi * freq / rate) * 9000).astype("<i2")
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes(wave_.tobytes())
+        pieces.append(path)
+    out = tmp_path / "loop.wav"
+    assert game_sounds.join_loop(pieces, out, crossfade=0.1)
+    with wave.open(str(out)) as w:
+        assert w.getframerate() == rate and w.getnframes() == 3 * (n - 800), "each piece overlaps the next"
+        loop = np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(float)
+    steps = np.abs(np.diff(loop))
+    assert abs(loop[0] - loop[-1]) <= steps.max(), "the end runs into the start: no click when it loops"
+
+
+def test_zone_ambience_table():
+    from forever_chronicle.wow import zone_music
+    assert zone_music.ambience_file_ids(1429) and zone_music.ambience_file_ids(1429, night=True), "Elwynn Forest"
+    assert zone_music.ambience_file_ids(1429) != zone_music.ambience_file_ids(1429, night=True), "a night of its own"
+    assert zone_music.ambience_file_ids(1429, 999999) == zone_music.ambience_file_ids(1429), \
+        "a dungeon without ambience keeps the zone's"
+    assert zone_music.ambience_file_ids(None) == () and zone_music.ambience_file_ids(424242) == ()
+    assert daylight.night(datetime_at(23)) and daylight.night(datetime_at(3)) and not daylight.night(datetime_at(12))
+
+
+def datetime_at(hour: int) -> float:
+    import datetime
+    return datetime.datetime(2026, 10, 20, hour, 0).timestamp()

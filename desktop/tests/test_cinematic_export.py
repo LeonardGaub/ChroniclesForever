@@ -18,10 +18,36 @@ def test_recorder_notes_effects_and_music(app):
     assert rec.play("death") and not rec.play("death"), "the same effect not twice at once, as in the app"
     for _ in range(FPS):
         rec.step(1 / FPS)
-    assert rec.effects == [(0.0, "death")] and len(rec.music_log) == FPS
-    tracks, level = rec.music_log[-1]
+    assert rec.effects == [(0.0, "death")] and rec.frames == FPS and all(len(log) == FPS for log in rec.logs)
+    tracks, level = rec.logs[0][-1]
     assert tracks and 0 < level < 1, "the music fades in"
     assert rec.play("death"), "a second later it may play again"
+    assert rec.logs[1][-1] == rec.logs[2][-1] == ((), 0.0), "no ambience or wind asked for"
+
+
+@pytest.mark.skipif(not ffmpeg_exe(), reason="ffmpeg (imageio-ffmpeg) not installed")
+def test_mix_adds_the_sound_beds(app, tmp_path):
+    import wave
+
+    import numpy as np
+    from forever_chronicle.ui.cinematic_export import mix
+    bed = tmp_path / "bed.wav"
+    with wave.open(str(bed), "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(48000)
+        w.writeframes((np.sin(np.arange(4800) / 10) * 8000).astype("<i2").repeat(2).tobytes())   # 0.1 s, loops
+    rec = Recorder(AppConfig(music=False))
+    rec.wind.want([bed])
+    for _ in range(FPS):
+        rec.step(1 / FPS)
+    assert rec.logs[2][-1][0] == (bed,) and rec.logs[2][-1][1] > 0, "the wind fades in"
+    out = tmp_path / "mix.wav"
+    mix(rec, ffmpeg_exe(), out)
+    with wave.open(str(out), "rb") as w:
+        samples = np.frombuffer(w.readframes(w.getnframes()), np.int16)
+    assert len(samples) == FPS * SAMPLES * 2
+    assert abs(samples[-SAMPLES:]).max() > abs(samples[:SAMPLES]).max() > 0, "a loop at rising volume"
 
 
 @pytest.mark.skipif(not ffmpeg_exe(), reason="ffmpeg (imageio-ffmpeg) not installed")
