@@ -348,6 +348,14 @@ def test_zone_music_table_and_cache(tmp_path, monkeypatch):
     themes = [zone_music.adventure_file_ids(c) for c in range(len(zone_music.ADVENTURE))]
     assert len(set(themes)) == len(themes), "each theme is music of its own"
     assert zone_music.adventure_file_ids(len(themes)) == themes[0], "the themes start again"
+    assert zone_music.adventure_file_ids(0, "Goblin") == themes[0], "an unknown race: the common themes"
+    for race, zones in zone_music.RACE_THEMES.items():
+        assert all(zone_music.entry(z) for z in zones), f"{race}: every theme is in the table"
+    undead = [zone_music.adventure_file_ids(c, "Scourge") for c in range(13)]
+    lands = {tuple(zone_music.entry(z)["day"]) for z in zone_music.RACE_THEMES["Scourge"]}
+    assert undead[0] == tuple(zone_music.entry(1420)["day"]), "the undead start with Tirisfal"
+    assert [m in lands for m in undead] == [c % 2 == 0 for c in range(13)], "every other theme is undead"
+    assert all(a != b for a, b in zip(undead, undead[1:])), "never the same theme twice in a row"
     assert [zone_music.chapter(lv) for lv in (None, 1, 7, 8, 59, 60)] == [0, 0, 0, 1, 12, 12]
     widths = [b - a for a, b in zip(zone_music.CHAPTER_LEVELS, zone_music.CHAPTER_LEVELS[1:])]
     assert widths == sorted(widths, reverse=True) and widths[0] > widths[-1], "chapters get shorter"
@@ -371,11 +379,14 @@ def test_cinematic_deaths_standstills_and_music(app, ctx, imported, tmp_path, mo
     # The adventure music's files (the game is not there in tests).
     cache = zone_music.cache_dir()
     cache.mkdir(parents=True)
-    for c in range(len(zone_music.ADVENTURE)):
-        for fdid in zone_music.adventure_file_ids(c):
+    race = ctx.repo.character(cid).race_file
+    assert race == "Tauren"
+    for c in range(2 * len(zone_music.ADVENTURE)):
+        for fdid in zone_music.adventure_file_ids(c, race):
             (cache / f"{fdid}.mp3").write_bytes(b"ID3")
 
     window = CinematicWindow(ctx, cid, start, end, speed=4)
+    assert window.race == race
     window.resize(900, 600)
     window.show()
     window.timer.stop()
@@ -385,13 +396,13 @@ def test_cinematic_deaths_standstills_and_music(app, ctx, imported, tmp_path, mo
     window.levels = Levels([E(window.t + 100, "level_up", level=8), E(window.t + 200, "level_up", level=9)])
     window.seek(window.t + 50)
     chapter_0 = window.music_now
-    assert chapter_0 == tuple(zone_music.paths(zone_music.adventure_file_ids(0)))
+    assert chapter_0 == tuple(zone_music.paths(zone_music.adventure_file_ids(0, race)))
     window.seek(window.t + 100)
-    assert window.music_now == tuple(zone_music.paths(zone_music.adventure_file_ids(1))) != chapter_0
+    assert window.music_now == tuple(zone_music.paths(zone_music.adventure_file_ids(1, race))) != chapter_0
     player = ctx.sound.music
     assert sorted(player.pending or player.tracks) == sorted(window.music_now), "the player has the next theme"
     window.seek(window.t + 100)
-    assert window.music_now == tuple(zone_music.paths(zone_music.adventure_file_ids(1))), "level 9: same chapter"
+    assert window.music_now == tuple(zone_music.paths(zone_music.adventure_file_ids(1, race))), "level 9: same chapter"
 
     # A death: the replay holds, the world turns grey, the marker lies as a headstone, then walks as a ghost.
     t = int(window.t) + 200

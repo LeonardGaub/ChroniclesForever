@@ -167,7 +167,8 @@ Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `
 `level_up`, `screenshot`, `event`, `death`, `achievement`, `discovery`, `revive` and `teleport` (`sound.ALL_EFFECTS`;
 the last four fall back to the built-in `event`). The Settings tab holds the switches, volumes and the music choice
 (the game's adventure music, else the built-in theme, own file, or own folder as a shuffled playlist). The adventure
-music is the outdoor themes of `zone_music.ADVENTURE` one after another; the cinematic mode switches playlists
+music is the outdoor themes of `zone_music.ADVENTURE` one after another, every other one from the character's
+race's lands (`zone_music.RACE_THEMES`, by `Character.race_file`); the cinematic mode switches playlists
 (`music.play(tracks)`: fade out, fade in) at the level-up that begins a new chapter (`zone_music.CHAPTER_LEVELS`:
 every 7 levels at first, every 3 at the end). The video
 export drives a silent `MusicPlayer(audible=False)` frame by frame and mixes the logged music and effects itself.

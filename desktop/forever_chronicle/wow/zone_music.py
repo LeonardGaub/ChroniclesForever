@@ -5,7 +5,8 @@ every few levels) and the music files themselves.
   and per instance map ID ("instances") the fileDataIDs of the day and the night music.
 - Adventure music: chapter by chapter (CHAPTER_LEVELS) the day music of the zones in ADVENTURE, in that order;
   after the last theme they start again. Chapters are long in the first levels and get shorter later, where a
-  level takes much longer to play.
+  level takes much longer to play. With a known race every other chapter is a theme of its people's lands
+  (RACE_THEMES: the undead get Tirisfal, the Plaguelands and Felwood), starting with the first chapter.
 - The MP3 files come out of the player's own install when needed (extract_missing) into
   %APPDATA%\\ForeverChronicle\\music\\<fileDataID>.mp3. Needs numpy (wow/casc.py); without it, or without the
   game, the cinematic mode plays the built-in theme instead.
@@ -26,6 +27,17 @@ TABLE = Path(__file__).resolve().parents[1] / "zone_music.json"
 # The adventure themes (uiMapIDs whose music plays): Elwynn Forest (forest), Mulgore (plains), Dun Morogh
 # (mountains), the Barrens, Stranglethorn Vale (jungle), Ashenvale (night elf forest), Tanaris (desert), Stormwind.
 ADVENTURE = (1429, 1412, 1426, 1413, 1434, 1440, 1446, 1453)
+# Per race (the game's race token) the themes of its lands, in order: start zone, then others.
+RACE_THEMES = {
+    "Human": (1429, 1453),             # Elwynn Forest, Stormwind
+    "Dwarf": (1426,),                  # Dun Morogh
+    "Gnome": (1426,),
+    "NightElf": (1438, 1439, 1457),    # Teldrassil, Darkshore, Darnassus
+    "Orc": (1411, 1454),               # Durotar, Orgrimmar
+    "Troll": (1411, 1434),             # Durotar, Stranglethorn Vale
+    "Tauren": (1412, 1456),            # Mulgore, Thunder Bluff
+    "Scourge": (1420, 1422, 1448),     # Tirisfal Glades, the Plaguelands, Felwood
+}
 # The levels a new chapter (the next theme) begins at: every 7 levels at first, every 3 at the end.
 CHAPTER_LEVELS = (1, 8, 15, 21, 27, 32, 37, 41, 45, 49, 52, 55, 58)
 
@@ -59,10 +71,22 @@ def chapter(level: int | None) -> int:
     return max(0, bisect.bisect_right(CHAPTER_LEVELS, level) - 1) if level is not None else 0
 
 
-def adventure_file_ids(chapter_index: int) -> tuple[int, ...]:
-    """The music files of an adventure chapter: the day music of its theme (the themes repeat)."""
-    found = entry(ADVENTURE[chapter_index % len(ADVENTURE)])
-    return tuple(found["day"]) if found else ()
+def _themes(map_ids: Iterable[int]) -> list[tuple[int, ...]]:
+    """The day music of these zones, each music once (Durotar and Mulgore share theirs)."""
+    found = (entry(m) for m in map_ids)
+    return list(dict.fromkeys(tuple(e["day"]) for e in found if e and e["day"]))
+
+
+def adventure_file_ids(chapter_index: int, race: str | None = None) -> tuple[int, ...]:
+    """The music files of an adventure chapter: the day music of its theme (the themes repeat). With a known race,
+    the even chapters play its own themes and the odd ones the others."""
+    common = _themes(ADVENTURE)
+    own = _themes(RACE_THEMES.get(race or "", ()))
+    if not own:
+        return common[chapter_index % len(common)] if common else ()
+    others = [m for m in common if m not in own] or common
+    pool = own if chapter_index % 2 == 0 else others
+    return pool[chapter_index // 2 % len(pool)]
 
 
 def find(fdid: int) -> Path | None:

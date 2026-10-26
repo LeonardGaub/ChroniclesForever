@@ -13,6 +13,11 @@ at the time: older entries may describe things that changed or were removed late
   early, short late, where a level takes much longer. The switch is at the level-up itself (the old theme fades
   out under the fanfare). Dungeons and cities play it too. The option keeps its value `cine_music: "zone"`.
 - Theme choice and order are a first pick, not yet listened to in the app.
+- Mixed by race (user: "undead should have more undead zones sounds"): `RACE_THEMES` per race token (Scourge:
+  Tirisfal, Plaguelands, Felwood; Human: Elwynn, Stormwind; Tauren: Mulgore, Thunder Bluff; ...). Even chapters
+  play the race's themes, odd ones the common themes without those; unknown races (Forever's own, if any) get the
+  common list. Undead: Tirisfal, Elwynn, Plaguelands, Mulgore, Felwood, Dun Morogh, Tirisfal, ... `Character`
+  now carries `race_file` (the column was already there).
 
 ### Cinematic: opening dive, flights, level-up textures, footprints, smooth own maps (2026-10-26)
 - User picks from the brainstorm, "to test them all but may revert them later": one commit each, so each can be

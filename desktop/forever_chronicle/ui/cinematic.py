@@ -35,8 +35,9 @@
 - Breaks without route points (logouts, long pauses) are skipped. The replay slows down shortly before each
   screenshot and gets back to speed afterwards. Standstills (AFK, waiting) play normally, much faster or are
   skipped (option; the moments inside them are still shown).
-- Music: the adventure music from the game (wow/zone_music.py: one outdoor theme after another, the next at the
-  level-up that begins a new chapter), or the music chosen in the settings (option "cine_music").
+- Music: the adventure music from the game (wow/zone_music.py: one outdoor theme after another, every other one
+  from the character's people's lands, the next at the level-up that begins a new chapter), or the music chosen
+  in the settings (option "cine_music").
 - Controls (play/pause, speeds, standstills, music, video export, a timeline with marks for events and
   screenshots) appear while the mouse moves and fade out after a moment without movement; the mouse pointer
   hides with them.
@@ -376,6 +377,7 @@ class CinematicWindow(QWidget):
         char = repo.character(character_id)
         self.char_name = char.name if char else ""
         self.char_color = theme.class_color(char.class_file if char else None)
+        self.race = char.race_file if char else None      # the adventure music favours its people's lands
         self.levels = Levels(events, char.level if char else None)
         self.experience = Experience(self.levels, repo.metrics(character_id),
                                      lambda a, b: played_time(self.route, a, b), char.xp if char else None)
@@ -432,7 +434,7 @@ class CinematicWindow(QWidget):
         first, last = (zone_music.chapter(self.levels.at(t)) for t in (self.start, self.end))
         chapters = range(first, last + 1)
         music_files = list(dict.fromkeys(
-            f for c in chapters for f in zone_music.adventure_file_ids(c))) if self.adventure_music else []
+            f for c in chapters for f in zone_music.adventure_file_ids(c, self.race))) if self.adventure_music else []
         if zone_music.missing(music_files) and ctx.client():
             if exporting:
                 zone_music.extract_missing(ctx.client(), music_files)
@@ -997,7 +999,7 @@ class CinematicWindow(QWidget):
         files are there, the music playing goes on."""
         if not self.adventure_music:
             return None
-        files = zone_music.adventure_file_ids(zone_music.chapter(self.levels.at(self.t)))
+        files = zone_music.adventure_file_ids(zone_music.chapter(self.levels.at(self.t)), self.race)
         return tuple(zone_music.paths(files)) or self.music_now
 
     def _update_music(self) -> None:

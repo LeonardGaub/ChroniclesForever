@@ -25,6 +25,7 @@ class Character:
     owner_id: int | None = None         # None = my own character, else a friend (owners table)
     owner_name: str | None = None
     xp: tuple[int, int, int] | None = None   # the experience bar last seen: (when, xp, xp to the next level)
+    race_file: str | None = None        # the game's race token ("Scourge", "NightElf", ...)
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "Character":
@@ -34,7 +35,8 @@ class Character:
                    row["owner_id"] if "owner_id" in keys else None,
                    row["owner_name"] if "owner_name" in keys else None,
                    (row["xp_at"], row["xp"], row["xp_max"]) if "xp_at" in keys and row["xp_at"] is not None
-                   and row["xp"] is not None and row["xp_max"] else None)
+                   and row["xp"] is not None and row["xp_max"] else None,
+                   row["race_file"] if "race_file" in keys else None)
 
     @property
     def is_friend(self) -> bool:

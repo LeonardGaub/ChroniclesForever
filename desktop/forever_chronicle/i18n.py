@@ -122,7 +122,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "settings.music": "Hintergrundmusik abspielen",
         "settings.adventure_music": "Abenteuermusik aus dem Spiel (wechselt alle paar Stufen)",
         "settings.adventure_music_tip": "Wald, Ebenen, Berge, Dschungel, Wüste …: ein Thema nach dem anderen, in "
-                                        "den ersten Stufen seltener, später öfter. Die Musikdateien kommen beim "
+                                        "den ersten Stufen seltener, später öfter; jedes zweite aus den Ländern "
+                                        "deines Volkes (Untote: Tirisfal, Pestländer, Teufelswald). Die "
+                                        "Musikdateien kommen beim "
                                         "ersten Abspielen aus deiner WoW-Installation; ohne Spiel spielt die unten "
                                         "gewählte Musik.",
         "settings.source": "Musik",
@@ -644,7 +646,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "settings.music": "Play background music",
         "settings.adventure_music": "Adventure music from the game (changes every few levels)",
         "settings.adventure_music_tip": "Forest, plains, mountains, jungle, desert …: one theme after another, less "
-                                        "often in the first levels, more often later. The music files come from "
+                                        "often in the first levels, more often later; every other one from your "
+                                        "people's lands (undead: Tirisfal, the Plaguelands, Felwood). The music "
+                                        "files come from "
                                         "your WoW install the first time they play; without the game the music "
                                         "chosen below plays.",
         "settings.source": "Music",
