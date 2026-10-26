@@ -14,10 +14,11 @@ at the time: older entries may describe things that changed or were removed late
   OpenMap's tiles at 16 px per world unit). Own maps (Zephras Isle) were drawn nearest-neighbour (a pixmap item
   ignores the view's render hint): now smooth. Upscaling (Lanczos, Real-ESRGAN) was judged not worth it: little
   gain, 2.5x the disk, or invented detail.
-- Flights: the map leans back 30 degrees (`TAXI_TILT`); `CinemaView` draws the map flat into a larger picture and
-  shows it tilted, since a perspective view transform drops lines with a point behind the eye (the route, the
-  sky's tint). On a flight path the frame shows at least 90x60 world units within a second (`TAXI_FRAME`): leaving
-  a city the camera stayed city-close, 5-15x the coarse art. `ZOOM_OUT_TAXI` 0.8.
+- Flights (built and reverted the same day at the user's request; do not bring them back without asking): the map
+  leaned back 30 degrees, drawn flat into a larger picture and shown tilted (a perspective view transform drops
+  lines with a point behind the eye: the route, the sky's tint), and on a flight path the frame showed at least
+  90x60 world units within a second. Without it, leaving a city by flight path the camera stays city-close for
+  a few seconds (5-15x the coarse art's pixels).
 - Level-up: `Interface\LevelUp\LevelUpTex` gives the gold line and the golden glow (`tools/build_ui_skin.py`,
   `levelup_line.png`, `levelup_glow.png`); its dark backdrop overlaps other pieces there, so the title keeps its
   soft band. Title tone "level": lines grow from the middle, the glow flares behind; a pillar of the glow rises
