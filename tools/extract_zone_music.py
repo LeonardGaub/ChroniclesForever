@@ -17,25 +17,12 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import db2  # noqa: E402
-
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "desktop"))
-from forever_chronicle.wow import casc, paths  # noqa: E402
+sys.path[:0] = [str(ROOT / "desktop"), str(ROOT / "tools")]
+from db2 import AREA_TABLE, SOUND_KIT_ENTRY, UI_MAP_ASSIGNMENT, ZONE_MUSIC, open_install, table  # noqa: E402
+from forever_chronicle.wow import casc  # noqa: E402
 
-DEFAULT_INSTALL = Path(r"C:\Program Files (x86)\World of Warcraft")
-
-# Client database files by fileDataID (unnamed in the root file; identified by their contents).
-AREA_TABLE = 1353545          # ZoneName, AreaName, ContinentID, ParentAreaID, AreaBit, ..., [9] ZoneMusic, ...
-ZONE_MUSIC = 1310254          # SetName, SilenceIntervalMin[2], SilenceIntervalMax[2], Sounds[2] (day, night)
-SOUND_KIT_ENTRY = 1237435     # SoundKitID, FileDataID, Frequency, Volume, ...
-UI_MAP_ASSIGNMENT = 1957219   # UiMin[2], UiMax[2], Region[6], ID, UiMapID, OrderIndex, MapID, AreaID, ...
 CONTINENT_MAPS = (0, 1)       # Eastern Kingdoms, Kalimdor: their areas are zones, not dungeons
-
-
-def table(storage: casc.Casc, fdid: int) -> list[dict]:
-    return db2.read_db2(storage.read_fdid(fdid, zero_encrypted=True))
 
 
 def build(storage: casc.Casc) -> dict:
@@ -76,10 +63,10 @@ def build(storage: casc.Casc) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--install", type=Path, default=DEFAULT_INSTALL)
+    parser.add_argument("--install", type=Path, help="the World of Warcraft folder (default: found automatically)")
     parser.add_argument("--out", type=Path, default=ROOT / "desktop" / "forever_chronicle" / "zone_music.json")
     args = parser.parse_args()
-    storage = casc.Casc(args.install, paths.forever_product(args.install))
+    storage = open_install(args.install)
     data = build(storage)
     files = {f for group in ("zones", "instances") for m in data[group].values() for f in m["day"] + m["night"]}
     args.out.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")

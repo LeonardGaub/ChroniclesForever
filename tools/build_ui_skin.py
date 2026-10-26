@@ -34,10 +34,10 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw, ImageEnhance
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "desktop"))
+sys.path[:0] = [str(ROOT / "desktop"), str(ROOT / "tools")]
+from db2 import find_install  # noqa: E402
 from forever_chronicle.wow import game_icons, paths  # noqa: E402
 
-DEFAULT_INSTALL = Path(r"C:\Program Files (x86)\World of Warcraft")
 OUT = ROOT / "desktop" / "forever_chronicle" / "ui" / "assets" / "skin"
 TEXTURES = {
     "dialog": r"Interface\DialogFrame\UI-DialogBox-Border",
@@ -178,12 +178,13 @@ def build(src: Path, out: Path) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--install", type=Path, default=DEFAULT_INSTALL)
+    parser.add_argument("--install", type=Path, help="the World of Warcraft folder (default: found automatically)")
     parser.add_argument("--out", type=Path, default=OUT)
     args = parser.parse_args()
+    install = find_install(args.install)
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp)
-        got = set(game_icons.extract(args.install, paths.forever_product(args.install), list(TEXTURES.values()), src))
+        got = set(game_icons.extract(install, paths.forever_product(install), list(TEXTURES.values()), src))
         missing = [t for t in TEXTURES.values() if game_icons.name_of(t) not in got and "Disabled" not in t]
         if missing:
             print("not in the game files:", *missing, sep="\n  ")

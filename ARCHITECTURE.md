@@ -1,11 +1,12 @@
 # Journey Forever – Architecture
 
 ```
-addons/ForeverChronicle/        in-game addon (Lua, Interface 16001), the CurseForge upload
+addons/ForeverChronicle/        in-game addon (Lua, TOC Interface 16001, 16002, 16003, 16100), the CurseForge upload
 addons/ForeverChronicle_Share/  private friends companion (sharing through a cloud folder)
 desktop/                        desktop app (Python 3.12 + PySide6 + SQLite)
 sync/                           cloud sync script for the friend group (PowerShell)
-tools/                          packaging (CurseForge, friends' zip) and sound generation
+tools/                          CurseForge packaging; extract/build from the game files (maps, world map, icons, UI
+                                skin, zone music; shared setup in db2.py); beta-to-live settings port; sound generation
 tests/addon/                    addon tests in a mocked WoW client (Node + fengari)
 tests/fixtures/                 SavedVariables written by the addon tests, used by desktop tests
 docs/                           designs, spec tools, Phase 0 report, CurseForge texts
@@ -111,7 +112,7 @@ skill line, read with the Mainline `GetProfessions`/`GetProfessionInfo` at login
 `CHAT_MSG_SKILL` and via `/fj professions`. Recipes are only readable while a profession window is open. They are
 captured from the unfiltered `C_TradeSkillUI.GetAllRecipeIDs` list (at most once per 5 s). Linked, guild and NPC
 professions and skill lines the character does not have are skipped. Recipes use the compact format
-`recipeID,categoryID,icon,quality,name` (recipe list format 2; format 1 had no quality), and categories use
+`recipeID,categoryID,icon,quality,name` (recipe list format 2), and categories use
 `id,parentID,name`. Status `complete` means every recipe info
 was readable. A `partial` capture never removes recipes, and the desktop app follows the same rule (`replace_recipes`).
 Events: `profession_learned` and `profession_rank` come from the snapshot diff after a baseline, so professions
@@ -131,8 +132,7 @@ shown on the smallest known zone that contains them (`Route.ZoneFor` / `Route.vi
 
 Desktop: `domain/route.py` handles projection, segments and time lookup (pure, tested).
 `domain/maps.py` holds the Classic uiMapID table: art name and German/English names.
-`wow/map_art.py` finds map images in one place: `forever_chronicle/maps/<uiMapID>.jpg`, kept in git and shipped
-in the friend package. They come from the game client itself: `tools/extract_maps.py` reads the local install (`desktop/forever_chronicle/wow/casc.py`, `tools/db2.py`) and draws each map
+`wow/map_art.py` finds map images in one place: `forever_chronicle/maps/<uiMapID>.jpg`, kept in git. They come from the game client itself: `tools/extract_maps.py` reads the local install (`desktop/forever_chronicle/wow/casc.py`, `tools/db2.py`) and draws each map
 fully explored, as the game does. Rerun it after a client patch; Forever reworked several zones (Mulgore,
 Stormwind, Eastern Plaguelands, ...), so the Classic images do not fit everywhere.
 `ui/pages/map_page.py` is the map tab. All art uses the 1002×668 world-map canvas that game coordinates are
@@ -141,7 +141,8 @@ normalized to, which was verified against real Phase 0 coordinates.
 ### Adding an in-game page
 Create `UI/Pages/MyPage.lua` with `FC.UI:RegisterPage({ id, labelKey, icon, order, Create = fn, Refresh = fn })` and
 add it to the TOC. Build labels with `FC.UI:Label` / `Header` / `Button`, so they follow language changes, and reuse
-the widgets in `UI/Widgets.lua` (icon buttons, toggles, lists, tooltips, `UI:SelectionBorder`). Read character data
+the widgets in `UI/Widgets.lua` (icon buttons, toggles, lists, tooltips, `UI:SelectionBorder`, `UI:SearchBox`, `UI:Pool` for
+reused regions; `Util.Fold` lowercases umlauts for searching). Read character data
 through the view helpers (see above). `UI:ShowPage(id)` opens the window on a page.
 
 ### Changing the saved data format

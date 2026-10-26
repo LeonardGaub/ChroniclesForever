@@ -3,7 +3,7 @@
 OpenMap (an installed addon, MIT; the map art is Blizzard's) stitches every zone map into one picture of Azeroth
 and ships it baked as world tiles: Media/Textures/MapZones/<i>_<j>.blp, ns.MapZoneArt in Data/ZoneArt.lua.
 Their unit is the world map's art pixel (947.jpg, 1002 x 668), the "world unit" of domain/maps.py
-(CONTINENT_ON_WORLD, world_xy). Baked tile (i, j) covers step/px world units from (i, j) times that, its outer
+(CONTINENT_IN_WORLD, world_xy). Baked tile (i, j) covers step/px world units from (i, j) times that, its outer
 (size - step) / 2 pixels being its neighbours' edge. The tiles hold land only (transparent sea), so the world
 art, scaled up, stays underneath as the sea, its coastal band repainted as OpenMap paints the sea there (the
 continents' big names sit in it).
@@ -38,8 +38,8 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "desktop"))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path[:0] = [str(ROOT / "desktop"), str(ROOT / "tools")]
+from db2 import UI_MAP_ASSIGNMENT, find_install, open_install, table  # noqa: E402
 from forever_chronicle.wow.map_art import BASE_PX, TILE_MARGIN, TILE_PX, TILE_UNITS  # noqa: E402
 
 DEFAULT_OPENMAP = Path(r"C:\Program Files (x86)\World of Warcraft\_classic_beta_\Interface\AddOns\OpenMap")
@@ -49,7 +49,6 @@ WORLD_W, WORLD_H = 1002, 668
 # KALIMDOR's K and R, EASTERN KINGDOMS' first letters.
 LETTERING = [(104, 300, 133, 338), (312, 300, 340, 338), (634, 362, 700, 418)]
 SEA_SPOTS, SEA_HATCH = 48, 14       # world units per tile of the sea's mottling and of its wave strokes
-UI_MAP_ASSIGNMENT = 1957219   # (tools/extract_zone_music.py)
 ZONE_MAPS = ROOT / "desktop" / "forever_chronicle" / "maps"
 # Each city's zone, whose map paints the city with its name banner (OpenMap's ns.MapCityZones).
 CITY_ZONES = {1453: 1429, 1454: 1411, 1455: 1426, 1456: 1412, 1457: 1438, 1458: 1420}
@@ -312,10 +311,7 @@ def map_rects(install: Path, map_ids) -> dict[int, tuple[float, float, float, fl
     without a part of the world map for their world (Forever's own islands) are left out."""
     import struct
 
-    import db2
-    from forever_chronicle.wow import casc, paths
-
-    rows = db2.read_db2(casc.Casc(install, paths.forever_product(install)).read_fdid(UI_MAP_ASSIGNMENT, zero_encrypted=True))
+    rows = table(open_install(install), UI_MAP_ASSIGNMENT)
     real = lambda bits: struct.unpack("<f", struct.pack("<I", bits))[0]  # noqa: E731
     assigned: dict[int, list] = {}
     for r in rows:    # UiMin[2], UiMax[2], Region[6] (min x, y, z, max x, y, z), ID, UiMapID, OrderIndex, MapID
@@ -356,13 +352,14 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=ROOT / "desktop" / "forever_chronicle" / "maps" / "world")
     ap.add_argument("--placement", action="store_true",
                     help="only print where the game places the continents on the world map (CONTINENT_IN_WORLD)")
-    ap.add_argument("--install", type=Path, default=Path(r"C:\Program Files (x86)\World of Warcraft"))
+    ap.add_argument("--install", type=Path, help="the World of Warcraft folder (default: found automatically)")
     args = ap.parse_args()
+    install = find_install(args.install)
     if args.placement:
-        for continent, rect in placement(args.install).items():
+        for continent, rect in placement(install).items():
             print(continent, rect)
         return
-    world = World(args.openmap, args.install)
+    world = World(args.openmap, install)
     if args.out.exists():
         shutil.rmtree(args.out)
     args.out.mkdir(parents=True)

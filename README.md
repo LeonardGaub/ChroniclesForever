@@ -2,8 +2,8 @@
 
 A personal adventure history for **World of Warcraft: Forever** (Blizzard's Classic+), private use.
 
-- **Addon** (`addons/ForeverChronicle`, Interface 16001): records sessions, level-ups, quests, deaths,
-  achievements, discovered zones, routes, professions and recipes, and automatic screenshots. It has its own window (`/fj`) with
+- **Addon** (`addons/ForeverChronicle`, TOC Interface 16001, 16002, 16003 and 16100): records sessions, level-ups,
+  quests, deaths, achievements, discovered zones, routes, professions and recipes, and automatic screenshots. It has its own window (`/fj`) with
   Übersicht, Chronik, Karte (route replay on the game's map), Berufe, Einstellungen and Diagnose tabs.
 - **Friends companion** (`addons/ForeverChronicle_Share`, private, not on CurseForge): shares characters with a
   small friend group through a cloud folder (`sync/ForeverSync.ps1`) and shows the friends' characters.
@@ -17,8 +17,8 @@ German UI by default, English switchable.
 - Addon: copy `addons/ForeverChronicle` (and, for the friend group, `addons/ForeverChronicle_Share`) into
   `<WoW>\<client folder>\Interface\AddOns\` (the beta's is `_classic_beta_`).
 - Desktop: `cd desktop`, `python -m venv .venv`, `.venv\Scripts\pip install -e .[dev]`, then start
-  `desktop\Forever Chronicle.bat` (or `.venv\Scripts\python -m forever_chronicle`). Friends use
-  `Journey Forever starten.bat` from the package built by `tools/package_for_friend.py`.
+  `desktop\Forever Chronicle.bat` (or `.venv\Scripts\python -m forever_chronicle`). Without a dev venv (friends'
+  clones), `Journey Forever starten.bat` in the repository root sets up Python, installs the addon and starts the app.
 
 ## Tests
 
@@ -35,4 +35,4 @@ cd desktop && .venv/Scripts/python -m pytest   # parser, importer, map, screensh
 - `docs/Sharing_Design.md`, `docs/Friends_Map_Design.md`, `docs/Dungeon_Maps.md`: designs for sharing, friends'
   routes and dungeon maps
 - `docs/CurseForge.md`: the CurseForge project texts; `CHANGELOG.md`: player-facing changes for the next upload
-- `NEXT_STEPS.md`: current state and next steps
+- `NEXT_STEPS.md`: current state and next steps; `docs/History.md`: the session notes so far

@@ -3,7 +3,7 @@ Journey Forever - cloud sync (docs/Sharing_Design.md, version 3). Uses only what
 
 The shared cloud folder holds only player data (<cloud>\players, <cloud>\screenshots). The addon and this script come from a local
 clone of the git repository and run from there: after a git pull, the next run uses the new versions.
-The sync runs only when asked (since 2026-10-16; before, a hidden loop ran it every 10 minutes from Windows login).
+The sync runs only when asked.
 
   Setup and a first run (desktop app "Einrichten und abgleichen", or sync\Einrichten.bat):
       powershell -ExecutionPolicy Bypass -File ForeverSync.ps1 -Setup
@@ -11,25 +11,22 @@ The sync runs only when asked (since 2026-10-16; before, a hidden loop ran it ev
       powershell -ExecutionPolicy Bypass -File ForeverSync.ps1 -Once
 
 Each run:
-  1. turns the old automation off (Startup entry, running loop, the script copies it ran from), if still there
-  2. installs a newer addon from <repo>\addons (only while WoW is not running; keeps Friends\FriendsData.lua)
-  3. uploads this PC's ForeverChronicle_Share.lua (per WoW account) to <cloud>\players\<name>-<id>-<account hash>.lua
+  1. installs a newer addon from <repo>\addons (only while WoW is not running; keeps Friends\FriendsData.lua)
+  2. uploads this PC's ForeverChronicle_Share.lua (per WoW account) to <cloud>\players\<name>-<id>-<account hash>.lua
      (name: the one friends see; id: the first 8 characters of the shareId); renamed when the name changes;
      and the shared characters' screenshots, scaled down, to <cloud>\screenshots\<same name>\<character>-<realm>\
-  4. downloads all other players' files, accepts only pure data, writes ForeverChronicle_Share\Friends\FriendsData.lua
-  5. daily backup of the addon's SavedVariables (newest 10 days kept)
+  3. downloads all other players' files, accepts only pure data, writes ForeverChronicle_Share\Friends\FriendsData.lua
+  4. daily backup of the addon's SavedVariables (newest 10 days kept)
 Settings and log: %LOCALAPPDATA%\ForeverChronicle\sync (config.json, sync.log, state.json).
 #>
 [CmdletBinding()]
 param(
   [switch]$Setup,
   [switch]$Once,
-  [switch]$Loop,            # the old background start (versions 1 and 2): now one run, which turns the loop off
   [string]$CloudFolder,     # setup: the shared folder (default: the last one, else found in OneDrive, else asked)
   [string]$RepoFolder,      # setup: the repository clone (default: the parent of the folder this script is in)
   [string]$ClientFolder,    # setup: the WoW Forever client folder (default: found automatically)
-  [string]$DataDir,         # where settings, log and backups live (default: %LOCALAPPDATA%\ForeverChronicle\sync)
-  [string]$StartupFolder    # where the old Startup entry may be (default: this user's Startup folder; tests)
+  [string]$DataDir          # where settings, log and backups live (default: %LOCALAPPDATA%\ForeverChronicle\sync)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,9 +41,8 @@ $MaxTotalBytes = 60MB
 # other flavor counts too when its build is 1.60 or newer (Forever's version line; Classic Era is 1.15).
 $ForeverFlavors = @('wow_classic_beta')
 $ForeverVersion = [version]'1.60'
-# Player files: <name>-<id>-<account>.lua, or <shareId>-<account>.lua from scripts before 2026-10-16.
-$PlayerFileName = [regex]::new(
-  '^(?:(?<name>[\p{L}\p{N}_]{1,24})-(?<id>[0-9a-f]{8})|(?<id>[0-9a-f]{32}))-(?<account>[0-9a-f]{8})\.lua$')
+# Player files: <name>-<id>-<account>.lua.
+$PlayerFileName = [regex]::new('^(?<name>[\p{L}\p{N}_]{1,24})-(?<id>[0-9a-f]{8})-(?<account>[0-9a-f]{8})\.lua$')
 
 if (-not $DataDir) { $DataDir = Join-Path $env:LOCALAPPDATA 'ForeverChronicle\sync' }
 $ConfigPath = Join-Path $DataDir 'config.json'
@@ -225,36 +221,6 @@ function Test-PureData([string]$Text) {
 
 # -- steps --------------------------------------------------------------------------------------------
 
-# Versions 1 and 2 ran by themselves: a Startup entry started a hidden loop from copies of this script in the
-# data folder. Turns that off: only this data folder's entry, loops and copies (another setup's stay untouched).
-function Remove-Automation {
-  $copy = (Join-Path $DataDir 'ForeverSync.ps1').ToLowerInvariant()
-  $vbs = (Join-Path $DataDir 'ForeverSync.vbs').ToLowerInvariant()
-  $folder = if ($StartupFolder) { $StartupFolder } else { [Environment]::GetFolderPath('Startup') }
-  $link = Join-Path $folder 'Journey Forever Sync.lnk'
-  if (Test-Path -LiteralPath $link) {
-    $arguments = (New-Object -ComObject WScript.Shell).CreateShortcut($link).Arguments
-    if ($arguments -and $arguments.ToLowerInvariant().Contains($vbs)) {
-      Remove-Item -Force -LiteralPath $link
-      Write-Log 'automatic sync turned off: Startup entry removed'
-    }
-  }
-  foreach ($p in Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue) {
-    $line = if ($p.CommandLine) { $p.CommandLine.ToLowerInvariant() } else { '' }
-    if ($p.ProcessId -ne $PID -and $line.Contains($copy) -and $line.Contains('-loop')) {
-      Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
-      Write-Log "automatic sync turned off: background run stopped (process $($p.ProcessId))"
-    }
-  }
-  foreach ($name in 'ForeverSync.ps1', 'ForeverSync.vbs') {
-    $old = Join-Path $DataDir $name
-    if ((Test-Path -LiteralPath $old) -and $old -ne $PSCommandPath) {
-      Remove-Item -Force -LiteralPath $old
-      Write-Log "removed the old copy $name"
-    }
-  }
-}
-
 function Update-Addon($Config) {
   if (-not $Config.repo) { return }
   $addons = Join-Path $Config.client 'Interface\AddOns'
@@ -301,6 +267,16 @@ function Get-PlayerName([string]$Text) {
   return $name
 }
 
+# A WoW account folder's name, hidden behind a hash.
+function Get-AccountId([string]$Account) {
+  return (Get-Sha ([Text.Encoding]::UTF8.GetBytes($Account))).Substring(0, 8)
+}
+
+# <name>-<id>-<account hash>: my upload's file name (with .lua) and screenshot folder.
+function Get-PlayerKey($Config, [string]$Text, [string]$AccountId) {
+  return '{0}-{1}-{2}' -f (Get-PlayerName $Text), $Config.shareId.Substring(0, 8), $AccountId
+}
+
 function Test-OwnFile($Config, [string]$Name) {
   $m = $PlayerFileName.Match($Name)
   return $m.Success -and $Config.shareId.StartsWith($m.Groups['id'].Value)
@@ -312,15 +288,15 @@ function Send-Own($Config, $State) {
     $bytes = [IO.File]::ReadAllBytes($f.Path)
     $text = [Text.Encoding]::UTF8.GetString($bytes)
     $hash = Get-Sha $bytes
-    $accountId = (Get-Sha ([Text.Encoding]::UTF8.GetBytes($f.Account))).Substring(0, 8)
-    $target = Join-Path $players ('{0}-{1}-{2}.lua' -f (Get-PlayerName $text), $Config.shareId.Substring(0, 8), $accountId)
+    $accountId = Get-AccountId $f.Account
+    $target = Join-Path $players ((Get-PlayerKey $Config $text $accountId) + '.lua')
     $key = "upload:$accountId"
     if ($State.$key -eq $hash -and (Test-Path $target)) { continue }
     if (-not (Test-PureData $text)) { Write-Log "own share file is not plain data, skipped: $($f.Path)"; continue }
     Write-FileAtomic $target $bytes
     $State | Add-Member -Force -NotePropertyName $key -NotePropertyValue $hash
     Write-Log ("uploaded {0} ({1:N0} KB)" -f (Split-Path $target -Leaf), ($bytes.Length / 1KB))
-    # The same account under an older name (renamed in game, or the naming before 2026-10-16): removed.
+    # The same account under an older name (renamed in game): removed.
     foreach ($old in Get-ChildItem -Path $players -Filter "*-$accountId.lua" -File) {
       if ($old.FullName -ne $target -and (Test-OwnFile $Config $old.Name)) {
         Remove-Item -Force $old.FullName
@@ -415,8 +391,8 @@ function Send-Screenshots($Config, $State) {
     $text = [IO.File]::ReadAllText($share.Path, [Text.Encoding]::UTF8)
     # Written by an addon before 2026-10-16 (no screenshotFiles yet): the cloud's pictures are left as they are.
     if ($text -notmatch '\["screenshotFiles"\]\s*=') { continue }
-    $accountId = (Get-Sha ([Text.Encoding]::UTF8.GetBytes($share.Account))).Substring(0, 8)
-    $player = Join-Path $root ('{0}-{1}-{2}' -f (Get-PlayerName $text), $Config.shareId.Substring(0, 8), $accountId)
+    $accountId = Get-AccountId $share.Account
+    $player = Join-Path $root (Get-PlayerKey $Config $text $accountId)
     # The same account under an older name: its folder moves along (the pictures are not uploaded again).
     foreach ($old in Get-ChildItem -LiteralPath $root -Directory -Filter "*-$accountId" -ErrorAction SilentlyContinue) {
       if ($old.FullName -eq $player -or -not (Test-OwnFile $Config "$($old.Name).lua")) { continue }
@@ -548,8 +524,7 @@ function Invoke-Sync {
   $config = Read-Json $ConfigPath
   if (-not $config -or -not $config.cloud -or -not $config.client) { Write-Log 'not set up (desktop app or Einrichten.bat)'; return }
   Write-Log "sync (script version $ScriptVersion)"
-  try { Remove-Automation } catch { Write-Log "Remove-Automation failed: $($_.Exception.Message)" }
-  # Set up before version 2 (no repository in the settings): this script's repository from now on.
+  # No repository in the settings, or it is gone (clone moved): this script's repository from now on.
   $here = Split-Path (Split-Path $PSCommandPath)
   if ((-not $config.repo -or -not (Test-Repo $config.repo)) -and (Test-Repo $here)) {
     $config | Add-Member -Force -NotePropertyName 'repo' -NotePropertyValue (Resolve-Path $here).Path
@@ -596,6 +571,14 @@ function Find-Cloud {
   return $null
 }
 
+function Select-Folder([string]$Description) {
+  Add-Type -AssemblyName System.Windows.Forms
+  $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+  $dialog.Description = $Description
+  if ($dialog.ShowDialog() -eq 'OK') { return $dialog.SelectedPath }
+  return $null
+}
+
 function Invoke-Setup {
   $old = Read-Json $ConfigPath
   if (-not $RepoFolder) { $RepoFolder = Split-Path (Split-Path $PSCommandPath) }
@@ -604,20 +587,13 @@ function Invoke-Setup {
   $RepoFolder = (Resolve-Path $RepoFolder).Path
   if (-not $CloudFolder -and $old -and $old.cloud -and (Test-Path (Join-Path $old.cloud 'players'))) { $CloudFolder = $old.cloud }
   if (-not $CloudFolder) { $CloudFolder = Find-Cloud }
-  if (-not $CloudFolder) {
-    Add-Type -AssemblyName System.Windows.Forms
-    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $dialog.Description = "Gemeinsamen Cloud-Ordner waehlen ($CloudName)"
-    if ($dialog.ShowDialog() -eq 'OK') { $CloudFolder = $dialog.SelectedPath }
-  }
+  if (-not $CloudFolder) { $CloudFolder = Select-Folder "Gemeinsamen Cloud-Ordner waehlen ($CloudName)" }
   if (-not $CloudFolder -or -not (Test-Path $CloudFolder -PathType Container)) { throw 'Kein Cloud-Ordner gewaehlt.' }
   New-Item -ItemType Directory -Force -Path (Join-Path $CloudFolder 'players') | Out-Null
   if (-not $ClientFolder) { $ClientFolder = Find-Client }
   if (-not $ClientFolder) {
-    Add-Type -AssemblyName System.Windows.Forms
-    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $dialog.Description = 'WoW-Forever-Ordner waehlen (World of Warcraft oder der Client-Ordner darin)'
-    if ($dialog.ShowDialog() -eq 'OK') { $ClientFolder = Resolve-ChosenClient $dialog.SelectedPath }
+    $chosen = Select-Folder 'WoW-Forever-Ordner waehlen (World of Warcraft oder der Client-Ordner darin)'
+    if ($chosen) { $ClientFolder = Resolve-ChosenClient $chosen }
   }
   if (-not $ClientFolder) { throw 'WoW Forever wurde nicht gefunden.' }
   $shareId = if ($old -and $old.shareId -match '^[0-9a-f]{32}$') { $old.shareId } else { [guid]::NewGuid().ToString('N') }
@@ -638,4 +614,4 @@ function Invoke-Setup {
 # -- main -------------------------------------------------------------------------------------------------
 
 if ($Setup) { Invoke-Setup; return }
-if ($Once -or $Loop) { Invoke-Sync; return }   # -Loop: an old Startup entry or loop restart; this run turns it off
+if ($Once) { Invoke-Sync; return }

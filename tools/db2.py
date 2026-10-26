@@ -4,14 +4,56 @@ Format: wowdev.wiki "DB2" (WDC3 layout with a version number and a 128-byte sche
 Each row comes back as {"id": int, "fields": [value or list of values per field], "parent": int | None};
 "parent" is the foreign key stored in the relationship map (e.g. UiMapArtTile -> UiMapArt).
 Sections encrypted with a TACT key (unreleased rows) are left out: read such files with
-casc.read_fdid(..., zero_encrypted=True), which fills their chunks with zeros.
+casc.read_fdid(..., zero_encrypted=True), which fills their chunks with zeros (table() does).
+
+Also the tools' shared way into the game files: find_install / open_install (the install given with --install, else
+found as the desktop app finds it, wow/paths.py) and the file IDs of the tables the tools read. A tool puts
+desktop/ and tools/ on sys.path before importing this (also under python -I).
 """
 
 from __future__ import annotations
 
 import struct
+from pathlib import Path
+
+from forever_chronicle.wow import casc, paths
 
 NONE, BITPACKED, COMMON, PALLET, PALLET_ARRAY, BITPACKED_SIGNED = range(6)
+
+# The tables the tools read, by fileDataID (unnamed in the root file; identified by their contents), and the
+# fields they use.
+AREA_TABLE = 1353545              # ZoneName, AreaName, ContinentID, ParentAreaID, AreaBit, ..., [9] ZoneMusic, ...
+ZONE_MUSIC = 1310254              # SetName, SilenceIntervalMin[2], SilenceIntervalMax[2], Sounds[2] (day, night)
+SOUND_KIT_ENTRY = 1237435         # SoundKitID, FileDataID, Frequency, Volume, ...
+UI_MAP_ASSIGNMENT = 1957219       # UiMin[2], UiMax[2], Region[6], ID, UiMapID, OrderIndex, MapID, AreaID, ...
+UI_MAP_ART = 1957202              # ID, ..., UiMapArtStyleID
+UI_MAP_ART_STYLE_LAYER = 1957208  # LayerIndex, LayerWidth, LayerHeight, TileWidth, TileHeight, ...; parent style
+UI_MAP_ART_TILE = 1957210         # RowIndex, ColIndex, LayerIndex, FileDataID; parent UiMapArt
+UI_MAP_X_MAP_ART = 1957217        # PhaseID, UiMapArtID; parent UiMap
+WORLD_MAP_OVERLAY = 1134579       # ID, UiMapArtID, TextureWidth, TextureHeight, OffsetX, OffsetY, ...
+WORLD_MAP_OVERLAY_TILE = 1957212  # RowIndex, ColIndex, LayerIndex, FileDataID; parent WorldMapOverlay
+
+
+def find_install(install: Path | None = None) -> Path:
+    """The World of Warcraft folder (the one holding .build.info): the given one, else the folder of the first
+    Forever client found (live before beta)."""
+    if install:
+        return install
+    clients = paths.find_forever_installs()
+    if not clients:
+        raise casc.CascError("WoW Forever not found: give the World of Warcraft folder with --install")
+    return clients[0].path.parent
+
+
+def open_install(install: Path | None = None) -> casc.Casc:
+    """The game files of the Forever client in the World of Warcraft folder (find_install)."""
+    root = find_install(install)
+    return casc.Casc(root, paths.forever_product(root))
+
+
+def table(storage: casc.Casc, fdid: int) -> list[dict]:
+    """The rows of the table with this file ID (encrypted sections left out)."""
+    return read_db2(storage.read_fdid(fdid, zero_encrypted=True))
 
 
 class Db2Error(Exception):

@@ -3,7 +3,7 @@
 **Client:** World of Warcraft: Forever beta, version 1.60.1, build 70374 (Oct 12 2026), TOC Interface **16001**, locale enUS
 **Install:** `C:\Program Files (x86)\World of Warcraft\_classic_beta_\` (`WowB.exe`)
 **Tested:** 2026-10-14 with ForeverChronicle_Probe v0.1.0, Tauren Hunter level 22 on realm "Classic Beta PvP"
-**Raw data:** `probe-results/ForeverChronicle_Probe_SavedVariables_2026-10-14.lua` (at report time) and `…_final.lua` (when the probe was removed)
+**Raw data:** `probe-results/ForeverChronicle_Probe_SavedVariables_2026-10-14.lua` (at report time)
 **Note:** the probe addon was removed after Phase 0. Its code is no longer in the project.
 
 Status legend: **Confirmed** = observed working in game · **Present** = function/event exists but has not been observed yet · **Unsupported** = missing or invalid.

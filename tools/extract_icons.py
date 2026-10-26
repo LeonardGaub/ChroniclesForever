@@ -14,19 +14,21 @@ import argparse
 import sys
 from pathlib import Path
 
-from forever_chronicle.domain import event_types, stats
-from forever_chronicle.wow import game_icons, paths
-
-DEFAULT_INSTALL = Path(r"C:\Program Files (x86)\World of Warcraft")
+ROOT = Path(__file__).resolve().parents[1]
+sys.path[:0] = [str(ROOT / "desktop"), str(ROOT / "tools")]
+from db2 import find_install  # noqa: E402
+from forever_chronicle.domain import event_types, stats  # noqa: E402
+from forever_chronicle.wow import game_icons, paths  # noqa: E402
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--install", type=Path, default=DEFAULT_INSTALL)
+    parser.add_argument("--install", type=Path, help="the World of Warcraft folder (default: found automatically)")
     parser.add_argument("--out", type=Path, default=game_icons.BUNDLED)
     args = parser.parse_args()
+    install = find_install(args.install)
     icons = list({game_icons.name_of(i): i for i in event_types.all_icons() + stats.all_icons()}.values())
-    written = set(game_icons.extract(args.install, paths.forever_product(args.install), icons, args.out))
+    written = set(game_icons.extract(install, paths.forever_product(install), icons, args.out))
     for icon in icons:
         name = game_icons.name_of(icon)
         print(f"  {name}.png" if name in written else f"  {icon}: not in the game files")

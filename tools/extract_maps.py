@@ -19,53 +19,41 @@ from pathlib import Path
 
 from PIL import Image
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import db2  # noqa: E402
-from forever_chronicle.wow import casc, paths  # noqa: E402
-
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_INSTALL = Path(r"C:\Program Files (x86)\World of Warcraft")
+sys.path[:0] = [str(ROOT / "desktop"), str(ROOT / "tools")]
+from db2 import (UI_MAP_ART, UI_MAP_ART_STYLE_LAYER, UI_MAP_ART_TILE, UI_MAP_X_MAP_ART,  # noqa: E402
+                 WORLD_MAP_OVERLAY, WORLD_MAP_OVERLAY_TILE, open_install, table)
+from forever_chronicle.wow import casc  # noqa: E402
+
 OUT_SIZE = (1002, 668)  # desktop/forever_chronicle/domain/maps.py ART_WIDTH, ART_HEIGHT
 TILE = 256
 
-# Client database files by fileDataID (unnamed in the root file; identified by their contents).
-UI_MAP_ART = 1957202          # ID, ..., UiMapArtStyleID
-UI_MAP_ART_STYLE_LAYER = 1957208  # LayerIndex, LayerWidth, LayerHeight, TileWidth, TileHeight, ...; parent style
-UI_MAP_ART_TILE = 1957210     # RowIndex, ColIndex, LayerIndex, FileDataID; parent UiMapArt
-UI_MAP_X_MAP_ART = 1957217    # PhaseID, UiMapArtID; parent UiMap
-WORLD_MAP_OVERLAY = 1134579   # ID, UiMapArtID, TextureWidth, TextureHeight, OffsetX, OffsetY, ...
-WORLD_MAP_OVERLAY_TILE = 1957212  # RowIndex, ColIndex, LayerIndex, FileDataID; parent WorldMapOverlay
-
 
 class MapSource:
-    def __init__(self, install: Path):
-        self.casc = casc.Casc(install, paths.forever_product(install))
-
-        def table(fdid):
-            return db2.read_db2(self.casc.read_fdid(fdid))
-
+    def __init__(self, install: Path | None):
+        self.casc = open_install(install)
         self.art_of_map: dict[int, int] = {}
-        for r in table(UI_MAP_X_MAP_ART):
+        for r in table(self.casc, UI_MAP_X_MAP_ART):
             phase, art = r["fields"][0], r["fields"][1]
             if phase == 0 or r["parent"] not in self.art_of_map:
                 self.art_of_map[r["parent"]] = art
-        self.style_of_art = {r["id"]: r["fields"][2] for r in table(UI_MAP_ART)}
+        self.style_of_art = {r["id"]: r["fields"][2] for r in table(self.casc, UI_MAP_ART)}
         self.layer_of_style = {}
-        for r in table(UI_MAP_ART_STYLE_LAYER):
+        for r in table(self.casc, UI_MAP_ART_STYLE_LAYER):
             f = r["fields"]
             if f[0] == 0:
                 self.layer_of_style[r["parent"]] = (f[1], f[2], f[3], f[4])
         self.tiles: dict[int, list[tuple[int, int, int]]] = {}
-        for r in table(UI_MAP_ART_TILE):
+        for r in table(self.casc, UI_MAP_ART_TILE):
             row, col, layer, fdid = r["fields"]
             if layer == 0:
                 self.tiles.setdefault(r["parent"], []).append((row, col, fdid))
         self.overlays: dict[int, list[tuple[int, int, int, int, int]]] = {}
-        for r in table(WORLD_MAP_OVERLAY):
+        for r in table(self.casc, WORLD_MAP_OVERLAY):
             f = r["fields"]
             self.overlays.setdefault(f[1], []).append((r["id"], f[2], f[3], f[4], f[5]))
         self.overlay_tiles: dict[int, list[tuple[int, int, int]]] = {}
-        for r in table(WORLD_MAP_OVERLAY_TILE):
+        for r in table(self.casc, WORLD_MAP_OVERLAY_TILE):
             row, col, layer, fdid = r["fields"]
             if layer == 0:
                 self.overlay_tiles.setdefault(r["parent"], []).append((row, col, fdid))
@@ -101,7 +89,7 @@ class MapSource:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--install", type=Path, default=DEFAULT_INSTALL)
+    parser.add_argument("--install", type=Path, help="the World of Warcraft folder (default: found automatically)")
     parser.add_argument("--out", type=Path, default=ROOT / "desktop" / "forever_chronicle" / "maps")
     parser.add_argument("--maps", help="comma-separated uiMapIDs (default: every map with art)")
     args = parser.parse_args()

@@ -2,7 +2,8 @@
 
 Status: option 2 was built in the addon and the desktop app on 2026-10-18 and removed again the same day: the
 user did not like the dungeon maps (see "Tried and removed" at the end). Dungeon moments are shown at the
-entrance, as before. The probe keeps running.
+entrance, as before. The dungeon probe (`FC.db.dungeonProbe`, `/fj dungeon`) was removed on 2026-10-26; boss and
+dungeon-completed tracking stay.
 
 ## What we know
 - **No position inside dungeons (Phase 0, Ragefire Chasm):** `C_Map.GetBestMapForUnit("player")` and the
@@ -21,10 +22,10 @@ entrance, as before. The probe keeps running.
   Consequences: no path and no map art there; the last boss is unknown to the client, so "dungeon completed"
   needs a built-in last-boss entry for this dungeon (learn its encounter ID from a full run).
 - **Ragefire Chasm (Phase 0):** no map ID, no position. Map art and journal not probed yet.
-- Still open: a Classic dungeon with the probe (map art, journal, explicit-map position), the encounter IDs of a
+- Not answered before the probe was removed: a Classic dungeon with the probe (map art, journal, explicit-map position), the encounter IDs of a
   full run, and whether sub-area names exist inside dungeons (`areas`, added 2026-10-15).
 
-## What the probe records (`FC.db.dungeonProbe[instanceID]`, `/fj dungeon`)
+## What the probe recorded (`FC.db.dungeonProbe[instanceID]`, `/fj dungeon`; removed 2026-10-26)
 Once per dungeon and session, a few seconds after entering:
 
 | Field | Question |
@@ -40,29 +41,15 @@ Once per dungeon and session, a few seconds after entering:
 | `encounters` | Encounter starts and kills with their IDs, to check the IDs match the journal. |
 | `areas` | Sub-area names passed inside (with time): a coarse "where in the dungeon" without a position. |
 
-## Options, depending on the answers
-1. **A real path (only if `position` is set).** If the position works when the dungeon map is passed explicitly,
-   the Positions module records dungeon samples like outdoor ones (map ID = dungeon map, floors as separate
-   maps). The map page then shows the dungeon like a zone: painted path, trail, colours, timeline. This is the
-   best outcome; it needs no new drawing code.
-2. **A "dungeon run" view (if there is no position, but map art and boss pins).** The dungeon map with the boss
-   pins, numbered in the order you killed them, with the time of each kill, the time between bosses, deaths
-   (count; no position) and the screenshots taken there. Lines between the bosses would only show the order and
-   would be drawn clearly different (thin, dotted, numbered), because the real path inside is unknown. Runs are
-   told apart by the time between kills and by entering the dungeon again.
-3. **Not pursued: estimating a path** from facing and running speed (dead reckoning). Facing is most likely
-   restricted inside instances too, the estimate drifts within seconds and walks through walls, and it would
-   draw a route that was never recorded.
-
-My recommendation: build option 2 regardless (it works without a position and makes boss kills visible), and
-add option 1 on top if the probe finds a position.
+## Options considered
+A real path (needs a position inside), a dungeon run view (option 2: built as the visit list below, then removed), a path guessed from facing and speed (not pursued).
 
 ## Dungeon completed (built)
 - Every won boss encounter (`ENCOUNTER_END` with success, or `BOSS_KILL`) is a `boss_killed` event with the boss,
   the dungeon, whether it was this character's first kill of that boss, and whether it was the last boss.
 - The last boss is the last encounter in the client's journal for that dungeon; without a journal entry, the
   dungeon finder's boss list (all bosses dead) decides. If neither is available, the last boss is unknown and no
-  "dungeon completed" is recorded; the probe shows this.
+  "dungeon completed" is recorded.
 - The first kill of a dungeon's last boss per character is a `dungeon_completed` event with its own screenshot
   trigger "On dungeon completion" (on by default, like level-ups it may skip the cooldown).
 
