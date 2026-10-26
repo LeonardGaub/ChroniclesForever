@@ -229,6 +229,11 @@ FC:RegisterLocale("deDE", {
   DUNGEON_NO_PROBE = "Noch nicht geprüft: betritt zuerst einen Dungeon.",
   STAT_RARES = "Seltene Gegner",
   CAP_RARES = "Seltene Gegner",
+  -- Zeitvertreib
+  STAT_JUMPS = "Sprünge",
+  CAP_JUMPS = "Sprünge",
+  STAT_FISH = "Gefangene Fische",
+  CAP_FISHING = "Gefangene Fische",
   -- Berufe
   TAB_PROFESSIONS = "Berufe",
   CAP_PROFESSIONS = "Berufe",

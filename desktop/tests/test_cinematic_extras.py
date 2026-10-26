@@ -171,3 +171,53 @@ def test_window_ends_with_credits(app, db, tmp_path, monkeypatch, addon_fixture)
     assert plain.ended and plain.credits is None and plain.title.isVisible(), "without credits: the end title"
     plain.close()
     window.close()
+
+
+@pytest.mark.parametrize("cine_map", ["world", "zones"])
+def test_trips_to_and_from_a_sky_island_go_through_the_clouds(app, db, tmp_path, monkeypatch, addon_fixture,
+                                                               cine_map):
+    """Zephras Isle lies nowhere on the world map: a portal up and the flight down pass through the clouds, and the
+    maps change under them (no fade from black)."""
+    from forever_chronicle.ui.cinematic import CinematicWindow
+
+    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
+    ctx = AppContext(AppConfig(client_dir=str(tmp_path / "missing")), db)
+    ctx._client_searched = True
+    ctx.config.extra["cine_map"] = cine_map
+    ctx.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
+    cid = ctx.repo.list_characters()[0].character_id
+    island = next(iter(maps.SKY_ISLANDS))
+    ctx.repo.upsert_map_info(island, {"name": "Zephras Isle", "mapType": 3, "parent": maps.WORLD})
+    t0 = max(p.end for p in ctx.repo.positions(cid)) + 10_000
+    walk = lambda start, map_id, x0: [PositionPoint(start + 2 * i, None, map_id, x0 + 0.002 * i, 0.5, None, False)
+                                      for i in range(30)]
+    barrens, isle, down = walk(t0, 1413, 0.4), walk(t0 + 70, island, 0.6), walk(t0 + 142, 1413, 0.45)
+    for p in barrens + isle + down:        # a portal up after 10 s, a flight down after 12 s
+        ctx.repo.upsert_position(cid, p)
+    ctx.repo.conn.commit()
+
+    window = CinematicWindow(ctx, cid, t0, down[-1].time, speed=1)
+    window.resize(1000, 640)
+    window.show()
+    window.timer.stop()
+    window.paused = False
+    trips, cloudy, black = [], 0.0, 0.0
+    for _ in range(2000):
+        window.advance(0.05)
+        trip = window.sky_trip
+        if trip is not None:
+            if not trips or trips[-1] is not trip:
+                trips.append(trip)
+            cloudy = max(cloudy, window.clouds.amount)
+            black = max(black, window.cover_effect.opacity())
+        if window.ended:
+            break
+    assert [(t.portal, t.to_view) for t in trips] == [(True, island), (False, 1413)], "up by portal, down by flight"
+    assert cloudy > 0.99 and black == 0.0, "the clouds close (almost) completely; no fade from black"
+    assert window.sky_trip is None and not window.clouds.isVisible() and window.marker.scale() == 1.0
+    assert window.view_map == (maps.WORLD if window.seamless else 1413), "down on the Barrens"
+    assert trips[0].target is not None and trips[1].end_scale > 0
+
+    window.seek(isle[5].time)               # a jump onto the island is no trip
+    assert window.sky_trip is None and window.view_map == island
+    window.close()

@@ -92,6 +92,10 @@ CLASSIC_MAPS = [
 
 BY_ID = {m.map_id: m for m in CLASSIC_MAPS}
 CITIES = {1453, 1454, 1455, 1456, 1457, 1458}
+# Forever's islands in the sky: a world of their own (the game places them nowhere on the world map), reached by
+# portal from the cities and left by flying down onto Kalimdor or the Eastern Kingdoms. The cinematic shows the
+# trips through the clouds (ui/cinematic.py _SkyTrip). Zephras Isle.
+SKY_ISLANDS = frozenset({2521})
 
 
 def display_name(map_id: int | None, client_name: str | None = None) -> str:

@@ -129,6 +129,23 @@ if PHASE == 1 then
   check(stats.xp_earned == 500 + 3300 + 400, "experience counted across a level-up (" .. tostring(stats.xp_earned) .. ")")
   check(FC.Util.FormatNumber(1234567) == "1.234.567", "German number format")
 
+  -- Pastimes: jumps from the ground only (not in the air, not swimming up), fish from fishing loot only.
+  JumpOrAscendStart(); JumpOrAscendStart()
+  MOCK.falling = true; JumpOrAscendStart(); MOCK.falling = false
+  MOCK.swimming = true; JumpOrAscendStart(); MOCK.swimming = false
+  MOCK.taxi = true; JumpOrAscendStart(); MOCK.taxi = false
+  check(MOCK.jumps == 5 and stats.jumps == 2, "jumps counted, the game's jump still runs (" .. tostring(stats.jumps) .. ")")
+  MOCK.fire("LOOT_OPENED", false, false)
+  MOCK.fishingLoot = true
+  MOCK.fire("LOOT_OPENED", true, false)
+  MOCK.fire("LOOT_OPENED", false, false)
+  MOCK.fishingLoot = MOCK.SECRET
+  MOCK.fire("LOOT_OPENED", false, false)
+  MOCK.fishingLoot = nil
+  check(stats.fish_caught == 2, "fish counted from fishing loot only (" .. tostring(stats.fish_caught) .. ")")
+  local caps = ForeverChronicleDB.diagnostics.capabilities
+  check(caps.jumps.status == "confirmed" and caps.fishing.status == "confirmed", "jump and fishing capabilities confirmed")
+
   -- UI: open, visit every page, switch language, run commands.
   SlashCmdList.FOREVERCHRONICLE("")
   check(ForeverChronicleFrame and ForeverChronicleFrame:IsShown(), "window opens with /fj")

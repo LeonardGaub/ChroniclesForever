@@ -7,6 +7,8 @@ then turn "Unreleased" into the uploaded version and date.
 ## Unreleased
 
 - Ready for the release client: the addon also counts as up to date on game versions 1.60.2, 1.60.3 and 1.61.0.
+- Two new statistics on the overview: "Jumps" and "Fish caught". Only jumps from the ground count (not pressing
+  jump in mid-air, swimming up or on a flight path), and every catch from fishing counts as one fish.
 
 ## Unreleased (0.15.0)
 

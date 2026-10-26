@@ -5,7 +5,8 @@ The scene's unit is the world unit (the world map 947 at ART_WIDTH x ART_HEIGHT,
 Under everything lies the whole world at BASE_PX; where the camera is close, the sharp detail tiles come in, loaded
 when they first come near the view and let go when the view has moved on. City maps (much finer than their zone's
 painting of them) fade in where they belong while the player is inside the city, and out on leaving it: they
-do not fit the zone art round them, so they show only where the replay is.
+do not fit the zone art round them, so they show only where the replay is. Outside, the tiles show each city as
+its zone's Classic map paints it, with the zone's name banner for it (tools/build_world_map.py).
 """
 
 from __future__ import annotations

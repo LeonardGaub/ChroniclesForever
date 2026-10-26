@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from forever_chronicle.domain import event_types
+from forever_chronicle.domain import event_types, stats
 from forever_chronicle.storage.repository import Repository
 from forever_chronicle.wow import game_icons
 from forever_chronicle.wow.paths import ClientInstall
@@ -33,6 +33,12 @@ def test_every_event_type_icon_is_kept_in_git():
     missing = [i for i in event_types.all_icons() if game_icons.find(i) is None]
     assert not missing
     assert game_icons.find(event_types.SCREENSHOT_ICON).parent == game_icons.BUNDLED
+
+
+def test_every_stat_has_an_icon_kept_in_git():
+    """The overview's tiles, as in the addon; rerun tools/extract_icons.py after giving a stat a new icon."""
+    assert all(s.icon for s in stats.STATS)
+    assert [s.key for s in stats.STATS if game_icons.find(s.icon) is None] == []
 
 
 def test_recorded_icon_wins_and_death_pins_are_skulls():

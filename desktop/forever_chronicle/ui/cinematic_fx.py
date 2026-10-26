@@ -20,6 +20,7 @@ Over the window (widgets, all transparent for the mouse):
 - TitleCard: the large title of a level-up (and of the end): it scales in with a glow and a passing shine. A
   death gets the same card in dark red.
 - AchievementToast: an event, as a small achievement alert that slides in from the right.
+- CloudCover: clouds that close over the picture and part again, for trips to and from an island in the sky.
 - PhotoOverlay: a screenshot as a polaroid that flies out from the marker after a white flash, drifts slowly
   under an achievement banner while it is shown, and flies back to its pin. A level-up's picture gets a
   ribbon saying "Level up" instead (its title has just named the level).
@@ -29,6 +30,7 @@ from __future__ import annotations
 
 import bisect
 import math
+import random
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import QPointF, QRectF, Qt
@@ -764,6 +766,92 @@ class CinemaFrame(_Overlay):
                 edge.setColorAt(0.5, QColor(201, 162, 74, 110))
                 edge.setColorAt(1, QColor(201, 162, 74, 0))
                 painter.fillRect(QRectF(0, y, w, 1), edge)
+        painter.end()
+
+
+class CloudCover(_Overlay):
+    """Clouds over the whole picture, for trips to and from an island in the sky (maps.SKY_ISLANDS): amount 1
+    hides the map completely (the trip changes maps under it). Lower amounts part the clouds: banks of puffs,
+    lit from the upper left with grey-blue undersides, rush outward from the middle and grow, as when the camera
+    drops through them (and come together again on the way up). Lit by the time of day like the map
+    (set_light)."""
+
+    BANKS, PUFFS = 18, 9           # cloud banks, puffs per bank
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.amount = 0.0
+        self.clock = 0.0
+        self.light = (1.0, 1.0, 1.0)
+        rng = random.Random(7)
+        self.banks = []
+        for k in range(self.BANKS):
+            # Spread around the middle on a sunflower spiral, so every part of the picture is covered.
+            reach = 0.62 * math.sqrt((k + 0.5) / self.BANKS)
+            angle = k * 2.39996 + rng.uniform(-0.3, 0.3)
+            x, y = 0.5 + reach * math.cos(angle) * 1.15, 0.5 + reach * math.sin(angle)
+            away = math.atan2(y - 0.5, x - 0.5) if reach > 0.08 else rng.uniform(-math.pi, math.pi)
+            puffs = [(rng.gauss(0, 0.075), rng.gauss(0, 0.035), rng.uniform(0.07, 0.13), rng.uniform(0.9, 1.0))
+                     for _ in range(self.PUFFS)]
+            self.banks.append((x, y, math.cos(away), math.sin(away), rng.uniform(0.8, 1.25), puffs))
+        self.hide()
+
+    def set_amount(self, amount: float) -> None:
+        amount = clamp(amount)
+        if amount != self.amount:
+            self.amount = amount
+            self.setVisible(amount > 0.001)
+            self.update()
+
+    def set_light(self, rgb) -> None:
+        self.light = tuple(clamp(c) for c in rgb)
+
+    def advance(self, dt: float) -> None:
+        self.clock += dt
+        if self.isVisible():
+            self.update()
+
+    def _color(self, shade: float, alpha: float) -> QColor:
+        r, g, b = self.light
+        return QColor.fromRgbF(clamp(shade * r), clamp(shade * g), clamp(shade * (0.96 + 0.04 * b) * b),
+                               clamp(alpha))
+
+    def paintEvent(self, event) -> None:
+        a = self.amount
+        if a <= 0:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        size = max(w, h)
+        part = 1 - a
+        # Deep inside the clouds: a misty fill, lighter in the middle; at 1 nothing of the map shows.
+        veil = ease_in(clamp((a - 0.8) / 0.2))
+        if veil > 0:
+            mist = QRadialGradient(QPointF(w / 2, h / 2), size * 0.75)
+            mist.setColorAt(0, self._color(1.0, veil))
+            mist.setColorAt(1, self._color(0.86, veil))
+            painter.fillRect(self.rect(), mist)
+        painter.setPen(Qt.PenStyle.NoPen)
+        alpha = clamp(a * 2.2)
+        for x, y, dx, dy, speed, puffs in self.banks:
+            reach = part * 1.25 * speed
+            grow = 1 + 1.4 * part
+            bx = (x + self.clock * 0.01 * speed + dx * reach) * w
+            by = (y + dy * reach) * h
+            for px, py, radius, shade in puffs:
+                cx, cy, r = bx + px * size * grow, by + py * size * grow, radius * size * grow
+                shadow = QRadialGradient(QPointF(cx + 0.12 * r, cy + 0.2 * r), r)
+                shadow.setColorAt(0, self._color(0.72 * shade, alpha * 0.35))
+                shadow.setColorAt(1, self._color(0.72 * shade, 0))
+                painter.setBrush(shadow)
+                painter.drawEllipse(QPointF(cx + 0.12 * r, cy + 0.2 * r), r, r)
+                puff = QRadialGradient(QPointF(cx, cy), r, QPointF(cx - 0.3 * r, cy - 0.35 * r))
+                puff.setColorAt(0, self._color(1.04 * shade, alpha))
+                puff.setColorAt(0.5, self._color(0.95 * shade, alpha * 0.85))
+                puff.setColorAt(1, self._color(0.86 * shade, 0))
+                painter.setBrush(puff)
+                painter.drawEllipse(QPointF(cx, cy), r, r)
         painter.end()
 
 

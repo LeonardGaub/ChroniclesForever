@@ -84,6 +84,32 @@ at the time (older entries may describe things that changed later). Architecture
 
 ## History
 
+### Stat tiles, jumps and fish, Zephras Isle through the clouds (2026-10-26)
+- Desktop overview: the stats are tiles as in the addon (game icon in a dark square, gold name, white value, two
+  per row, each group with its description). Every stat has an icon (`domain/stats.py`); `tools/extract_icons.py`
+  bundles the stat icons with the event types' (test: `test_every_stat_has_an_icon_kept_in_git`). Icons only in
+  the app: longest session Spell_Holy_BorrowedTime, tracked since INV_Misc_Book_07, quests per hour
+  Ability_Rogue_Sprint.
+- Addon module `Modules/Pastimes.lua`: `jumps` (post-hook on `JumpOrAscendStart`, the jump key's function; not
+  counted while falling, swimming, flying or on a taxi) and `fish_caught` (`LOOT_OPENED` with `IsFishingLoot()`,
+  one per catch). Statistics only, shown in the addon and the app. The client's own API docs (CASC,
+  `Blizzard_APIDocumentationGenerated`) and LootFrame confirm `LOOT_OPENED`, `IsFishingLoot`, `IsFalling`,
+  `IsSwimming`, `IsFlying`; the jump binding's file was not found, so the hook is unverified in Forever. User
+  check: `/run hooksecurefunc("JumpOrAscendStart", function() print("jump!") end)`, or jump and watch the tile.
+- Zephras Isle (UiMap 2521) is a world of its own (MapID 2991, UiMapAssignment); the world map 947 has no part for
+  it, so the game places it nowhere. Recorded trips: a portal up from Orgrimmar (Cleft of Shadow), Thunder Bluff or
+  Hillsbrad to one spot (0.62, 0.73), and down from the south edge onto north Mulgore or Hillsbrad after an
+  11-17 s loading screen. User decision: no invented place for the island; the cinematic shows these trips
+  through the clouds (`maps.SKY_ISLANDS`, `_SkyTrip` in ui/cinematic.py, `CloudCover` in ui/cinematic_fx.py).
+- Seamless world map, cities: OpenMap's baked tiles leave the cities to its own city maps (Orgrimmar is a
+  transparent hole, the banners of Undercity, Thunder Bluff, Darnassus are blurred out), and the app shows a
+  city's map only while the player is inside, so from outside they looked blurry. `tools/build_world_map.py` now
+  bakes each city as the Classic zone map paints it into the tiles: its zone's map inside the frame (OpenMap's
+  MapEdge), the neighbouring zone maps where that ends, Durotar mirrored into the rest of Orgrimmar's hole, and
+  the zone's name banner (OpenMap's MapBanner) on top, placed by UiMapAssignment (`map_rects`). Rebuilt: 27
+  tiles round the six cities and base.jpg changed. Stormwind's north-west corner (outside Elwynn's map) stays a
+  little soft.
+
 ### Desktop: the game's UI textures, motion, first-start wizard (2026-10-19)
 - User picks from the brainstorm. Skin: `tools/build_ui_skin.py` reads Classic UI textures from the install and
   composes them (Pillow) into nine-slice pictures in `ui/assets/skin/` (in git, 21 files, ~340 KB): dialog frame on

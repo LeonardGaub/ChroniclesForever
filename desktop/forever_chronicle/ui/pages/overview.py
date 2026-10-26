@@ -1,4 +1,7 @@
-"""Overview: statistics from the stat registry, grouped, the equipped gear and the most recent events."""
+"""Overview: statistics from the stat registry, grouped, the equipped gear and the most recent events.
+
+The stats are tiles as in the addon's overview: game icon, name (gold, small) and value (white), two per row, under
+each group's heading and description."""
 
 from __future__ import annotations
 
@@ -6,14 +9,43 @@ import re
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QFormLayout, QGroupBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QVBoxLayout
+from PySide6.QtWidgets import (QGridLayout, QGroupBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QVBoxLayout,
+                               QWidget)
 
 from ...domain import event_types, stats
 from ...i18n import format_datetime, tr
 from .. import icons, theme
-from ..widgets import Page, muted, value_label
+from ..widgets import Page, muted
 
 RECENT_EVENTS = 12
+TILE_COLUMNS = 2
+
+
+class StatTile(QWidget):
+    """A stat as the addon shows it: the icon in a dark square, the name above the value beside it."""
+
+    def __init__(self, stat: stats.Stat):
+        super().__init__()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        icon = QLabel()
+        icon.setFixedSize(icons.TILE_SIZE, icons.TILE_SIZE)
+        picture = icons.tile(stat.icon)
+        if picture:
+            icon.setPixmap(picture)
+        else:  # no icon file: the empty square
+            icon.setStyleSheet("background: rgba(0, 0, 0, 178);")
+        layout.addWidget(icon)
+        text = QVBoxLayout()
+        text.setContentsMargins(0, 1, 0, 1)
+        text.setSpacing(0)
+        self.name, self.value = QLabel(), QLabel()
+        self.name.setStyleSheet(theme.font_css(9, theme.GOLD))
+        self.value.setStyleSheet(theme.font_css(11, "#ffffff"))
+        text.addWidget(self.name)
+        text.addWidget(self.value)
+        layout.addLayout(text, 1)
 
 
 class OverviewPage(Page):
@@ -26,20 +58,26 @@ class OverviewPage(Page):
         root.setSpacing(12)
 
         left = QVBoxLayout()
-        self.groups: dict[str, tuple[QGroupBox, QFormLayout]] = {}
+        self.groups: dict[str, tuple[QGroupBox, QLabel, QGridLayout]] = {}
         self.rows: dict[str, tuple[QLabel, QLabel]] = {}
         for stat in stats.STATS:
             if stat.group not in self.groups:
                 box = QGroupBox()
-                form = QFormLayout(box)
-                form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
-                form.setHorizontalSpacing(24)
-                form.setVerticalSpacing(6)
-                self.groups[stat.group] = (box, form)
+                layout = QVBoxLayout(box)
+                layout.setSpacing(6)
+                desc = muted()
+                layout.addWidget(desc)
+                grid = QGridLayout()
+                grid.setHorizontalSpacing(16)
+                grid.setVerticalSpacing(6)
+                layout.addLayout(grid)
+                self.groups[stat.group] = (box, desc, grid)
                 left.addWidget(box)
-            label, value = QLabel(), value_label()
-            self.groups[stat.group][1].addRow(label, value)
-            self.rows[stat.key] = (label, value)
+            grid = self.groups[stat.group][2]
+            tile = StatTile(stat)
+            n = grid.count()
+            grid.addWidget(tile, n // TILE_COLUMNS, n % TILE_COLUMNS)
+            self.rows[stat.key] = (tile.name, tile.value)
         left.addStretch(1)
         self.hint = muted()
         left.addWidget(self.hint)
@@ -61,8 +99,9 @@ class OverviewPage(Page):
         root.addLayout(right, 1)
 
     def refresh(self) -> None:
-        for group, (box, _) in self.groups.items():
+        for group, (box, desc, _) in self.groups.items():
             box.setTitle(tr(f"stats.group.{group}"))
+            desc.setText(tr(f"stats.group.{group}.desc"))
         self.recent_box.setTitle(tr("overview.recent"))
         self.hint.setText(tr("overview.estimated_hint"))
         values = dict((s.key, (s, v)) for s, v in stats.compute_all(self.ctx.repo, self.character_id)) \

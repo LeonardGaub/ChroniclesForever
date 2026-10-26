@@ -57,7 +57,7 @@ for e in ([[ADDON_LOADED PLAYER_LOGIN PLAYER_ENTERING_WORLD PLAYER_LOGOUT TIME_P
   PARTY_KILL PLAYER_XP_UPDATE PLAYER_TARGET_CHANGED UPDATE_MOUSEOVER_UNIT NAME_PLATE_UNIT_ADDED
   SKILL_LINES_CHANGED CHAT_MSG_SKILL TRADE_SKILL_SHOW TRADE_SKILL_LIST_UPDATE TRADE_SKILL_DATA_SOURCE_CHANGED
   TRADE_SKILL_CLOSE NEW_RECIPE_LEARNED PLAYER_EQUIPMENT_CHANGED ENCOUNTER_START ENCOUNTER_END BOSS_KILL ZONE_CHANGED ZONE_CHANGED_INDOORS
-  PLAYER_REGEN_ENABLED]]):gmatch("%S+") do
+  PLAYER_REGEN_ENABLED LOOT_OPENED]]):gmatch("%S+") do
   VALID_EVENTS[e] = true
 end
 
@@ -208,6 +208,18 @@ function GetAchievementInfo(id) return id, "Level 10", 10, true, 10, 14, 26, "Re
 MOCK.screenshots = {}
 function IsShiftKeyDown() return false end
 function InCombatLockdown() return MOCK.combat == true end
+-- Post-hooks as the client runs them: the original first, then the hook (also hooksecurefunc(table, name, hook)).
+function hooksecurefunc(t, name, hook)
+  if type(t) == "string" then t, name, hook = _G, t, name end
+  local original = t[name]
+  t[name] = function(...) local results = table.pack(original(...)); hook(...); return table.unpack(results, 1, results.n) end
+end
+MOCK.jumps = 0
+function JumpOrAscendStart() MOCK.jumps = MOCK.jumps + 1 end
+function IsFalling() return MOCK.falling == true end
+function IsSwimming() return MOCK.swimming == true end
+function IsFlying() return false end
+function IsFishingLoot() return MOCK.fishingLoot end
 function UnitXP() return MOCK.xp or 1000 end
 function UnitXPMax() return MOCK.xpMax or 5000 end
 function GetXPExhaustion() return 2500 end

@@ -58,6 +58,7 @@ def test_main_window_with_data(app, db, tmp_path, monkeypatch, addon_fixture):
     assert overview.rows["quests"][1].text() == "1"
     assert overview.rows["kills"][1].text() == "2" and overview.rows["xp_earned"][1].text() == "4.200"
     assert overview.rows["played_total"][1].text() == "20 Std. 35 Min."
+    assert overview.rows["jumps"][1].text() == "2" and overview.rows["fish_caught"][1].text() == "2"
     gear = [overview.gear.item(i) for i in range(overview.gear.count())]
     assert [g.text() for g in gear] == ["Kopf:  Green Tinted Goggles", "Waffenhand:  Dwarven Hand Cannon"]
     assert gear[0].foreground().color().name() == "#0070dd"                   # rare = blue

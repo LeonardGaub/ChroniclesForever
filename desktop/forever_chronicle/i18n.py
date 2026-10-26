@@ -143,6 +143,8 @@ STRINGS: dict[str, dict[str, str]] = {
 
         "stats.group.time": "Spielzeit",
         "stats.group.progress": "Fortschritt",
+        "stats.group.time.desc": "Gesamtzeit laut Server und deine Sitzungen seit Aufzeichnungsbeginn",
+        "stats.group.progress.desc": "Seit Beginn der Aufzeichnung",
         "stats.played_total": "Gesamte Spielzeit (Server)",
         "stats.sessions": "Sitzungen",
         "stats.longest_session": "Längste Sitzung",
@@ -162,6 +164,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "stats.quests_per_hour": "Quests pro Stunde",
         "stats.deaths": "Tode",
         "stats.achievements": "Erfolge",
+        "stats.fish_caught": "Gefangene Fische",
+        "stats.jumps": "Sprünge",
         "overview.recent": "Letzte Ereignisse",
         "overview.estimated_hint": "Aufgezeichnete Zeiten enden bei einem Absturz mit der letzten Speicherung des Spiels.",
 
@@ -659,6 +663,8 @@ STRINGS: dict[str, dict[str, str]] = {
 
         "stats.group.time": "Play time",
         "stats.group.progress": "Progress",
+        "stats.group.time.desc": "Total time as reported by the server, and your sessions since tracking began",
+        "stats.group.progress.desc": "Since tracking began",
         "stats.played_total": "Total played (server)",
         "stats.sessions": "Sessions",
         "stats.longest_session": "Longest session",
@@ -678,6 +684,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "stats.quests_per_hour": "Quests per hour",
         "stats.deaths": "Deaths",
         "stats.achievements": "Achievements",
+        "stats.fish_caught": "Fish caught",
+        "stats.jumps": "Jumps",
         "overview.recent": "Recent events",
         "overview.estimated_hint": "After a client crash, tracked time ends at the game's last save.",
 

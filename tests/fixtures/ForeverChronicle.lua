@@ -135,6 +135,8 @@ ForeverChronicleDB = {
 			["stats"] = {
 				["achievements"] = 1,
 				["deaths"] = 1,
+				["fish_caught"] = 2,
+				["jumps"] = 2,
 				["kills"] = 2,
 				["levels_gained"] = 1,
 				["played_total"] = 74113,
@@ -231,6 +233,11 @@ ForeverChronicleDB = {
 				["confirmedAt"] = 1791961103,
 				["status"] = "confirmed",
 			},
+			["fishing"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961133,
+				["status"] = "confirmed",
+			},
 			["gear"] = {
 				["build"] = "70374",
 				["confirmedAt"] = 1791961000,
@@ -239,6 +246,11 @@ ForeverChronicleDB = {
 			["identity"] = {
 				["build"] = "70374",
 				["confirmedAt"] = 1791961000,
+				["status"] = "confirmed",
+			},
+			["jumps"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961133,
 				["status"] = "confirmed",
 			},
 			["kills"] = {
@@ -299,8 +311,10 @@ ForeverChronicleDB = {
 			"2026-10-14 08:58:53 [info] capability confirmed: achievements", -- [9]
 			"2026-10-14 08:58:53 [info] capability confirmed: kills", -- [10]
 			"2026-10-14 08:58:53 [info] capability confirmed: xp", -- [11]
-			"2026-10-14 08:58:58 [info] capability confirmed: screenshots", -- [12]
-			"2026-10-15 09:56:40 [info] capability confirmed: recipes", -- [13]
+			"2026-10-14 08:58:53 [info] capability confirmed: jumps", -- [12]
+			"2026-10-14 08:58:53 [info] capability confirmed: fishing", -- [13]
+			"2026-10-14 08:58:58 [info] capability confirmed: screenshots", -- [14]
+			"2026-10-15 09:56:40 [info] capability confirmed: recipes", -- [15]
 		},
 	},
 	["maps"] = {
@@ -344,6 +358,8 @@ ForeverChronicleDB = {
 			["MinimapButton"] = {
 				["angle"] = 90.0,
 				["show"] = true,
+			},
+			["Pastimes"] = {
 			},
 			["Positions"] = {
 				["enabled"] = true,

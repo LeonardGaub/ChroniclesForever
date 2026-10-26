@@ -229,6 +229,11 @@ FC:RegisterLocale("enUS", {
   DUNGEON_NO_PROBE = "Not checked yet: enter a dungeon first.",
   STAT_RARES = "Rare enemies",
   CAP_RARES = "Rare enemies",
+  -- Pastimes
+  STAT_JUMPS = "Jumps",
+  CAP_JUMPS = "Jumps",
+  STAT_FISH = "Fish caught",
+  CAP_FISHING = "Fish caught",
   -- Professions
   TAB_PROFESSIONS = "Professions",
   CAP_PROFESSIONS = "Professions",

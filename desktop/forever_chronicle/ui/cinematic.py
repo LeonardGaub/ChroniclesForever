@@ -20,6 +20,11 @@
 - Teleports (hearthstone, portals; domain/cinematic.teleports) fly: an arcane swirl where the player vanishes, the
   camera pulls back, a comet crosses the world map on a dotted arc and the camera dives in at the destination.
   The ghost's release to the graveyard flies the same way as a pale wisp. (Seamless world map only.)
+- Islands in the sky (maps.SKY_ISLANDS, Zephras Isle; both map styles): the game places them nowhere on the world
+  map, so trips there go through the clouds instead of across it. The player rises while the camera pulls back
+  and clouds close over the picture (a portal up starts with the arcane swirl); under the closed clouds the map
+  changes, then they part over the destination while the camera and the player come down (ui/cinematic_fx.py
+  CloudCover).
 - Time of day (domain/daylight.py, option "cine_daylight"): the map is tinted by the recorded local time: a pink
   dawn, an orange dusk and a cold blue night.
 - End credits (ui/cinematic_credits.py, option "cine_credits"): at the end the camera pulls back over the whole
@@ -69,8 +74,8 @@ from .world_art import WorldArt
 from .cinematic_credits import CreditsOverlay
 from .cinematic_hud import XpBar
 from .cinematic_fx import (ARCANE_COLOR, FADE_SECONDS, GHOST_COLOR, AchievementToast, CinemaFrame, CinemaView,
-                           MarkerItem, PhotoOverlay, Pin, PinsItem, RouteItem, SkyItem, TitleCard, clamp, ease_in_out,
-                           with_alpha)
+                           CloudCover, MarkerItem, PhotoOverlay, Pin, PinsItem, RouteItem, SkyItem, TitleCard, clamp,
+                           ease_in, ease_in_out, ease_out, with_alpha)
 from .screenshots import load_thumbnail
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
@@ -125,6 +130,11 @@ CUT_JUMP = 0.5             # a step longer than this share of the picture's widt
 FLIGHTS = {"sea": (VOYAGE_OUT, VOYAGE_TRAVEL, VOYAGE_IN, 0.3), "teleport": (0.75, 0.9, 0.85, 0.2),
            "spirit": (0.6, 0.8, 0.7, 0.15)}
 FLIGHT_MARGIN = 1.5        # a teleport's flight shows both ends with this much room
+# Trips to and from an island in the sky (maps.SKY_ISLANDS), through the clouds.
+SKY_RISE, SKY_FALL = 1.1, 1.8   # real seconds: up into the clouds, down out of them over the destination
+SKY_LIFT = 0.16            # share of the picture's height the player rises and comes down through
+SKY_HIGH = 0.4             # the camera comes down from this share of its scale over the destination
+SKY_MARKER = 1.8           # the marker's size high up (it shrinks as the player comes down)
 LIGHT_SECONDS = 1.2        # time constant of the light following the time of day
 OUTRO_SECONDS = 4.0        # the camera pulling back over the whole route at the end
 OUTRO_MARGIN = 1.3
@@ -208,6 +218,22 @@ class _Voyage:
             for k in range(1, 41):
                 path.lineTo(self.arc(f * k / 40))
             self.line.setPath(path)
+
+
+@dataclass
+class _SkyTrip:
+    """A trip to or from an island in the sky (maps.SKY_ISLANDS): the player rises into the clouds while the
+    camera pulls back, the map changes under the closed clouds, and they part over the destination while the
+    camera comes down and the player with it. The island needs no place on the world map."""
+    to_view: int
+    portal: bool                # up to the island through a portal (else flying down from it)
+    origin: QPointF             # the player before the trip, on the old map
+    start: QPointF              # the camera's centre and scale before the trip
+    start_scale: float
+    target: QPointF | None = None   # the player after the trip, once the new map is shown
+    end: QPointF | None = None      # the camera's centre and scale there
+    end_scale: float = 1.0
+    age: float = 0.0
 
 
 class TimelineBar(QWidget):
@@ -441,6 +467,8 @@ class CinematicWindow(QWidget):
         self.snapshot_age = CROSS_SECONDS
         self.snapshot.hide()
         self.voyage: _Voyage | None = None
+        self.sky_trip: _SkyTrip | None = None
+        self.clouds = CloudCover(self)
 
         # Black cover for map changes (fades out), then the vignette and letterbox bars.
         self.cover = QWidget(self)
@@ -573,7 +601,7 @@ class CinematicWindow(QWidget):
 
     def _layout(self) -> None:
         r = self.rect()
-        for widget in (self.view, self.snapshot, self.cover, self.frame, self.title, self.photo):
+        for widget in (self.view, self.snapshot, self.clouds, self.cover, self.frame, self.title, self.photo):
             widget.setGeometry(r)
         if self.credits is not None:
             self.credits.setGeometry(r)
@@ -660,6 +688,9 @@ class CinematicWindow(QWidget):
         if self.voyage is not None and self.view_map == maps.WORLD and self.voyage.line is not None:
             self.view.scene().removeItem(self.voyage.line)
         self.voyage = None
+        self.sky_trip = None
+        self.clouds.set_amount(0.0)
+        self.marker.setScale(1.0)
         self.snapshot.hide()
         for toast in self.toasts:            # they belong to another moment
             toast.deleteLater()
@@ -783,6 +814,9 @@ class CinematicWindow(QWidget):
             return                          # held at the screenshot's moment meanwhile
         if self.voyage is not None:
             self._travel(dt)
+            return
+        if self.sky_trip is not None:
+            self._sky_travel(dt)
             return
         if self.hold > 0:
             self.hold = max(0.0, self.hold - dt)
@@ -1011,6 +1045,8 @@ class CinematicWindow(QWidget):
         if point is None:
             return
         zone = self.route.view_for(point)
+        if not jump and self._start_sky_trip(zone, point):
+            return
         # Places the world map does not show (Forever's own islands) keep their own map.
         if self.seamless and maps.world_rect(zone, self.route.map_infos) is not None:
             if self.view_map != maps.WORLD:
@@ -1157,8 +1193,9 @@ class CinematicWindow(QWidget):
             self.cover_age = 0.0
             self.cover_effect.setOpacity(1.0)
 
-    def _show_world(self) -> None:
-        """Shows the seamless world map: every zone at once, the route and pins of the whole range on it."""
+    def _show_world(self, fade: bool = True) -> None:
+        """Shows the seamless world map: every zone at once, the route and pins of the whole range on it
+        (fade: in from black)."""
         scene = self.view.scene()
         if self.marker.scene() is scene:
             scene.removeItem(self.marker)
@@ -1185,8 +1222,9 @@ class CinematicWindow(QWidget):
         self.camera = None
         self.last_head = None
         self._apply_zoom()
-        self.cover_age = 0.0
-        self.cover_effect.setOpacity(1.0)
+        if fade:
+            self.cover_age = 0.0
+            self.cover_effect.setOpacity(1.0)
 
     def _start_world_voyage(self, old: int, new: int, point) -> bool:
         """A trip to the other continent on the seamless map: the camera pulls back until the world is in view,
@@ -1260,6 +1298,115 @@ class CinematicWindow(QWidget):
         self._travel(0.0)
         return True
 
+    # -- islands in the sky ----------------------------------------------------------------
+
+    def _start_sky_trip(self, zone: int | None, point) -> bool:
+        """Starts a trip through the clouds when the replay has just crossed between an island in the sky and the
+        rest of the world (a portal up, or flying down). False if it is none or follows a long break."""
+        here = self.zone_now if self.view_map == maps.WORLD else self.view_map
+        if zone is None or here is None or zone == here or (zone in maps.SKY_ISLANDS) == (here in maps.SKY_ISLANDS):
+            return False
+        j = bisect.bisect_right(self.route.times, point.time) - 1
+        if j <= 0 or point.time - self.route.points[j - 1].end > VOYAGE_GAP:
+            return False
+        if self.camera is None or self.last_head is None:
+            return False
+        portal = zone in maps.SKY_ISLANDS
+        self.sky_trip = _SkyTrip(zone, portal, QPointF(self.last_head), QPointF(self.camera), self._scale())
+        self.t = self.rendered_t = float(point.time)
+        self.marker.set_mode("flight" if portal else "walk")
+        if portal:
+            if self.pins:
+                self.pins.burst(QPointF(self.last_head), ARCANE_COLOR, "teleport")
+            self.sound.play("teleport")
+        self._sky_travel(0.0)
+        return True
+
+    def _sky_fit(self) -> float:
+        """The scale at which a whole map fills the picture (a zone map is never seen past its edges)."""
+        area = self.picture_area()
+        return min(area.width() / (W * 0.96), area.height() / (H * 0.96))
+
+    def _sky_travel(self, dt: float) -> None:
+        trip = self.sky_trip
+        trip.age += dt
+        lift = SKY_LIFT * self.picture_area().height()          # screen pixels
+        if trip.age < SKY_RISE:
+            f = trip.age / SKY_RISE
+            self.clouds.set_amount(ease_in_out(f))
+            scale = trip.start_scale * math.exp(math.log(SKY_HIGH) * 0.5 * ease_in_out(f))
+            center = trip.start
+            if self.view_map != maps.WORLD:
+                scale = max(scale, min(trip.start_scale, self._sky_fit()))
+                center = self._toward(trip.start, QPointF(W / 2, H / 2), ease_in_out(f) * 0.5)
+            head = QPointF(trip.origin.x(), trip.origin.y() - lift / scale * ease_in(f))
+            self._sky_frame(scale, center, head, 1 + (SKY_MARKER - 1) * ease_in(f))
+            return
+        if trip.target is None:
+            self._sky_arrive(trip)
+        f = clamp((trip.age - SKY_RISE) / SKY_FALL)
+        if f >= 1:
+            self._sky_land(trip)
+            return
+        self.clouds.set_amount(1 - clamp(f / 0.85) ** 0.8)
+        e = ease_out(f)
+        high = trip.end_scale * SKY_HIGH
+        center = trip.end
+        if self.view_map != maps.WORLD:
+            high = max(high, min(trip.end_scale, self._sky_fit()))
+            center = self._toward(QPointF(W / 2, H / 2), trip.end, clamp(e / 0.7))
+        scale = math.exp(math.log(high) + (math.log(trip.end_scale) - math.log(high)) * e)
+        head = QPointF(trip.target.x(), trip.target.y() - lift / scale * (1 - e))
+        self._sky_frame(scale, center, head, SKY_MARKER - (SKY_MARKER - 1) * e)
+
+    @staticmethod
+    def _toward(a: QPointF, b: QPointF, f: float) -> QPointF:
+        return QPointF(a.x() + (b.x() - a.x()) * f, a.y() + (b.y() - a.y()) * f)
+
+    def _sky_frame(self, scale: float, center: QPointF, head: QPointF, size: float) -> None:
+        before = self.marker.pos()
+        self.marker.setPos(head)
+        self.marker.setScale(size)
+        self.marker.aim(head.x() - before.x(), head.y() - before.y())
+        self.marker.show()
+        self.view.resetTransform()
+        self.view.scale(scale, scale)
+        self.view.centerOn(center)
+        self._update_world(scale)
+
+    def _sky_arrive(self, trip: _SkyTrip) -> None:
+        """Under the closed clouds: the destination's map, the player's place and the camera's view there."""
+        self.clouds.set_amount(1.0)
+        to = trip.to_view
+        if self.seamless and maps.world_rect(to, self.route.map_infos) is not None:
+            if self.view_map != maps.WORLD:
+                self._show_world(fade=False)
+            self.zone_now = to
+            self.frame_size = self._zone_frame(to)
+            spot = self.route.glide(self.t, maps.WORLD)
+        else:
+            self._switch_map(to, fade=None)
+            spot = self.route.glide(self.t)
+        xy = self.route.project(*spot, self.view_map) if spot else None
+        trip.target = QPointF(xy[0] * W, xy[1] * H) if xy else QPointF(W / 2, H / 2)
+        trip.end_scale = self._scale()
+        trip.end = trip.target if self.view_map == maps.WORLD else self._zone_camera(trip.target)
+        if self.route_item:
+            self.route_item.set_time(self.t, None)
+        if self.pins:
+            self.pins.set_time(self.t, animate=False)
+        self.marker.set_mode("flight" if trip.portal else "walk")
+        self._set_caption(to, None)
+
+    def _sky_land(self, trip: _SkyTrip) -> None:
+        self.sky_trip = None
+        self.clouds.set_amount(0.0)
+        self.marker.setScale(1.0)
+        if trip.portal and self.pins:
+            self.pins.burst(trip.target, ARCANE_COLOR, "arrive")
+        self.camera = None
+        self._render(jump=True)
+
     # -- time of day -----------------------------------------------------------------------
 
     def _add_sky(self, scene: QGraphicsScene) -> None:
@@ -1277,6 +1424,7 @@ class CinematicWindow(QWidget):
             self.light = tuple(a + (b - a) * k for a, b in zip(self.light, target))
         if self.sky is not None:
             self.sky.set_light(self.light)
+        self.clouds.set_light(self.light)
 
     # -- the end ---------------------------------------------------------------------------
 
@@ -1574,7 +1722,7 @@ class CinematicWindow(QWidget):
 
     def _apply_zoom(self) -> None:
         vw, vh = self.view.viewport().width(), self.view.viewport().height()
-        if vw <= 0 or vh <= 0 or self.voyage is not None:
+        if vw <= 0 or vh <= 0 or self.voyage is not None or self.sky_trip is not None:
             return
         scale = self._scale()
         self.view.resetTransform()
@@ -1693,6 +1841,7 @@ class CinematicWindow(QWidget):
         self.photo.hide()
 
     def _age_overlays(self, dt: float) -> None:
+        self.clouds.advance(dt)
         for toast in list(self.toasts):
             if not toast.advance(dt):
                 self.toasts.remove(toast)

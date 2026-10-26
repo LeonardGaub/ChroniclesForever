@@ -1,4 +1,5 @@
-"""Qt pictures of the game icons (wow/game_icons.py): plain for lists and tables, round with a ring for map pins.
+"""Qt pictures of the game icons (wow/game_icons.py): plain for lists and tables, framed squares for stat tiles,
+round with a ring for map pins.
 
 Every function returns None when the icon has no file; the caller then shows the event type's symbol. The
 event_* functions fall back to the type's icon where the icon recorded with an event is missing.
@@ -25,6 +26,7 @@ PIN_ORDER = {"": 0, "danger": 1, "milestone": 2}  # the addon's PIN_LEVEL: miles
 CROP = 0.07   # the dark frame inside each icon, cut off where the icon is round (the addon's 0.07 ... 0.93)
 SCALE = 2     # drawn at twice their size, for sharp edges on high-DPI screens
 LIST_SIZE = 20  # icons in lists and tables
+TILE_SIZE = 34  # the overview's stat tiles (the addon's)
 
 _pixmaps: dict[object, QPixmap | None] = {}
 _generation = -1
@@ -60,6 +62,27 @@ def small(icon: game_icons.Icon | None, size: int = LIST_SIZE) -> QPixmap | None
         pm.setDevicePixelRatio(SCALE)
         return pm
     return _cached(("list", game_icons.name_of(icon), size), make)
+
+
+def tile(icon: game_icons.Icon | None, size: int = TILE_SIZE) -> QPixmap | None:
+    """The icon of a stat tile as the addon draws it (UI:IconSquare): cut frame, 2 px inset on a dark square."""
+    def make():
+        source = pixmap(icon)
+        if source is None:
+            return None
+        out = QPixmap(size * SCALE, size * SCALE)
+        out.fill(Qt.GlobalColor.transparent)
+        p = QPainter(out)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.scale(SCALE, SCALE)
+        p.fillRect(QRectF(0, 0, size, size), QColor(0, 0, 0, 178))
+        cut = CROP * source.width()
+        p.drawPixmap(QRectF(2, 2, size - 4, size - 4), source,
+                     QRectF(cut, cut, source.width() - 2 * cut, source.height() - 2 * cut))
+        p.end()
+        out.setDevicePixelRatio(SCALE)
+        return out
+    return _cached(("tile", game_icons.name_of(icon), size), make)
 
 
 def of_event(icon: game_icons.Icon | None, event_type: str) -> QPixmap | None:
