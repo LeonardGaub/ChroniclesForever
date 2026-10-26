@@ -232,3 +232,28 @@ def test_window_opens_with_a_dive(app, ctx, imported):
     window.seek(start)
     assert window.intro is None, "a jump never opens again"
     window.close()
+
+
+def test_flight_marker_is_the_factions_mount(app):
+    """On a flight path the marker is the faction's flying mount: a wind rider or a gryphon, wings beating."""
+    from PySide6.QtGui import QImage, QPainter
+    from forever_chronicle.ui.cinematic_fx import MarkerItem
+
+    drawn = {}
+    for kind in ("wyvern", "gryphon"):
+        marker = MarkerItem()
+        marker.flyer = kind
+        marker.set_mode("taxi")
+        frames = []
+        for clock in (0.0, 0.14, 2.0):          # beating, beating, gliding
+            marker.clock = clock
+            image = QImage(144, 144, QImage.Format.Format_ARGB32)
+            image.fill(0)
+            painter = QPainter(image)
+            painter.translate(72, 72)
+            marker.paint(painter, None)
+            painter.end()
+            frames.append(image)
+        assert frames[0] != frames[1], "the wings beat"
+        drawn[kind] = frames[2]
+    assert drawn["wyvern"] != drawn["gryphon"], "each faction its own mount"

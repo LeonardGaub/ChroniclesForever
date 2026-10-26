@@ -388,11 +388,213 @@ class RouteItem(QGraphicsItem):
             painter.drawPolyline(line)
 
 
+# -- flying mounts --------------------------------------------------------------------------------------
+
+FLYER_INK = QColor(26, 16, 8, 235)
+
+
+def _mirrored(half):
+    """A closed path from a half outline (points with y <= 0, nose first, tail last) and its mirror."""
+    path = QPainterPath(QPointF(*half[0]))
+    for kind, *pts in half[1:]:
+        getattr(path, kind)(*[QPointF(x, y) for x, y in pts])
+    back = [(kind, *[(x, -y) for x, y in pts]) for kind, *pts in half[1:]]
+    # walk the mirror backwards: reverse the segments, each segment ends at the previous start
+    starts = [half[0][:2]] + [seg[-1] for seg in half[1:]]
+    for i in range(len(half) - 1, 0, -1):
+        kind, *pts = half[i]
+        end = starts[i - 1]
+        ctrl = list(reversed(pts[:-1]))
+        coords = [(x, -y) for x, y in ctrl] + [(end[0], -end[1])]
+        getattr(path, kind)(*[QPointF(x, y) for x, y in coords])
+    path.closeSubpath()
+    return path
+
+
+def _mix(a, b, f):
+    return (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f)
+
+
+def _bat_wing(side, s):
+    """A wind rider's wing: membrane scalloped between finger bones. side -1: left (up on screen), 1: right."""
+    sweep = 2.0 * (1 - s)
+    S, W, T = (6, 4.5 * side), (9 + sweep, 17 * side * s), (-3 + sweep, 29 * side * s)
+    fingers = [T, (-9 + sweep * 0.6, 23 * side * s), (-12 + sweep * 0.3, 14 * side * s)]
+    R = (-7, 4.5 * side)
+    path = QPainterPath(QPointF(*S))
+    path.cubicTo(QPointF(8, 9 * side * s), QPointF(10 + sweep, 13 * side * s), QPointF(*W))
+    path.quadTo(QPointF(4 + sweep, 24 * side * s), QPointF(*T))
+    chain = fingers + [R]
+    for a, b in zip(chain, chain[1:]):
+        mid = _mix(a, b, 0.5)
+        c = _mix(mid, W, 0.32)                      # the membrane sags towards the wrist between bones
+        path.quadTo(QPointF(*c), QPointF(*b))
+    path.closeSubpath()
+    bones = [(W, f) for f in fingers] + [(S, W)]
+    return path, bones
+
+
+def _feather_wing(side, s):
+    """A gryphon's wing: a long swept leading edge, separate primary feathers at the tip, rounded secondaries."""
+    sweep = 2.0 * (1 - s)
+    S, W, T = (6, 5 * side), (7 + sweep, 17 * side * s), (-8 + sweep, 31 * side * s)
+    trail = [T, (-11.5 + sweep, 27 * side * s), (-13 + sweep * 0.6, 23 * side * s), (-13.5, 18.5 * side * s),
+             (-14, 14 * side * s), (-13, 9.5 * side * s), (-9, 5 * side)]
+    path = QPainterPath(QPointF(*S))
+    path.cubicTo(QPointF(8, 9 * side * s), QPointF(9 + sweep, 13 * side * s), QPointF(*W))
+    path.quadTo(QPointF(1 + sweep, 26 * side * s), QPointF(*T))
+    lines = []
+    for k, (a, b) in enumerate(zip(trail, trail[1:])):
+        mid = _mix(a, b, 0.5)
+        primary = k < 3
+        # Primaries end in separate tips (a notch between them); secondaries in a soft scallop.
+        out = 2.4 if primary else 1.6
+        c = (mid[0] - out, mid[1] + (0.8 * side if primary else 0))
+        if primary:
+            notch = _mix(a, b, 0.55)
+            path.quadTo(QPointF(*c), QPointF(notch[0] + 1.6, notch[1]))
+            path.lineTo(QPointF(*b))
+        else:
+            path.quadTo(QPointF(*c), QPointF(*b))
+        root = _mix(W, S, k / 6) if k > 0 else W
+        lines.append((root, a))
+    path.closeSubpath()
+    return path, lines
+
+
+def _wind_rider_body():
+    return _mirrored([(21, 0), ("quadTo", (20.8, -2.2), (17.5, -3.2)), ("cubicTo", (15, -4.0), (13, -2.8), (10.5, -3.2)),
+                     ("cubicTo", (8, -5.8), (4, -6.6), (0, -5.4)), ("cubicTo", (-4, -4.4), (-7, -5.6), (-9.5, -4.6)),
+                     ("lineTo", (-12.5, -1.6))])
+
+
+def _gryphon_body():
+    return _mirrored([(18, 0), ("cubicTo", (18.2, -3.6), (15.5, -5.0), (12.5, -4.2)), ("cubicTo", (10, -4.6), (8, -6.8), (4, -7.0)),
+                     ("cubicTo", (0, -6.6), (-4, -5.4), (-7, -5.8)), ("cubicTo", (-10, -6.4), (-12.5, -4.5), (-13.5, -1.4))])
+
+
+def _tail_path(points):
+    path = QPainterPath(QPointF(*points[0]))
+    for a, b in zip(points[1::2], points[2::2]):
+        path.quadTo(QPointF(*a), QPointF(*b))
+    return path
+
+
+def draw_flyer(painter: QPainter, kind: str, spread: float, accent: QColor, shadow: bool = True) -> None:
+    """A flying mount seen from above, nose to +x, about 64 x 62 units with the wings spread (spread 1):
+    "wyvern" (the Horde's wind rider: bat wings, a scorpion's tail, horns) or "gryphon" (the Alliance's:
+    feathered wings, a white eagle head, a lion's tail), its rider's shoulders in accent and a shadow below
+    it (the height)."""
+    horde = kind == "wyvern"
+    wings = [_bat_wing(side, spread) if horde else _feather_wing(side, spread) for side in (-1, 1)]
+    body = _wind_rider_body() if horde else _gryphon_body()
+    tail = _tail_path([(-12, 0), (-17, 2.0), (-21, 2.4), (-25, 2.6), (-27.5, 0.2)] if horde else
+                     [(-13, 0), (-17, 0.8), (-20, 2.2), (-22, 3.2), (-23.5, 2.6)])
+    if shadow:
+        painter.save()
+        painter.translate(5, 8)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 70))
+        for w, _ in wings:
+            painter.drawPath(w)
+        painter.drawPath(body)
+        painter.restore()
+    # Tail under the body.
+    if horde:                                       # a scorpion's tail: segments getting smaller, a stinger
+        painter.setPen(QPen(FLYER_INK, 1.0))
+        painter.setBrush(QColor("#8a4f2c"))
+        for k in range(7):
+            f = k / 6
+            p = tail.pointAtPercent(f)
+            r = 2.6 - 1.4 * f
+            painter.drawEllipse(p, r * 1.15, r)
+        sting = QPainterPath(QPointF(-27.5, 0.2))
+        sting.lineTo(-31.5, -2.4)
+        sting.lineTo(-26.6, -1.9)
+        sting.closeSubpath()
+        painter.setBrush(QColor("#2e1a10"))
+        painter.drawPath(sting)
+    else:                                           # a lion's tail with its tuft, and the hind paws tucked in
+        pen = QPen(FLYER_INK, 3.2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(tail)
+        pen = QPen(QColor("#c49a5e"), 1.6)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawPath(tail)
+        painter.setPen(QPen(FLYER_INK, 1.0))
+        painter.setBrush(QColor("#5e3d20"))
+        painter.drawEllipse(QPointF(-24.2, 2.8), 2.4, 1.8)
+        painter.setBrush(QColor("#b48850"))
+        for side in (-1, 1):
+            painter.drawEllipse(QPointF(-12.8, 5.6 * side), 2.4, 1.6)
+    # Wings.
+    for (w, lines), side in zip(wings, (-1, 1)):
+        if horde:
+            grad = QRadialGradient(QPointF(4, 5 * side), 30)
+            grad.setColorAt(0, QColor("#8c4a2c"))
+            grad.setColorAt(1, QColor("#5b2a1a"))
+        else:                                       # light coverts at the leading edge, dark flight feathers
+            grad = QLinearGradient(QPointF(7, 10 * side), QPointF(-13, 12 * side))
+            grad.setColorAt(0, QColor("#e6cc98"))
+            grad.setColorAt(0.45, QColor("#b0814f"))
+            grad.setColorAt(1, QColor("#5f3e22"))
+        painter.setPen(QPen(FLYER_INK, 1.3))
+        painter.setBrush(grad)
+        painter.drawPath(w)
+        painter.setPen(QPen(QColor(30, 14, 6, 170) if horde else QColor(60, 36, 16, 120), 1.0 if horde else 0.7))
+        for a, b in lines:
+            painter.drawLine(QPointF(*a), QPointF(*b))
+    # Body.
+    painter.setPen(QPen(FLYER_INK, 1.3))
+    grad = QLinearGradient(0, -6, 0, 6)
+    if horde:
+        grad.setColorAt(0, QColor("#c9935a"))
+        grad.setColorAt(1, QColor("#8f5d33"))
+    else:
+        grad.setColorAt(0, QColor("#ddb878"))
+        grad.setColorAt(1, QColor("#a87d45"))
+    painter.setBrush(grad)
+    painter.drawPath(body)
+    if horde:                                       # horns swept back, a dark mane
+        pen = QPen(QColor("#e9dcc0"), 1.4)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        for side in (-1, 1):
+            painter.drawLine(QPointF(14.5, 2.4 * side), QPointF(10.5, 6.2 * side))
+        mane = QPainterPath(QPointF(16.5, 0))       # a dark mane down the neck, tapering
+        mane.cubicTo(QPointF(13, -2.2), QPointF(8, -1.8), QPointF(4, -0.6))
+        mane.lineTo(QPointF(4, 0.6))
+        mane.cubicTo(QPointF(8, 1.8), QPointF(13, 2.2), QPointF(16.5, 0))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(52, 28, 16, 220))
+        painter.drawPath(mane)
+    else:                                           # white eagle head, golden beak
+        painter.setPen(QPen(FLYER_INK, 1.0))
+        painter.setBrush(QColor("#f5eedc"))
+        painter.drawEllipse(QPointF(14, 0), 4.4, 3.9)
+        beak = QPainterPath(QPointF(21.5, 0))
+        beak.lineTo(17.2, -1.8)
+        beak.lineTo(17.2, 1.8)
+        beak.closeSubpath()
+        painter.setBrush(QColor("#e8a92e"))
+        painter.drawPath(beak)
+    # The rider seen from above: shoulders in the class colour, the head in front.
+    painter.setPen(QPen(FLYER_INK, 1.0))
+    painter.setBrush(accent)
+    painter.drawEllipse(QPointF(-1.2, 0), 2.6, 4.2)
+    painter.setBrush(QColor("#3a2a1e"))
+    painter.drawEllipse(QPointF(1.8, 0), 1.9, 1.9)
+
+
 # -- marker -------------------------------------------------------------------------------------------------
 
 class MarkerItem(QGraphicsItem):
-    """The player on the map, drawn at screen size: walking (disc, halo, arrow), on a flight path (gryphon)
-    or inside a dungeon (portal at its entrance)."""
+    """The player on the map, drawn at screen size: walking (disc, halo, arrow), on a flight path (the
+    faction's flying mount: flyer "wyvern" or "gryphon", wings beating and gliding) or inside a dungeon (portal at
+    its entrance)."""
 
     TAXI_COLOR = QColor(hex_color(TAXI))      # the flight paths' blue
     PORTAL_COLOR = QColor("#a87bff")
@@ -402,6 +604,7 @@ class MarkerItem(QGraphicsItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.setZValue(10)
         self.color = QColor(theme.GOLD)
+        self.flyer = "gryphon"       # the flying mount on flight paths (draw_flyer)
         self.mode = "walk"           # "walk" | "taxi" | "dungeon" | "dead" | "ghost" | "flight"
         self.angle = 0.0             # direction of travel in degrees, as on screen (0: right, 90: down)
         self.motion = 0.0            # 0..1: how visible the arrow is (only while moving)
@@ -409,7 +612,7 @@ class MarkerItem(QGraphicsItem):
         self.clock = 0.0
 
     def boundingRect(self) -> QRectF:
-        return QRectF(-34, -34, 68, 68)
+        return QRectF(-72, -72, 144, 144)          # a flying mount's wings and shadow
 
     def set_mode(self, mode: str) -> None:
         if mode != self.mode:
@@ -519,30 +722,15 @@ class MarkerItem(QGraphicsItem):
         painter.drawLine(QPointF(-3.5, -2.5), QPointF(3.5, -2.5))
 
     def _gryphon(self, painter: QPainter, pulse: float) -> None:
-        self._halo(painter, self.TAXI_COLOR, 26 + 4 * pulse, 170)
+        self._halo(painter, self.TAXI_COLOR, 22 + 3 * pulse, 90)
+        # Two or three wing beats, then a glide with the wings held out (a beat every ~3.5 s).
+        cycle = self.clock % 3.4
+        beat = math.sin(cycle * 2 * math.pi / 0.55) if cycle < 1.4 else 0.0
+        spread = 0.86 + 0.14 * beat * (1 - ease_in(clamp((cycle - 1.1) / 0.3)))
         painter.save()
         painter.rotate(self.angle)
-        painter.scale(1.45, 1.45)
-        s = 0.55 + 0.45 * math.sin(self.clock * 9)      # wing beat
-        bird = QPainterPath()
-        bird.moveTo(9, 0)
-        bird.lineTo(5, -2.5)
-        bird.cubicTo(2, -6 * s, -3, -12 * s, -8, -17 * s)
-        bird.lineTo(-5, -7 * s)
-        bird.lineTo(-7, -3)
-        bird.lineTo(-14, -4)
-        bird.lineTo(-11, 0)
-        bird.lineTo(-14, 4)
-        bird.lineTo(-7, 3)
-        bird.lineTo(-5, 7 * s)
-        bird.lineTo(-8, 17 * s)
-        bird.cubicTo(-3, 12 * s, 2, 6 * s, 5, 2.5)
-        bird.closeSubpath()
-        painter.setPen(QPen(QColor(20, 14, 6, 230), 1.6))
-        painter.setBrush(QColor("#f1dca6"))
-        painter.drawPath(bird)
-        painter.setBrush(QColor("#fff7e0"))
-        painter.drawEllipse(QPointF(8, 0), 3.2, 3.2)       # head
+        painter.scale(1.8, 1.8)
+        draw_flyer(painter, self.flyer, spread, self.color)
         painter.restore()
 
     def _portal(self, painter: QPainter, pulse: float) -> None:

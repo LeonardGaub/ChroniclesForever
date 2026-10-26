@@ -452,6 +452,7 @@ class CinematicWindow(QWidget):
         self.view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.marker = MarkerItem()
         self.marker.color = QColor(self.char_color)
+        self.marker.flyer = "wyvern" if char and char.faction == "Horde" else "gryphon"
 
         # The last picture of the old map, fading out over the new one (crossfade).
         self.snapshot = QLabel(self)
