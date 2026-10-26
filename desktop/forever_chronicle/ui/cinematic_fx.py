@@ -33,9 +33,9 @@ import math
 import random
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import (QBrush, QColor, QFont, QFontMetrics, QLinearGradient, QPainter,
-                           QPainterPath, QPen, QPixmap, QRadialGradient)
+from PySide6.QtCore import QPointF, QRect, QRectF, Qt
+from PySide6.QtGui import (QBrush, QColor, QFont, QFontMetrics, QImage, QLinearGradient, QPainter,
+                           QPainterPath, QPen, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import QGraphicsColorizeEffect, QGraphicsItem, QGraphicsView, QWidget
 
 from ..domain import maps
@@ -765,16 +765,67 @@ class SkyItem(QGraphicsItem):
 class CinemaView(QGraphicsView):
     """The map view. grey (0..1) drains the colour from everything on it in a cold blue light, like the game's
     spirit world while the player is dead (a colorize effect: grey tones tinted with SPIRIT_TINT; only switched
-    on while needed, since it draws the view once more)."""
+    on while needed, since it draws the view once more).
+
+    tilt (degrees) leans the map back in perspective round the middle of the picture (flight paths): the map is
+    drawn flat into a picture large enough for the tilted view and that picture is shown tilted. (A perspective
+    view transform would drop every line with a point behind the eye: the route, the sky's tint.)"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.tilt = 0.0
+        self.tilt_distance = 1.3           # seen from this many picture heights away
         self.grey = 0.0
         self.spirit = QGraphicsColorizeEffect(self)
         self.spirit.setColor(SPIRIT_TINT)
         self.spirit.setStrength(0.0)
         self.spirit.setEnabled(False)
         self.setGraphicsEffect(self.spirit)
+
+    def _tilted(self) -> tuple[QTransform, QRect] | None:
+        """(the tilt round the middle, the flat part of the view it shows, relative to the middle) or None."""
+        if self.tilt <= 0.05:
+            return None
+        w, h = self.viewport().width(), self.viewport().height()
+        tilt = QTransform().rotate(self.tilt, Qt.Axis.XAxis, self.tilt_distance * max(1, h))
+        inverse, ok = tilt.inverted()
+        if not ok:
+            return None
+        corners = [inverse.map(QPointF(x - w / 2, y - h / 2)) for x, y in ((0, 0), (w, 0), (0, h), (w, h))]
+        xs, ys = [p.x() for p in corners], [p.y() for p in corners]
+        return tilt, QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)).toAlignedRect()
+
+    def visible_rect(self) -> QRectF:
+        """The part of the scene in view (with the tilt: the wider far side too)."""
+        tilted = self._tilted()
+        rect = self.viewport().rect()
+        if tilted is not None:
+            rect = tilted[1].translated(rect.width() // 2, rect.height() // 2)
+        return self.mapToScene(rect).boundingRect()
+
+    def paintEvent(self, event) -> None:
+        tilted = self._tilted()
+        if tilted is None:
+            super().paintEvent(event)
+            return
+        tilt, src = tilted
+        w, h = self.viewport().width(), self.viewport().height()
+        ratio = self.viewport().devicePixelRatioF()
+        flat = QImage(round(src.width() * ratio), round(src.height() * ratio),
+                      QImage.Format.Format_ARGB32_Premultiplied)
+        flat.setDevicePixelRatio(ratio)
+        flat.fill(QColor("black"))
+        painter = QPainter(flat)
+        painter.setRenderHints(self.renderHints())
+        self.render(painter, QRectF(0, 0, src.width(), src.height()), src.translated(w // 2, h // 2),
+                    Qt.AspectRatioMode.IgnoreAspectRatio)
+        painter.end()
+        painter = QPainter(self.viewport())
+        painter.fillRect(self.viewport().rect(), QColor("black"))
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.setTransform(QTransform.fromTranslate(src.x(), src.y()) * tilt * QTransform.fromTranslate(w / 2, h / 2))
+        painter.drawImage(QPointF(0, 0), flat)
+        painter.end()
 
     def set_grey(self, grey: float) -> None:
         grey = clamp(grey)

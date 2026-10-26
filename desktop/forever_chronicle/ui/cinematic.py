@@ -87,7 +87,7 @@ SPEEDS = (1, 2, 4, 10)
 ZOOM = 2.4                 # camera zoom relative to the whole map
 FOLLOW_SECONDS = 0.45      # time constant of the camera following the marker
 KEEP_INSIDE = 0.3          # the marker stays within this share of the picture's width/height from its centre
-ZOOM_OUT_TAXI = 0.86       # dynamic zoom (share of ZOOM): on flight paths ...
+ZOOM_OUT_TAXI = 0.8        # dynamic zoom (share of ZOOM): on flight paths ...
 ZOOM_OUT_FAST = 0.9        # ... at most this far out while the marker races across the picture ...
 ZOOM_IN_CLOSE = 1.07       # ... and a little in when a moment is close, or while standing still or dead
 ZOOM_SECONDS = 2.6         # time constant of zoom changes: slow, so the picture stays calm
@@ -126,6 +126,10 @@ VOYAGE_LINE = QColor(232, 226, 208, 220)
 # The seamless world map (ui/world_art.py): one picture of every zone. Places it does not show (Forever's islands
 # in the sky) keep their own map; so does every place if the world art is missing.
 FRAME_SECONDS = 3.0        # time constant of the view following the size of the zone the player is in
+TAXI_FRAME = (90.0, 60.0)  # world units the frame shows at least on a flight path (a city is 22-31 wide: close
+TAXI_FRAME_SECONDS = 1.0   # up its coarse surroundings blurred), reached this quickly
+TAXI_TILT = 30.0           # degrees the map leans back on a flight path, as seen from the gryphon's back ...
+TILT_SECONDS = 0.8         # ... coming and going this calmly (CinemaView draws it)
 CUT_JUMP = 0.5             # a step longer than this share of the picture's width cuts (crossfade): a break
 # Flights on the seamless map: (out, across, in) seconds and the arc's bulge (share of the distance) per kind.
 FLIGHTS = {"sea": (VOYAGE_OUT, VOYAGE_TRAVEL, VOYAGE_IN, 0.3), "teleport": (0.75, 0.9, 0.85, 0.2),
@@ -411,6 +415,7 @@ class CinematicWindow(QWidget):
         self.camera: QPointF | None = None
         self.last_head: QPointF | None = None
         self.zoom = 1.0                     # dynamic zoom, a share of ZOOM
+        self.tilt = 0.0                     # degrees the map leans back (on flight paths)
         self.screen_speed = 0.0             # how fast the marker crosses the picture (widths per second, smoothed)
         self.frame_dt = 0.0                 # real time of the current step (camera smoothing)
         self.hold = 0.0                     # real seconds the replay waits (at a death)
@@ -1103,16 +1108,18 @@ class CinematicWindow(QWidget):
         rect = maps.world_rect(zone, self.route.map_infos)
         return ((rect[2] - rect[0]) * W, (rect[3] - rect[1]) * H) if rect else None
 
-    def _follow_frame(self, jump: bool) -> None:
+    def _follow_frame(self, jump: bool, taxi: bool = False) -> None:
         """The seamless view's frame drifts towards the size of the zone the player is in (in log space, so
-        growing and shrinking feel alike)."""
+        growing and shrinking feel alike); on a flight path it shows at least TAXI_FRAME, soon."""
         target = self._zone_frame(self.zone_now)
         if target is None:
             return
+        if taxi:
+            target = (max(target[0], TAXI_FRAME[0]), max(target[1], TAXI_FRAME[1]))
         if jump or self.frame_size is None:
             self.frame_size = target
             return
-        k = smooth(self.frame_dt, FRAME_SECONDS)
+        k = smooth(self.frame_dt, TAXI_FRAME_SECONDS if taxi else FRAME_SECONDS)
         self.frame_size = tuple(geo_mix(a, b, k) for a, b in zip(self.frame_size, target))
 
     def _follow(self, head: QPointF, moved: float, taxi: bool, dead: bool, jump: bool) -> None:
@@ -1121,7 +1128,9 @@ class CinematicWindow(QWidget):
         stands still or lies dead. Both change slowly (time constants), so the picture stays calm."""
         dt = self.frame_dt
         if self.view_map == maps.WORLD:
-            self._follow_frame(jump or self.camera is None)
+            self._follow_frame(jump or self.camera is None, taxi)
+        tilt = TAXI_TILT if taxi else 0.0
+        self.tilt = tilt if jump else self.tilt + (tilt - self.tilt) * smooth(dt, TILT_SECONDS)
         scale = self._scale()
         if dt > 0 and not jump:
             width = max(1, self.view.viewport().width())
@@ -1604,11 +1613,15 @@ class CinematicWindow(QWidget):
         self._set_view(self._scale(), self.camera)
 
     def _set_view(self, scale: float, center: QPointF | None) -> None:
-        """Shows the map at scale (screen pixels per map pixel) around center (None: where it is)."""
+        """Shows the map at scale (screen pixels per map pixel) around center (None: where it is), leaning back
+        by the tilt."""
         self.view.resetTransform()
         self.view.scale(scale, scale)
         if center is not None:
             self.view.centerOn(center)
+        if self.view.tilt != self.tilt:
+            self.view.tilt = self.tilt
+            self.view.viewport().update()
         self._update_world(scale)
 
     def _update_world(self, scale: float) -> None:
@@ -1618,7 +1631,7 @@ class CinematicWindow(QWidget):
             zone, voyage = self.zone_now, self.voyage
             if voyage is not None and voyage.age >= voyage.out + voyage.across:
                 zone = voyage.to_view
-            self.world.update(self.view.mapToScene(self.view.viewport().rect()).boundingRect(), scale,
+            self.world.update(self.view.visible_rect(), scale,
                               zone, 0.0 if self.world_cut else self.frame_dt)
         self.world_cut = False
 
