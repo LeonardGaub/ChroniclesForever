@@ -10,7 +10,8 @@ On the map (scene items):
   comet.
 - PinsItem: a pin where each event of the replay happened, once it has happened (screenshots as small
   polaroids), and short bursts on the map at the moment something happens (a teleport: an arcane swirl where the
-  player vanishes and a flash where they arrive).
+  player vanishes and a flash where they arrive; a completed quest: the game's yellow question mark pops up and
+  rises away).
 - SkyItem: the time of day over the map (domain/daylight.py), multiplied onto the map art.
 - CinemaView: the view showing the map; while the player is dead it drains the colour like the game's spirit
   world (grey with a cold blue light).
@@ -58,8 +59,12 @@ GOLD_LETTERS = ("#fff6c8", theme.GOLD, "#b07a10")   # large gold letters: top, m
 GOLD_GLOW = QColor(255, 196, 60)
 SYMBOL_FONTS = ["Segoe UI Symbol", "Segoe UI", "DejaVu Sans"]
 PIN_POP = 0.35             # seconds a new pin takes to pop up
-BURST_LIFE = {"level": 1.7, "death": 1.5, "event": 1.1, "revive": 1.8, "spirit": 1.6, "teleport": 1.5, "arrive": 1.4}
-BURST_REACH = {"level": 110, "death": 70, "event": 55, "revive": 90, "spirit": 60, "teleport": 80, "arrive": 95}
+BURST_LIFE = {"level": 1.7, "death": 1.5, "event": 1.1, "revive": 1.8, "spirit": 1.6, "teleport": 1.5, "arrive": 1.4,
+              "quest": 1.6}
+BURST_REACH = {"level": 110, "death": 70, "event": 55, "revive": 90, "spirit": 60, "teleport": 80, "arrive": 95,
+               "quest": 0}
+QUEST_STAGGER = 0.22       # seconds between quest pops that come together (several quests handed in at once)
+QUEST_SIZE = 34            # the question mark's height on screen (the game's texture is 16 px)
 GHOST_COLOR = QColor("#b9d3ea")   # the corpse run on the map, and the ghost
 ARCANE_COLOR = QColor("#8fc4ff")  # teleports: the swirl, the comet and its trail
 GHOST_DOTS = (0.1, 2.2)    # dotted line of the corpse run, in pen widths
@@ -773,7 +778,8 @@ class Burst:
     pos: QPointF
     color: QColor
     kind: str                     # a key of BURST_LIFE
-    age: float = 0.0
+    age: float = 0.0              # below 0: waiting to start
+    shift: float = 0.0            # screen pixels to the side (quest pops coming together)
 
 
 @dataclass
@@ -806,6 +812,15 @@ class PinsItem(QGraphicsItem):
 
     def burst(self, pos: QPointF, color: QColor, kind: str) -> None:
         self.bursts.append(Burst(QPointF(pos), QColor(color), kind if kind in BURST_LIFE else "event"))
+
+    def quest(self, pos: QPointF) -> None:
+        """A completed quest: the question mark pops up at pos. Pops coming together follow one another, a little
+        to the left and right, so a handful of quests handed in at once reads as a handful."""
+        waiting = [b for b in self.bursts if b.kind == "quest" and b.age < QUEST_STAGGER]
+        delay = max(-b.age for b in waiting) + QUEST_STAGGER if waiting else 0.0
+        n = len(waiting) % 5
+        shift = (n + 1) // 2 * 14 * (1 if n % 2 else -1)
+        self.bursts.append(Burst(QPointF(pos), QColor(theme.GOLD), "quest", -delay, shift))
 
     def clear_bursts(self) -> None:
         self.bursts.clear()
@@ -871,8 +886,43 @@ class PinsItem(QGraphicsItem):
         draw_polaroid(painter, QRectF(-14, -13, 28, 26), QRectF(-12, -11, 24, 17), pin.thumb, QPointF(1.5, 2.5))
 
     @staticmethod
-    def _burst(painter: QPainter, p: QPointF, b: Burst) -> None:
+    def _quest(painter: QPainter, p: QPointF, x: float) -> None:
+        """The game's question mark of a quest ready to hand in: it pops up over the spot on a soft gold glow,
+        rises a little and fades."""
+        icon = skin_pixmap("quest_turnin.png")
+        if icon.isNull():
+            return
+        pop = ease_out_back(clamp(x / 0.22))
+        rise = ease_out(clamp(x / 0.7))
+        fade = 1 - ease_in(clamp((x - 0.5) / 0.5))
+        c = p + QPointF(0, -18 - 20 * rise)
+        painter.setPen(Qt.PenStyle.NoPen)
+        shade = QRadialGradient(c, 22)               # dark behind it, so it reads on the yellow steppes too
+        shade.setColorAt(0, QColor(0, 0, 0, int(170 * fade)))
+        shade.setColorAt(1, QColor(0, 0, 0, 0))
+        painter.setBrush(shade)
+        painter.drawEllipse(c, 22, 22)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
+        glow = QRadialGradient(c, 18)
+        glow.setColorAt(0, with_alpha(GOLD_GLOW, 110 * fade))
+        glow.setColorAt(1, with_alpha(GOLD_GLOW, 0))
+        painter.setBrush(glow)
+        painter.drawEllipse(c, 18, 18)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        h = QUEST_SIZE * pop
+        w = h * icon.width() / max(1, icon.height())
+        painter.setOpacity(fade)
+        painter.drawPixmap(QRectF(c.x() - w / 2, c.y() - h / 2, w, h), icon, QRectF(icon.rect()))
+        painter.setOpacity(1.0)
+
+    @classmethod
+    def _burst(cls, painter: QPainter, p: QPointF, b: Burst) -> None:
         x = b.age / BURST_LIFE[b.kind]
+        if x < 0:
+            return
+        if b.kind == "quest":
+            cls._quest(painter, p + QPointF(b.shift, 0), x)
+            return
         fade = 1 - x
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
         glow = QRadialGradient(p, 46 if b.kind != "event" else 30)

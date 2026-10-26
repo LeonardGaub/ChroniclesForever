@@ -13,7 +13,9 @@
   player crosses the sea on a dashed arc, and the camera dives into the new zone.
   A vignette and letterbox bars frame the picture; the top bar names the character, the zone and the moment,
   the bottom bar holds the game's experience bar (ui/cinematic_hud.py).
-- Events slide in as achievement alerts and flash a burst on the map; level-ups get a large title. At each
+- Events slide in as achievement alerts and flash a burst on the map (profession ranks too); level-ups get a large
+  title. Quests are too many for alerts: where one was handed in, the game's yellow question mark pops up over the
+  marker and rises away (several at once one after the other). At each
   screenshot the replay pauses: the picture flies out from the marker as a polaroid under an achievement
   banner (domain/cinematic.py decides which moments). The visual pieces are in ui/cinematic_fx.py.
 - Deaths: the replay slows down before one and holds a moment on a dark red title while the world turns grey
@@ -370,6 +372,8 @@ class CinematicWindow(QWidget):
         events = repo.events(character_id, types=CUE_EVENT_TYPES + ("quest_completed",), limit=1_000_000)
         self.cues: list[Cue] = build_cues(events, repo.screenshots(character_id, only_files=True), start, end)
         self.cue_times = [c.time for c in self.cues]
+        self.quest_times = sorted(e.occurred_at for e in events
+                                  if e.event_type == "quest_completed" and start <= e.occurred_at <= end)
         self.deaths: list[Death] = [d for d in death_spans(events, self.route) if d.revived >= start and d.time <= end]
         self.ghost_spans = [(d.released, d.revived) for d in self.deaths if d.released is not None]
         self.teleports: list[Teleport] = teleports(self.route, self.deaths, start, end)
@@ -976,9 +980,12 @@ class CinematicWindow(QWidget):
         return next((d for d in self.deaths if d.dead(t)), None)
 
     def _crossings(self, before: float, t: float) -> None:
-        """Light where the ghost appears at the graveyard, and where the player comes back to life."""
+        """Light where the ghost appears at the graveyard, and where the player comes back to life; a question
+        mark popping up where a quest was handed in."""
         if not self.pins or not self.marker.isVisible():
             return
+        for _ in range(bisect.bisect_right(self.quest_times, t) - bisect.bisect_right(self.quest_times, before)):
+            self.pins.quest(self.marker.pos())
         for d in self.deaths:
             if d.released is not None and before < d.released <= t:
                 self.pins.burst(self.marker.pos(), GHOST_COLOR, "spirit")

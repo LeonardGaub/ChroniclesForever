@@ -23,6 +23,8 @@ look that they cut into nine slices (border-image), so the pieces are put togeth
 - levelup_*.png:  pieces of the game's level-up display (Interface\\LevelUp\\LevelUpTex): its gold line and
                   golden glow (the cinematic's level-up, ui/cinematic_fx.py); its dark backdrop overlaps other
                   pieces there, so the title keeps its own soft band
+- quest_turnin.png: the yellow question mark of a quest ready to hand in (Interface\\GossipFrame\\ActiveQuestIcon;
+                  the cinematic's quest pops, ui/cinematic_fx.py)
 
 Rerun after a client patch if the textures change. Needs numpy and Pillow (as tools/extract_icons.py).
 """
@@ -64,6 +66,7 @@ TEXTURES = {
     "menubar": r"Interface\MainMenuBar\UI-MainMenuBar-Dwarf",
     "statusbar": r"Interface\TargetingFrame\UI-StatusBar",
     "levelup": r"Interface\LevelUp\LevelUpTex",
+    "quest": r"Interface\GossipFrame\ActiveQuestIcon",
 }
 XP_PIECES = (192, 128, 64, 0)      # rows of the four frame pieces in UI-MainMenuBar-Dwarf, left to right
 XP_ROWS = (8, 23)                  # the frame's rows within each 64 px block (its shadow included)
@@ -182,6 +185,7 @@ def build(src: Path, out: Path) -> list[str]:
     levelup = load(src, "levelup")
     for name, box in LEVELUP_PIECES.items():
         save(levelup.crop(box), name)
+    save(load(src, "quest"), "quest_turnin.png")
     return made
 
 

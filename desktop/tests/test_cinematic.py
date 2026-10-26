@@ -493,3 +493,34 @@ def test_profession_progress_comes_as_a_toast():
     assert (cues[1].heading, cues[1].title) == (tr("cine.banner.profession_rank"),
                                                 f"Tailoring: {tr('rank.journeyman')}")
 
+
+def _window(ctx):
+    cid = ctx.repo.list_characters()[0].character_id
+    points = ctx.repo.positions(cid)
+    window = CinematicWindow(ctx, cid, points[0].time, max(p.end for p in points), speed=4)
+    window.resize(900, 600)
+    window.show()
+    window.timer.stop()
+    window.intro = None
+    return window
+
+
+def test_cinematic_quest_pops(app, ctx, imported):
+    # The question mark pops up where each quest was handed in, several one after the other.
+    window = _window(ctx)
+    t = window.t
+    window.quest_times = [t + 10, t + 10, t + 11, t + 500]
+    window._crossings(t, t + 20)
+    quests = [b for b in window.pins.bursts if b.kind == "quest"]
+    assert len(quests) == 3 and quests[0].age == 0 > quests[1].age > quests[2].age, "one after the other"
+    assert len({q.shift for q in quests}) == 3, "side by side"
+    for _ in range(5):
+        window.pins.tick(0.2)
+    image = QImage(400, 300, QImage.Format.Format_ARGB32)
+    painter = QPainter(image)
+    window.view.scene().render(painter)
+    painter.end()
+    window._crossings(t + 20, t + 30)
+    assert len([b for b in window.pins.bursts if b.kind == "quest"]) == 3, "nothing handed in meanwhile"
+    window.close()
+
