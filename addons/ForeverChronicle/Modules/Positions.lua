@@ -37,7 +37,6 @@ end)
 -------------------------------------------------------------------------------
 
 function Positions:RecordMap(mapID)
-  FC.db.maps = FC.db.maps or {}
   local key = tostring(mapID)
   local known = FC.db.maps[key]
   if known and known.build == Util.ClientBuild() and known.entrancesChecked then return end
@@ -77,11 +76,6 @@ end
 -- Dungeon entrances
 -------------------------------------------------------------------------------
 
-local function entrances()
-  FC.db.entrances = FC.db.entrances or {}
-  return FC.db.entrances
-end
-
 -- Entrances the encounter journal lists for a zone (Mainline API; skipped if the client lacks it).
 -- When a dungeon is listed on several maps (city and zone), the smaller map wins.
 function Positions:RecordEntrances(mapID, entry)
@@ -100,9 +94,9 @@ function Positions:RecordEntrances(mapID, entry)
     local instanceID = type(journalID) == "number" and select(10, Util.SafeValues(EJ_GetInstanceInfo, journalID))
     if type(instanceID) == "number" and type(x) == "number" and type(y) == "number" then
       local key = tostring(instanceID)
-      local known = entrances()[key]
+      local known = FC.db.entrances[key]
       if not known or known.source ~= "journal" or (area and known.area and area < known.area) then
-        entrances()[key] = { mapID = mapID, x = Util.Round(x, 4), y = Util.Round(y, 4), source = "journal",
+        FC.db.entrances[key] = { mapID = mapID, x = Util.Round(x, 4), y = Util.Round(y, 4), source = "journal",
           name = Util.Plain(e.name), area = area }
         FC.Diagnostics:Log("info", "dungeon entrance from the journal: " .. key .. " on map " .. mapID)
       end
@@ -118,9 +112,9 @@ function Positions:LearnEntrance(instanceID, prev, now)
   if now - (prev.untilTime or prev.time) > FC.Route.ENTRY_SECONDS then return end
   if IsPartyLFG and Util.SafeValues(IsPartyLFG) == true then return end
   local key = tostring(instanceID)
-  local known = entrances()[key]
+  local known = FC.db.entrances[key]
   if known and known.source == "journal" then return end
-  entrances()[key] = { mapID = prev.mapID, x = prev.x, y = prev.y, source = "walked" }
+  FC.db.entrances[key] = { mapID = prev.mapID, x = prev.x, y = prev.y, source = "walked" }
 end
 
 -------------------------------------------------------------------------------
@@ -166,7 +160,6 @@ function Positions:Sample()
     s.mapID = nil
     s.instanceID = FC:CurrentInstanceID()
     if s.instanceID then
-      FC.db.instances = FC.db.instances or {}
       FC.db.instances[tostring(s.instanceID)] = Util.SafeValue("string", GetRealZoneText)
     end
   end
@@ -199,16 +192,6 @@ function Positions:Restart()
   local s = self:GetSettings()
   if s.enabled then
     self.ticker = FC:NewTicker(s.interval, function() self:Sample() end)
-  end
-end
-
--- Settings revision 2: the default interval changed from 10 s to 2 s. Users still on the old default
--- are moved to the new one once; a value they chose themselves is kept.
-function Positions:OnInitialize()
-  local s = self:GetSettings()
-  if (s.rev or 1) < 2 then
-    if s.interval == 10 then s.interval = 2 end
-    s.rev = 2
   end
 end
 

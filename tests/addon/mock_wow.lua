@@ -16,6 +16,7 @@ SlashCmdList = {}
 NUM_CHAT_WINDOWS = 2
 SOUNDKIT = { IG_CHARACTER_INFO_OPEN = 1, IG_CHARACTER_INFO_CLOSE = 2, IG_CHARACTER_INFO_TAB = 3 }
 function PlaySound() end
+function CreateColor(r, g, b, a) return { r = r, g = g, b = b, a = a } end
 math.randomseed(42)
 
 C_Timer = {
@@ -98,6 +99,10 @@ function CreateFrame(kind, name, parent, template)
   f.IsEventRegistered = function(self, e) return self.events[e] == true end
   f.SetScript = function(self, k, fn) self.scripts[k] = fn end
   f.GetScript = function(self, k) return self.scripts[k] end
+  f.HookScript = function(self, k, fn)
+    local old = self.scripts[k]
+    self.scripts[k] = old and function(...) old(...); fn(...) end or fn
+  end
   f.GetName = function(self) return self.name end
   f.CreateFontString = function() return newRegion() end
   f.CreateLine = function() return newRegion() end
@@ -117,6 +122,8 @@ function CreateFrame(kind, name, parent, template)
     f.Inset = CreateFrame("Frame")
     f.SetPortraitToUnit = function(self, unit) self.portraitUnit, self.portraitClass = unit, nil end
     f.SetPortraitToClassIcon = function(self, class) self.portraitUnit, self.portraitClass = nil, class end
+  elseif template == "SearchBoxTemplate" then
+    f.Instructions = newRegion()
   end
   f.children = {}
   f.GetChildren = function(self) return unpack(self.children) end
@@ -183,7 +190,7 @@ function UnitLevel() return MOCK.level end
 function GetServerTime() return time() end
 function GetRealZoneText() return MOCK.zone or "The Barrens" end
 function UnitOnTaxi() return MOCK.taxi == true end
-function GetSubZoneText() if MOCK.instance then return MOCK.instanceArea or "" end return MOCK.subzone or "Crossroads" end
+function GetSubZoneText() if MOCK.instance then return "" end return MOCK.subzone or "Crossroads" end
 function IsInInstance() return MOCK.instance and true or false, MOCK.instance and "party" or "none" end
 function UnitPosition() if MOCK.instance then return nil, nil, nil, 389 end return -2382.5, -1838.6, 0, 1 end
 C_Map = {
@@ -236,8 +243,6 @@ MOCK.gearLinks = {
   [16] = "|cff0070dd|Hitem:2099::::::::22:::::|h[Dwarven Hand Cannon]|h|r",
 }
 function GetInventoryItemLink(_, id) return MOCK.gearLinks[id] end
--- Which addons are loaded (the data-only addon ForeverChronicle_Share is loaded unless a test says otherwise).
-C_AddOns = { IsAddOnLoaded = function(name) return name == "ForeverChronicle_Share" and not MOCK.shareMissing end }
 local QUALITY_COLORS = { [1] = { 1, 1, 1 }, [2] = { 0.12, 1, 0 }, [3] = { 0, 0.44, 0.87 } }
 function GetItemQualityColor(q) local c = QUALITY_COLORS[q] or QUALITY_COLORS[3]; return c[1], c[2], c[3] end
 function GetCursorPosition() return MOCK.cursorX or 0, MOCK.cursorY or 0 end
@@ -360,10 +365,6 @@ end
 function GetInstanceInfo()
   if MOCK.instance then return "Ragefire Chasm", "party", 1, "Normal", 5, 0, false, 389, 1, 4 end
   return "Kalimdor", "none", 0, "", 0, 0, false, 1, 0, 0
-end
-C_EncounterJournal.GetEncountersOnMap = function(mapID)
-  if mapID == 213 then return { { encounterID = 1443, mapX = 0.4, mapY = 0.6 }, { encounterID = 1446, mapX = 0.7, mapY = 0.2 } } end
-  return {}
 end
 CLASS_ICON_TCOORDS = { HUNTER = { 0, 0.25, 0.25, 0.5 }, MAGE = { 0.25, 0.49609375, 0, 0.25 },
   WARRIOR = { 0, 0.25, 0, 0.25 } }

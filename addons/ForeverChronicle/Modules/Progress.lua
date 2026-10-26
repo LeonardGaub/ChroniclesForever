@@ -67,7 +67,7 @@ end)
 
 FC:RegisterStat("kills", { labelKey = "STAT_KILLS", order = 18, icon = "Interface\\Icons\\Ability_Hunter_SniperShot" })
 FC:RegisterStat("xp_earned", { labelKey = "STAT_XP", order = 19, icon = "Interface\\Icons\\Spell_Holy_InnerFire",
-  format = function(v) return Util.FormatNumber(v) end })
+  format = "number" })
 FC:RegisterStat("quests_completed", { labelKey = "STAT_QUESTS", order = 21, icon = "Interface\\Icons\\INV_Misc_Note_01" })
 FC:RegisterStat("deaths", { labelKey = "STAT_DEATHS", order = 22, icon = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01" })
 FC:RegisterStat("achievements", { labelKey = "STAT_ACHIEVEMENTS", order = 23, icon = "Interface\\Icons\\INV_Misc_Ribbon_01" })
@@ -79,7 +79,6 @@ FC:RegisterStat("achievements", { labelKey = "STAT_ACHIEVEMENTS", order = 23, ic
 Progress:RegisterEvent("PLAYER_LEVEL_UP", function(_, _, level)
   level = Util.Plain(level)
   FC:Record("level_up", { level = type(level) == "number" and level or nil })
-  FC:IncrementStat("levels_gained") -- no longer shown, still counted for existing saved data
   FC:ConfirmCapability("level_up")
 end)
 
@@ -189,8 +188,8 @@ function Progress:FillDeathCause(record, attempt)
     return
   end
   local delay = RECAP_RETRIES[attempt]
-  if delay and C_Timer then
-    C_Timer.After(delay, function() self:FillDeathCause(record, attempt + 1) end)
+  if delay then
+    FC:After(delay, function() self:FillDeathCause(record, attempt + 1) end)
   end
 end
 

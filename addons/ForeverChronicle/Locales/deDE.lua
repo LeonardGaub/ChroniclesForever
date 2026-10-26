@@ -225,8 +225,6 @@ FC:RegisterLocale("deDE", {
   OPT_SHOT_DUNGEON = "Bei Dungeon-Abschluss",
   OPT_SHOT_DUNGEON_TIP = "Wenn du den letzten Boss eines Dungeons zum ersten Mal besiegst.",
   TRIGGER_DUNGEON = "Dungeon abgeschlossen",
-  CMD_DUNGEON = "was das Spiel in diesem Dungeon bietet (Karte, Bosse)",
-  DUNGEON_NO_PROBE = "Noch nicht geprüft: betritt zuerst einen Dungeon.",
   STAT_RARES = "Seltene Gegner",
   CAP_RARES = "Seltene Gegner",
   -- Zeitvertreib

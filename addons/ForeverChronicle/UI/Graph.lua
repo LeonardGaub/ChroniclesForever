@@ -17,7 +17,7 @@ local FILL_ALPHA = 0.32  -- fill alpha at the top of the plot; it fades to 0 at 
 local GRID = { 0.25, 0.5, 0.75 }
 
 function UI:LineGraph(parent, width, height)
-  local self = setmetatable({ lines = {}, fills = {}, ticks = {}, breaks = {}, points = {} }, Graph)
+  local self = setmetatable({ points = {} }, Graph)
   local f = CreateFrame("Frame", nil, parent)
   f:SetSize(width, height)
   self.frame = f
@@ -34,6 +34,19 @@ function UI:LineGraph(parent, width, height)
   plot:SetPoint("TOPLEFT", 0, -TOP_PAD)
   plot:SetPoint("BOTTOMRIGHT", 0, LABEL_H)
   self.plot, self.plotW, self.plotH = plot, width, height - TOP_PAD - LABEL_H
+  self.lines = UI:Pool(function()
+    local l = plot:CreateLine(nil, "ARTWORK", nil, 3)
+    l:SetThickness(THICKNESS)
+    return l
+  end)
+  self.fills = UI:Pool(function() return plot:CreateTexture(nil, "ARTWORK", nil, 0) end)
+  self.breaks = UI:Pool(function() -- session joins
+    local b = plot:CreateTexture(nil, "ARTWORK", nil, 2)
+    b:SetWidth(1)
+    b:SetColorTexture(1, 1, 1, 0.15)
+    return b
+  end)
+  self.ticks = UI:Pool(function() return f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall") end)
 
   for _, share in ipairs(GRID) do
     local g = plot:CreateTexture(nil, "BACKGROUND", nil, 1)
@@ -85,16 +98,6 @@ function UI:LineGraph(parent, width, height)
   return self
 end
 
-local function line(self, i)
-  local l = self.lines[i]
-  if not l then
-    l = self.plot:CreateLine(nil, "ARTWORK", nil, 3)
-    l:SetThickness(THICKNESS)
-    self.lines[i] = l
-  end
-  return l
-end
-
 -- points: { { x, value, time } } ascending by x (x in seconds of the window); length: window length in seconds.
 -- opts = { color = { r, g, b }, format(value) -> text, emptyText, ticks = { { x, label } }, breaks = { x },
 --          tooltip(point) -> title, line }
@@ -129,7 +132,7 @@ function Graph:SetData(points, length, opts)
       local x1, y1 = pos(points[i - 1])
       local x2, y2 = pos(points[i])
       n = n + 1
-      local l = line(self, n)
+      local l = self.lines:Get(n)
       l:SetColorTexture(c[1], c[2], c[3], 0.95)
       l:SetStartPoint("BOTTOMLEFT", self.plot, x1, y1)
       l:SetEndPoint("BOTTOMLEFT", self.plot, x2, y2)
@@ -147,8 +150,8 @@ function Graph:SetData(points, length, opts)
   end
   self.last:SetShown(hasData)
   self.lastGlow:SetShown(hasData)
-  for i = n + 1, #self.lines do self.lines[i]:Hide() end
-  for i = nf + 1, #self.fills do self.fills[i]:Hide() end
+  self.lines:HideFrom(n + 1)
+  self.fills:HideFrom(nf + 1)
   self.lineCount = n
 
   -- Other data (another graph or character): fade in.
@@ -160,28 +163,18 @@ function Graph:SetData(points, length, opts)
   -- Session joins.
   local breaks = hasData and opts.breaks or {}
   for i, bx in ipairs(breaks) do
-    local b = self.breaks[i]
-    if not b then
-      b = self.plot:CreateTexture(nil, "ARTWORK", nil, 2)
-      b:SetWidth(1)
-      b:SetColorTexture(1, 1, 1, 0.15)
-      self.breaks[i] = b
-    end
+    local b = self.breaks:Get(i)
     b:ClearAllPoints()
     b:SetPoint("TOPLEFT", self.plot, "TOPLEFT", self.plotW * bx / math.max(length, 1), 0)
     b:SetPoint("BOTTOM", self.plot, "BOTTOM")
     b:Show()
   end
-  for i = #breaks + 1, #self.breaks do self.breaks[i]:Hide() end
+  self.breaks:HideFrom(#breaks + 1)
 
   -- Time labels.
   local ticks = hasData and opts.ticks or {}
   for i, t in ipairs(ticks) do
-    local label = self.ticks[i]
-    if not label then
-      label = self.frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-      self.ticks[i] = label
-    end
+    local label = self.ticks:Get(i)
     local x = self.plotW * t.x / math.max(length, 1)
     label:ClearAllPoints()
     if i == 1 then
@@ -194,30 +187,23 @@ function Graph:SetData(points, length, opts)
     label:SetText(t.label)
     label:Show()
   end
-  for i = #ticks + 1, #self.ticks do self.ticks[i]:Hide() end
+  self.ticks:HideFrom(#ticks + 1)
 end
 
 -- Fill under one line piece: a column from the bottom to the higher end, its top corner at the lower end
 -- pulled down (vertex offset), so it follows the line. The gradient is the same over the whole plot: each
--- column's top alpha matches its height. Without vertex offsets the column stops at the lower end.
+-- column's top alpha matches its height.
 function Graph:Fill(i, x1, y1, x2, y2, c)
-  local w, top, low = x2 - x1, math.max(y1, y2), math.min(y1, y2)
+  local w, top = x2 - x1, math.max(y1, y2)
   if w < 0.5 or top < 0.5 then return false end
-  local t = self.fills[i]
-  if not t then
-    t = self.plot:CreateTexture(nil, "ARTWORK", nil, 0)
-    self.fills[i] = t
-  end
-  local h = t.SetVertexOffset and top or math.max(low, 0.5)
-  UI:Gradient(t, "VERTICAL", c[1], c[2], c[3], 0, c[1], c[2], c[3], FILL_ALPHA * h / math.max(self.plotH, 1))
+  local t = self.fills:Get(i)
+  UI:Gradient(t, "VERTICAL", c[1], c[2], c[3], 0, c[1], c[2], c[3], FILL_ALPHA * top / math.max(self.plotH, 1))
   t:ClearAllPoints()
   t:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", x1, 0)
-  t:SetSize(w, h)
-  if t.SetVertexOffset then
-    -- 1 = upper left, 3 = upper right corner.
-    t:SetVertexOffset(1, 0, y1 < y2 and -(y2 - y1) or 0)
-    t:SetVertexOffset(3, 0, y2 < y1 and -(y1 - y2) or 0)
-  end
+  t:SetSize(w, top)
+  -- 1 = upper left, 3 = upper right corner.
+  t:SetVertexOffset(1, 0, y1 < y2 and -(y2 - y1) or 0)
+  t:SetVertexOffset(3, 0, y2 < y1 and -(y1 - y2) or 0)
   t:Show()
   return true
 end

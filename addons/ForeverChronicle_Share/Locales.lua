@@ -18,7 +18,6 @@ FC:RegisterLocale("deDE", {
   CMD_SHARE = "zeigt, was mit Freunden geteilt wird (gespeichert beim Logout und /reload)",
   SHARE_SUMMARY = "Geteilt werden %d Charakter(e) als \"%s\" - %s",
   SHARE_READY = "wird beim nächsten Logout oder /reload gespeichert.",
-  SHARE_ADDON_MISSING = "das Addon \"Journey Forever - Freunde\" ist nicht aktiv, daher wird nichts geteilt.",
 })
 
 FC:RegisterLocale("enUS", {
@@ -38,5 +37,4 @@ FC:RegisterLocale("enUS", {
   CMD_SHARE = "shows what is shared with friends (saved on logout and /reload)",
   SHARE_SUMMARY = "Sharing %d character(s) as \"%s\" - %s",
   SHARE_READY = "saved on the next logout or /reload.",
-  SHARE_ADDON_MISSING = "the addon \"Journey Forever - Freunde\" is not enabled, so nothing is shared.",
 })

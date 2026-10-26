@@ -107,37 +107,18 @@ local function setGlyph(b, kind)
   end
 end
 
--- Square button (the game's square button art) with a gold media glyph. Without vertex offsets it falls
--- back to the spellbook page arrows.
+-- Square button (the game's square button art) with a gold media glyph.
 local function mediaButton(parent, size, kind, onClick)
   local b = CreateFrame("Button", nil, parent)
   b:SetSize(size, size)
-  local probe = b:CreateTexture(nil, "BACKGROUND")
-  if probe:SetTexture("Interface\\Buttons\\UI-SquareButton-Up") ~= false then
-    probe:SetAllPoints()
-    b:SetNormalTexture(probe)
-    b:SetPushedTexture("Interface\\Buttons\\UI-SquareButton-Down")
-    b:SetHighlightTexture("Interface\\Buttons\\UI-SquareButton-Highlight", "ADD")
-  else
-    probe:SetAllPoints()
-    probe:SetColorTexture(0, 0, 0, 0.7)
-    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-  end
+  b:SetNormalTexture("Interface\\Buttons\\UI-SquareButton-Up")
+  b:SetPushedTexture("Interface\\Buttons\\UI-SquareButton-Down")
+  b:SetHighlightTexture("Interface\\Buttons\\UI-SquareButton-Highlight", "ADD")
   b.selection = UI:SelectionBorder(b)
   b.glyph = { b:CreateTexture(nil, "OVERLAY"), b:CreateTexture(nil, "OVERLAY") }
   b.glyphSize = math.floor(size * 0.42)
   for _, t in ipairs(b.glyph) do t:SetColorTexture(GLYPH_COLOR[1], GLYPH_COLOR[2], GLYPH_COLOR[3], 1) end
-  if b.glyph[1].SetVertexOffset then
-    b.SetGlyph = setGlyph
-  else
-    for _, t in ipairs(b.glyph) do t:Hide() end
-    b.SetGlyph = function(btn, k)
-      btn.kind = k
-      local dir = (k == "prev") and "Prev" or "Next"
-      local icon = k == "pause" and "Interface\\TimeManager\\PauseButton" or ("Interface\\Buttons\\UI-SpellbookIcon-" .. dir .. "Page-Up")
-      probe:SetTexture(icon)
-    end
-  end
+  b.SetGlyph = setGlyph
   b:SetScript("OnMouseDown", function(btn) for _, t in ipairs(btn.glyph) do t:SetAlpha(0.7) end end)
   b:SetScript("OnMouseUp", function(btn) for _, t in ipairs(btn.glyph) do t:SetAlpha(1) end end)
   b:SetScript("OnClick", onClick)
@@ -176,16 +157,15 @@ local function liveButton(parent, onClick)
 end
 
 local function createSlider(parent)
-  local ok, s = pcall(CreateFrame, "Slider", nil, parent, "BackdropTemplate")
-  if not ok then s = CreateFrame("Slider", nil, parent) end
-  if s.SetBackdrop and BACKDROP_SLIDER_8_8 then s:SetBackdrop(BACKDROP_SLIDER_8_8) end
+  local s = CreateFrame("Slider", nil, parent, "BackdropTemplate")
+  if BACKDROP_SLIDER_8_8 then s:SetBackdrop(BACKDROP_SLIDER_8_8) end
   s:SetOrientation("HORIZONTAL")
   s:SetHeight(17)
   s:SetHitRectInsets(0, 0, -8, -8)
   s:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
   s:SetMinMaxValues(0, 1)
   s:SetValueStep(1)
-  if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
+  s:SetObeyStepOnDrag(true)
   return s
 end
 
@@ -196,14 +176,7 @@ local function cursorX(frame)
 end
 
 -- Index of the last entry whose [1] is <= t (0 if none); list sorted by [1].
-local function lastAtOrBefore(list, t)
-  local lo, hi, found = 1, #list, 0
-  while lo <= hi do
-    local mid = math.floor((lo + hi) / 2)
-    if list[mid][1] <= t then found, lo = mid, mid + 1 else hi = mid - 1 end
-  end
-  return found
-end
+local function lastAtOrBefore(list, t) return Util.BinarySearch(list, t, 1) end
 
 local function settings()
   return FC.db.settings.map
@@ -338,7 +311,10 @@ function page:CreateControlBar(c)
   end)
 
   -- Timeline: zone bands inside the slider track, event ticks just above it.
-  self.bands, self.separators, self.ticks, self.tickCount = {}, {}, {}, 0
+  local slider = self.slider
+  self.bands = UI:Pool(function() return slider:CreateTexture(nil, "ARTWORK", nil, -2) end)
+  self.separators = UI:Pool(function() return slider:CreateTexture(nil, "ARTWORK", nil, -1) end)
+  self.ticks, self.tickCount = {}, 0
   self.tickBar = CreateFrame("Frame", nil, bar)
   self.tickBar:SetPoint("BOTTOMLEFT", self.slider, "TOPLEFT", 0, 0)
   self.tickBar:SetPoint("BOTTOMRIGHT", self.slider, "TOPRIGHT", 0, 0)
@@ -562,8 +538,7 @@ function page:DrawTimeline()
           color = colorOf[run.mapID or 0]
         end
         bandCount = bandCount + 1
-        local band = self.bands[bandCount] or self.slider:CreateTexture(nil, "ARTWORK", nil, -2)
-        self.bands[bandCount] = band
+        local band = self.bands:Get(bandCount)
         band:SetColorTexture(color[1], color[2], color[3], 0.9)
         band:SetSize(math.max(1, x1 - x0), 5)
         placeOnTrack(self, band, x0)
@@ -574,8 +549,7 @@ function page:DrawTimeline()
     -- Collapsed breaks (logouts, long pauses) as dark marks.
     for i = 2, #tl.intervals do
       sepCount = sepCount + 1
-      local sep = self.separators[sepCount] or self.slider:CreateTexture(nil, "ARTWORK", nil, -1)
-      self.separators[sepCount] = sep
+      local sep = self.separators:Get(sepCount)
       sep:SetColorTexture(0, 0, 0, 0.9)
       sep:SetSize(2, 9)
       placeOnTrack(self, sep, tl.intervals[i].offset / tl.total * inner - 1)
@@ -600,8 +574,8 @@ function page:DrawTimeline()
       end
     end
   end
-  for i = bandCount + 1, #self.bands do self.bands[i]:Hide() end
-  for i = sepCount + 1, #self.separators do self.separators[i]:Hide() end
+  self.bands:HideFrom(bandCount + 1)
+  self.separators:HideFrom(sepCount + 1)
   for i = tickCount + 1, #self.ticks do self.ticks[i].tex:Hide() end
   self.tickCount = tickCount
 end

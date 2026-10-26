@@ -7,6 +7,24 @@ local UI = FC.UI
 
 local page = { id = "settings", labelKey = "TAB_SETTINGS", icon = "Interface\\Icons\\INV_Misc_Gear_01", order = 80 }
 
+-- One storage bar (icon, stream name, usage), three per line.
+local function storageRow(self, c, i)
+  local row = CreateFrame("Frame", nil, c)
+  row:SetSize(250, 24)
+  local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
+  row:SetPoint("TOPLEFT", self.storageDesc, "BOTTOMLEFT", col * 262, -8 - line * 30)
+  row.icon = row:CreateTexture(nil, "ARTWORK")
+  row.icon:SetSize(22, 22)
+  row.icon:SetPoint("LEFT")
+  UI:CropIcon(row.icon)
+  row.label = UI:Label(c, nil, "GameFontNormalSmall")
+  row.label:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
+  row.label:SetWidth(84)
+  row.bar = UI:Bar(row, 140)
+  row.bar:SetPoint("LEFT", row.label, "RIGHT", 6, 0)
+  return row
+end
+
 function page:Create(outer)
   -- Scrollable, so modules can keep adding options without running out of room.
   local scroll = CreateFrame("ScrollFrame", nil, outer, "UIPanelScrollFrameTemplate")
@@ -37,28 +55,7 @@ function page:Create(outer)
   self.storageDesc = UI:Label(c, "STORAGE_DESC", "GameFontDisableSmall")
   self.storageDesc:SetPoint("TOPLEFT", self.storageHeader, "BOTTOMLEFT", 0, -10)
   self.storageDesc:SetPoint("RIGHT", c, "RIGHT", -14, 0)
-  self.bars = {}
-end
-
-local function storageRow(self, c, i, usage)
-  local row = self.bars[i]
-  if row then return row end
-  row = CreateFrame("Frame", nil, c)
-  row:SetSize(250, 24)
-  local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
-  row:SetPoint("TOPLEFT", self.storageDesc, "BOTTOMLEFT", col * 262, -8 - line * 30)
-  row.icon = row:CreateTexture(nil, "ARTWORK")
-  row.icon:SetSize(22, 22)
-  row.icon:SetPoint("LEFT")
-  UI:CropIcon(row.icon)
-  UI:SetIcon(row.icon, usage.icon)
-  row.label = UI:Label(c, nil, "GameFontNormalSmall")
-  row.label:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
-  row.label:SetWidth(84)
-  row.bar = UI:Bar(row, 140)
-  row.bar:SetPoint("LEFT", row.label, "RIGHT", 6, 0)
-  self.bars[i] = row
-  return row
+  self.bars = UI:Pool(function(i) return storageRow(self, c, i) end)
 end
 
 function page:Refresh()
@@ -66,9 +63,10 @@ function page:Refresh()
   local L = FC.L
   local lowest
   for i, u in ipairs(FC.Storage:GetUsage()) do
-    local row = storageRow(self, self.content, i, u)
+    local row = self.bars:Get(i)
     lowest = row
     local ratio = u.cap > 0 and u.count / u.cap or 0
+    UI:SetIcon(row.icon, u.icon)
     row.label:SetText(L["STREAM_" .. u.name:upper()])
     row.bar:SetValue(ratio)
     if ratio >= 0.8 then row.bar:SetStatusBarColor(1, 0.5, 0) else row.bar:SetStatusBarColor(0.2, 0.6, 0.2) end

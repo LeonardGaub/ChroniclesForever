@@ -15,9 +15,9 @@ FC:RegisterCapability("fishing", "CAP_FISHING", function()
 end)
 
 FC:RegisterStat("fish_caught", { labelKey = "STAT_FISH", order = 29, icon = "Interface\\Icons\\INV_Misc_Fish_02",
-  format = function(v) return Util.FormatNumber(v) end })
+  format = "number" })
 FC:RegisterStat("jumps", { labelKey = "STAT_JUMPS", order = 30, icon = "Interface\\Icons\\INV_Gizmo_RocketBoot_01",
-  format = function(v) return Util.FormatNumber(v) end })
+  format = "number" })
 
 -------------------------------------------------------------------------------
 -- Jumps

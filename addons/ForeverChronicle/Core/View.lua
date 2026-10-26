@@ -36,6 +36,11 @@ local function sourceData(kind)
   return out
 end
 
+-- True for a usable character record (own, alt or friend): a table with info and a name.
+function FC.IsCharacter(char)
+  return type(char) == "table" and type(char.info) == "table" and char.info.name ~= nil
+end
+
 local function lastSeen(char) return type(char.info.lastSeenAt) == "number" and char.info.lastSeenAt or 0 end
 
 -- Everything that can be shown, in display order: the played character, the account's other characters
@@ -44,7 +49,7 @@ local function lastSeen(char) return type(char.info.lastSeenAt) == "number" and 
 function FC:ViewEntries()
   local own = {}
   for key, char in pairs(self.db.characters) do
-    if type(char) == "table" and type(char.info) == "table" and char.info.name then
+    if FC.IsCharacter(char) then
       own[#own + 1] = { key = key, char = key == self.charKey and self.char or char, played = key == self.charKey }
     end
   end
@@ -112,7 +117,7 @@ end
 -- All known maps (own first): calls fn(mapID, info) once per map.
 function FC:EachMap(fn)
   local seen = {}
-  local tables = { self.db.maps or {} }
+  local tables = { self.db.maps }
   for _, t in ipairs(sourceData("maps")) do tables[#tables + 1] = t end
   for _, source in ipairs(tables) do
     for key, info in pairs(source) do

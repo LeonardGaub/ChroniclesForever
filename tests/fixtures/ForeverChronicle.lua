@@ -138,7 +138,6 @@ ForeverChronicleDB = {
 				["fish_caught"] = 2,
 				["jumps"] = 2,
 				["kills"] = 2,
-				["levels_gained"] = 1,
 				["played_total"] = 74113,
 				["quests_completed"] = 1,
 				["screenshots"] = 1,
@@ -317,6 +316,10 @@ ForeverChronicleDB = {
 			"2026-10-15 09:56:40 [info] capability confirmed: recipes", -- [15]
 		},
 	},
+	["entrances"] = {
+	},
+	["instances"] = {
+	},
 	["maps"] = {
 		["1413"] = {
 			["build"] = "70374",
@@ -364,7 +367,6 @@ ForeverChronicleDB = {
 			["Positions"] = {
 				["enabled"] = true,
 				["interval"] = 2,
-				["rev"] = 2,
 			},
 			["Professions"] = {
 			},

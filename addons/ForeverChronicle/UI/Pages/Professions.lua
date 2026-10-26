@@ -101,10 +101,10 @@ local function recipeItems(prof, search)
   local P = Professions()
   local categories = P.ParseCategories(recipes.categories)
   local groups, order, shown = {}, {}, 0
-  search = search and search ~= "" and search:lower() or nil
+  search = search and search ~= "" and Util.Fold(search) or nil
   for _, text in ipairs(recipes.list) do
-    local recipe = P.ParseRecipe(text, recipes.format)
-    if recipe and (not search or recipe.name:lower():find(search, 1, true)) then
+    local recipe = P.ParseRecipe(text)
+    if recipe and (not search or Util.Fold(recipe.name):find(search, 1, true)) then
       local cat = recipe.category and categories[recipe.category]
       local name = cat and cat.name or L.RECIPE_CATEGORY_OTHER
       if not groups[name] then
@@ -162,17 +162,11 @@ function page:Create(c)
   self.status = UI:Label(c, nil, "GameFontHighlightSmall")
   self.status:SetPoint("LEFT", self.statusIcon, "RIGHT", 6, 0)
 
-  local ok, search = pcall(CreateFrame, "EditBox", nil, c, "SearchBoxTemplate")
-  if not ok then search = CreateFrame("EditBox", nil, c, "InputBoxTemplate") end
-  search:SetSize(180, 20)
-  search:SetAutoFocus(false)
-  search:SetPoint("TOPRIGHT", -36, -14)
-  search:SetScript("OnTextChanged", function(box, ...)
-    if SearchBoxTemplate_OnTextChanged then pcall(SearchBoxTemplate_OnTextChanged, box, ...) end
+  self.search = UI:SearchBox(c, 180, function()
     self.signature = nil
     self:Refresh()
   end)
-  self.search = search
+  self.search:SetPoint("TOPRIGHT", -36, -14)
 
   self.list = UI:List(c, ROW_HEIGHT, createRow, updateRow)
   self.list.scroll:SetPoint("TOPLEFT", x, -58)

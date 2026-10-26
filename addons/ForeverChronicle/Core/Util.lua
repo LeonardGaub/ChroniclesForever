@@ -76,7 +76,6 @@ local mapTypes = (Enum and Enum.UIMapType) or {}
 Util.MapType = {
   Continent = mapTypes.Continent or 2,
   Zone = mapTypes.Zone or 3,           -- micro maps (caves, building floors) have higher numbers
-  Dungeon = mapTypes.Dungeon or 4,
 }
 
 -- The client's build number as a string (e.g. "70338"). Data recorded per build compares against it.
@@ -132,4 +131,23 @@ end
 function Util.FormatTime(t)
   if type(t) ~= "number" then return FC.L.UNKNOWN end
   return date(FC.L.DATETIME_FORMAT, t)
+end
+
+-- Lower case for searching, including the German umlauts (string.lower leaves non-ASCII letters alone).
+local UMLAUTS = { ["\195\132"] = "\195\164", ["\195\150"] = "\195\182", ["\195\156"] = "\195\188" }
+function Util.Fold(s)
+  return (string.lower(s):gsub("\195[\132\150\156]", UMLAUTS))
+end
+
+-- Binary search in a list sorted ascending: the index of the last element that is <= value (0 if none).
+-- field: compare element[field] instead of the element itself.
+function Util.BinarySearch(list, value, field)
+  local lo, hi, found = 1, #list, 0
+  while lo <= hi do
+    local mid = math.floor((lo + hi) / 2)
+    local v = list[mid]
+    if field ~= nil then v = v[field] end
+    if v <= value then found, lo = mid, mid + 1 else hi = mid - 1 end
+  end
+  return found
 end

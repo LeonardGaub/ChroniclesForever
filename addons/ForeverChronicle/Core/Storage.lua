@@ -12,6 +12,7 @@
 --       snapshots = { [name] = {...} },            -- current state (professions, ...), exported as is
 --       streams = { [streamName] = { nextSeq, dropped, records = { ... } } },
 --   } },
+--   maps, instances, entrances = { ... },        -- account-wide, written by Modules/Positions.lua
 -- }
 --
 -- Every stream record has a per-stream `seq`. The desktop importer uses it to detect
@@ -215,6 +216,7 @@ local function newDatabase()
       map = { trail = false, colors = "level" } },  -- map page: 15-minute trail, route colours
     diagnostics = { log = {}, capabilities = {} },
     characters = {},
+    maps = {}, instances = {}, entrances = {}, -- account-wide map geometry, instance names, dungeon entrances
   }
 end
 
@@ -235,6 +237,7 @@ function Storage:Initialize()
     ForeverChronicleDB = db
   end
   Util.MergeDefaults(db, newDatabase())
+  db.dungeonProbe = nil -- research data of the removed dungeon probe (until 0.15.0)
   db.addonVersion = FC.VERSION
   FC.db = db
   for _, char in pairs(db.characters) do Storage.UnpackCharacter(char) end

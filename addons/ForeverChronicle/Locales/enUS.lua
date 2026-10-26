@@ -225,8 +225,6 @@ FC:RegisterLocale("enUS", {
   OPT_SHOT_DUNGEON = "On dungeon completion",
   OPT_SHOT_DUNGEON_TIP = "The first time you defeat the last boss of a dungeon.",
   TRIGGER_DUNGEON = "Dungeon completed",
-  CMD_DUNGEON = "what the game offers in this dungeon (map, bosses)",
-  DUNGEON_NO_PROBE = "Not checked yet: enter a dungeon first.",
   STAT_RARES = "Rare enemies",
   CAP_RARES = "Rare enemies",
   -- Pastimes

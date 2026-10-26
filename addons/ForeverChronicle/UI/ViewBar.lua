@@ -37,23 +37,13 @@ function UI:UpdatePortrait()
   local played = FC:IsViewingPlayed()
   local classFile = FC:ViewChar().info.classFile
   if played then
-    if f.SetPortraitToUnit then
-      f:SetPortraitToUnit("player")
-      if f.SetPortraitTexCoord then f:SetPortraitTexCoord(0, 1, 0, 1) end
-    elseif f.portrait and SetPortraitTexture then
-      SetPortraitTexture(f.portrait, "player")
-      f.portrait:SetTexCoord(0, 1, 0, 1)
-    end
+    f:SetPortraitToUnit("player")
+    f:SetPortraitTexCoord(0, 1, 0, 1)
+  elseif CLASS_ICON_TCOORDS and classFile and CLASS_ICON_TCOORDS[classFile] then
+    f:SetPortraitToClassIcon(classFile)
   else
-    local coords = CLASS_ICON_TCOORDS and classFile and CLASS_ICON_TCOORDS[classFile]
-    if f.SetPortraitToClassIcon and coords then
-      f:SetPortraitToClassIcon(classFile)
-    elseif f.SetPortraitToAsset then
-      f:SetPortraitToAsset(coords and CLASS_ICONS or UI.ICON_FALLBACK)
-      if f.SetPortraitTexCoord and coords then f:SetPortraitTexCoord(coords[1], coords[2], coords[3], coords[4]) end
-    elseif f.portrait then
-      self:SetClassIcon(f.portrait, classFile)
-    end
+    f:SetPortraitToAsset(UI.ICON_FALLBACK)
+    f:SetPortraitTexCoord(0, 1, 0, 1)
   end
   for _, tab in ipairs(f.Tabs or {}) do
     if tab.page.icon == "portrait" then

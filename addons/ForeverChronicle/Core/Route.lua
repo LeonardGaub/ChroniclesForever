@@ -10,6 +10,7 @@
 -- Point: { time, endTime, mapID, x, y, taxi, jump, instanceID }
 
 local ADDON, FC = ...
+local Util = FC.Util
 
 local Route = {}
 FC.Route = Route
@@ -203,7 +204,7 @@ Route.UNKNOWN_ZONE_SCALE = 0.1     -- assumed size of a zone without continent g
 -- Size of one map unit in continent widths: 1 on a continent, the zone's width on it, else the assumption.
 local function continentScale(mapID)
   local info = FC:MapInfo(mapID)
-  if info and info.mapType == FC.Util.MapType.Continent then return 1 end
+  if info and info.mapType == Util.MapType.Continent then return 1 end
   if info and info.minX and info.maxX > info.minX then return info.maxX - info.minX end
   return Route.UNKNOWN_ZONE_SCALE
 end
@@ -320,15 +321,7 @@ end
 -------------------------------------------------------------------------------
 
 -- Index of the last point with time <= t (0 if none).
-local function lastAtOrBefore(points, t)
-  local lo, hi = 1, #points
-  local found = 0
-  while lo <= hi do
-    local mid = math.floor((lo + hi) / 2)
-    if points[mid].time <= t then found, lo = mid, mid + 1 else hi = mid - 1 end
-  end
-  return found
-end
+local function lastAtOrBefore(points, t) return Util.BinarySearch(points, t, "time") end
 
 function Route.PointAt(points, t)
   if #points == 0 then return nil end
@@ -392,12 +385,7 @@ end
 
 -- Index of the last interval starting at or before key (field "from" or "offset").
 local function intervalAt(list, field, key)
-  local lo, hi, found = 1, #list, 1
-  while lo <= hi do
-    local mid = math.floor((lo + hi) / 2)
-    if list[mid][field] <= key then found, lo = mid, mid + 1 else hi = mid - 1 end
-  end
-  return list[found]
+  return list[math.max(1, Util.BinarySearch(list, key, field))]
 end
 
 function Route.TimeToValue(timeline, t)

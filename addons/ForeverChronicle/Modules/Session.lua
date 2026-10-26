@@ -140,7 +140,6 @@ function Session:OnLogout()
     s.endReason = "logout"
     s.endLevel = FC.char.info.level
   end
-  FC.Storage:TrimAll()
 end
 
 -------------------------------------------------------------------------------

@@ -11,8 +11,7 @@ local Countdown = {}
 UI.Countdown = Countdown
 
 local function create()
-  local ok, f = pcall(CreateFrame, "Frame", "ForeverChronicleCountdown", UIParent, "TooltipBackdropTemplate")
-  if not ok then f = CreateFrame("Frame", "ForeverChronicleCountdown", UIParent) end
+  local f = CreateFrame("Frame", "ForeverChronicleCountdown", UIParent, "TooltipBackdropTemplate")
   f:SetSize(210, 34)
   f:SetFrameStrata("HIGH")
   f:SetClampedToScreen(true)

@@ -129,6 +129,7 @@ function FC:FormatStat(def, value)
   if value == nil then return self.L.UNKNOWN end
   if type(def.format) == "function" then return def.format(value) end
   if def.format == "duration" then return self.Util.FormatDuration(value) end
+  if def.format == "number" then return self.Util.FormatNumber(value) end
   return tostring(value)
 end
 

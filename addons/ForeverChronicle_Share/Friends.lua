@@ -16,7 +16,7 @@ FC:RegisterViewSource({
     for i, friend in ipairs(d and type(d.friends) == "table" and d.friends or {}) do
       if type(friend) == "table" and type(friend.characters) == "table" then
         for _, char in ipairs(friend.characters) do
-          if type(char) == "table" and type(char.info) == "table" and char.info.name then
+          if FC.IsCharacter(char) then
             FC.Storage.UnpackCharacter(char) -- friends' streams arrive packed (Share:Write)
             -- Their screenshots are for the desktop app (the pictures are on their PC, the game cannot show them).
             if type(char.streams) == "table" then char.streams.screenshots = nil end

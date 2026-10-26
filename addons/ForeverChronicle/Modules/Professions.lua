@@ -77,12 +77,6 @@ function Professions.RankName(maxRank)
   return key and L[key] or tostring(maxRank or "?")
 end
 
--- Calls fn(...) safely; returns its plain (non-secret) results or nothing.
-local function call(fn, ...)
-  if type(fn) ~= "function" then return nil end
-  return Util.SafeValues(fn, ...)
-end
-
 local function api(name)
   return C_TradeSkillUI and C_TradeSkillUI[name]
 end
@@ -129,14 +123,9 @@ end
 
 local RECIPE_FORMAT = 2
 
--- Recipe string -> table. format: the recipe list's format (nil = 1, before item quality was stored).
-function Professions.ParseRecipe(text, format)
-  local id, cat, icon, quality, name
-  if (format or 1) >= 2 then
-    id, cat, icon, quality, name = text:match("^(%d+),(%d*),([^,]*),(%d*),(.*)$")
-  else
-    id, cat, icon, name = text:match("^(%d+),(%d*),([^,]*),(.*)$")
-  end
+-- Recipe string "id,categoryID,icon,quality,name" -> table.
+function Professions.ParseRecipe(text)
+  local id, cat, icon, quality, name = text:match("^(%d+),(%d*),([^,]*),(%d*),(.*)$")
   if not id then return nil end
   return { id = tonumber(id), category = tonumber(cat), icon = tonumber(icon) or icon, quality = tonumber(quality),
     name = name }
@@ -156,7 +145,7 @@ local function recipeQuality(id)
   local link, itemID
   local ok, out = pcall(api("GetRecipeOutputItemData"), id)
   if ok and type(out) == "table" then link, itemID = Util.Plain(out.hyperlink), Util.Plain(out.itemID) end
-  if type(link) ~= "string" and api("GetRecipeItemLink") then link = call(api("GetRecipeItemLink"), id) end
+  if type(link) ~= "string" then link = Util.SafeValues(api("GetRecipeItemLink"), id) end
   if type(link) == "string" then
     local color = link:match("|c%x%x(%x%x%x%x%x%x)")
     local q = color and LINK_QUALITY[color:lower()]
@@ -164,7 +153,7 @@ local function recipeQuality(id)
     itemID = itemID or tonumber(link:match("item:(%d+)"))
   end
   if type(itemID) == "number" and C_Item and C_Item.GetItemQualityByID then
-    local q = call(C_Item.GetItemQualityByID, itemID)
+    local q = Util.SafeValues(C_Item.GetItemQualityByID, itemID)
     if type(q) == "number" then return q end
   end
 end
@@ -189,12 +178,12 @@ end
 function Professions:Scan(setBaseline)
   if type(GetProfessions) ~= "function" then return nil end
   local snap = self:GetSnapshot()
-  local slots = Util.Pack(call(GetProfessions))
+  local slots = Util.Pack(Util.SafeValues(GetProfessions))
   local now, seen, found = time(), {}, 0
   for slot = 1, math.max(slots.n or 0, 7) do
     local index = slots[slot]
     if type(index) == "number" then
-      local name, icon, rank, maxRank, _, _, skillLine, modifier = call(GetProfessionInfo, index)
+      local name, icon, rank, maxRank, _, _, skillLine, modifier = Util.SafeValues(GetProfessionInfo, index)
       if type(skillLine) == "number" and type(name) == "string" then
         found = found + 1
         seen[skillLine] = true
@@ -267,12 +256,13 @@ end
 function Professions:CaptureRecipes()
   if not (api("GetAllRecipeIDs") and api("GetRecipeInfo") and api("GetBaseProfessionInfo")) then return "no_api" end
   if not self.windowOpen then return "closed" end
-  if api("IsTradeSkillReady") and call(api("IsTradeSkillReady")) == false then return "not_ready" end
+  if api("IsTradeSkillReady") and Util.SafeValues(api("IsTradeSkillReady")) == false then return "not_ready" end
   -- Never another player's, a guild or an NPC profession.
-  if call(api("IsTradeSkillLinked")) or call(api("IsTradeSkillGuild")) or call(api("IsNPCCrafting")) then
+  if Util.SafeValues(api("IsTradeSkillLinked")) or Util.SafeValues(api("IsTradeSkillGuild"))
+      or Util.SafeValues(api("IsNPCCrafting")) then
     return "foreign"
   end
-  local base = call(api("GetBaseProfessionInfo"))
+  local base = Util.SafeValues(api("GetBaseProfessionInfo"))
   local skillLine = type(base) == "table" and base.professionID
   if type(skillLine) ~= "number" then return "not_ready" end
   local prof = self:Find(skillLine)
@@ -283,13 +273,13 @@ function Professions:CaptureRecipes()
   end
 
   self.lastCapture = GetTime()
-  local ids = call(api("GetAllRecipeIDs"))
+  local ids = Util.SafeValues(api("GetAllRecipeIDs"))
   if type(ids) ~= "table" then return "not_ready" end
   local learned, unreadable = {}, 0
   -- Earlier capture by recipe ID: keeps qualities that cannot be read right now, and recipes of a partial read.
   local previous, before = prof.recipes, {}
   for _, text in ipairs(previous and previous.list or {}) do
-    local r = self.ParseRecipe(text, previous.format)
+    local r = self.ParseRecipe(text)
     if r then before[r.id] = r end
   end
   local hasCategoryInfo = api("GetCategoryInfo") ~= nil
@@ -366,8 +356,8 @@ Professions:RegisterEvent("NEW_RECIPE_LEARNED", function(self, _, recipeID)
   local name, icon
   local ok, info = pcall(api("GetRecipeInfo"), recipeID)
   if ok and type(info) == "table" then name, icon = Util.Plain(info.name), Util.Plain(info.icon) end
-  if type(name) ~= "string" and C_Spell and C_Spell.GetSpellName then name = call(C_Spell.GetSpellName, recipeID) end
-  if type(name) ~= "string" and GetSpellInfo then name, _, icon = call(GetSpellInfo, recipeID) end
+  if type(name) ~= "string" and C_Spell then name = Util.SafeValues(C_Spell.GetSpellName, recipeID) end
+  if type(name) ~= "string" and GetSpellInfo then name, _, icon = Util.SafeValues(GetSpellInfo, recipeID) end
   FC:Record("recipe_learned", { recipeID = recipeID, name = type(name) == "string" and name or nil,
     icon = (type(icon) == "number" or type(icon) == "string") and icon or nil })
   self:ScheduleScan()

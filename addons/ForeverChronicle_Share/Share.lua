@@ -28,7 +28,6 @@ local Share = FC:NewModule("Share", { order = 60, defaults = {
 } })
 
 Share.FORMAT = 2               -- 2: streams packed (FC.Storage.Pack)
-Share.SHARE_ADDON = "ForeverChronicle_Share"
 Share.EVENTS = 200               -- newest chronicle entries per character
 Share.MAX_POINTS = 20000         -- newest route points per character (all sessions; about 1 MB at most)
 Share.CATEGORIES = CATEGORIES
@@ -119,7 +118,7 @@ local function places(characters)
   end
   local maps = {}
   for id in pairs(mapIDs) do
-    local info = FC.db.maps and FC.db.maps[id]
+    local info = FC.db.maps[id]
     if info then
       maps[id] = info
       if info.continent and FC.db.maps[tostring(info.continent)] then
@@ -129,8 +128,8 @@ local function places(characters)
   end
   local instances, entrances = {}, {}
   for id in pairs(instanceIDs) do
-    instances[id] = FC.db.instances and FC.db.instances[id]
-    entrances[id] = FC.db.entrances and FC.db.entrances[id]
+    instances[id] = FC.db.instances[id]
+    entrances[id] = FC.db.entrances[id]
   end
   return maps, instances, entrances
 end
@@ -140,7 +139,7 @@ function Share:Build()
   local s = self:GetSettings()
   local characters = {}
   for key, char in pairs(FC.db.characters) do
-    if type(char) == "table" and type(char.info) == "table" and char.info.name and s.chars[key] ~= false then
+    if FC.IsCharacter(char) and s.chars[key] ~= false then
       characters[#characters + 1] = self:BuildCharacter(key, char)
     end
   end
@@ -159,24 +158,17 @@ function Share:Build()
     characters = characters, maps = maps, instances = instances, entrances = entrances, screenshotFiles = files }
 end
 
-function Share:IsShareAddonLoaded()
-  local isLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
-  return type(isLoaded) == "function" and isLoaded(self.SHARE_ADDON) and true or false
-end
-
 -- Writes the share data; the game saves it right after (logout or /reload).
 function Share:Write()
-  if not self:IsShareAddonLoaded() then return false end
   local db = self:Build()
   -- Packed like the main file (many records per string), so the file and FriendsData.lua stay loadable.
   for _, char in ipairs(db.characters) do FC.Storage.PackCharacter(char) end
   ForeverChronicleShareDB = db
-  return true
 end
 
 Share:RegisterEvent("PLAYER_LOGOUT", function(self) self:Write() end)
 
-FC:RegisterCapability("share", "CAP_SHARE", function() return Share:IsShareAddonLoaded() end)
+FC:RegisterCapability("share", "CAP_SHARE", function() return true end)
 
 -------------------------------------------------------------------------------
 -- Settings: "Teilen"
@@ -201,7 +193,7 @@ FC:RegisterOption({ section = "share", type = "custom", order = 2, create = func
   label:SetPoint("TOPLEFT", 4, 0)
   local keys = {}
   for key, char in pairs(FC.db.characters) do
-    if type(char) == "table" and type(char.info) == "table" and char.info.name then keys[#keys + 1] = key end
+    if FC.IsCharacter(char) then keys[#keys + 1] = key end
   end
   table.sort(keys, function(a, b) return FC.db.characters[a].info.name < FC.db.characters[b].info.name end)
   row.boxes = {}
@@ -225,6 +217,5 @@ end })
 
 FC:RegisterCommand("share", "CMD_SHARE", function()
   local data = Share:Build()
-  FC:Print(string.format(L.SHARE_SUMMARY, #data.characters, data.name,
-    Share:IsShareAddonLoaded() and L.SHARE_READY or L.SHARE_ADDON_MISSING))
+  FC:Print(string.format(L.SHARE_SUMMARY, #data.characters, data.name, L.SHARE_READY))
 end, 60)

@@ -18,6 +18,17 @@ const companion = 'ForeverChronicle_Share';
 const companionFiles = tocFiles(companion).map(f => companion + '/' + f);
 const sourceOf = f => f.startsWith(companion + '/') ? path.join(addonsDir, f) : path.join(addonDir, f);
 
+// Loads and runs Lua chunks ([name, source] pairs) in order; any error ends the test run.
+function runChunks(L, chunks, what) {
+  for (const [name, src] of chunks) {
+    if (lauxlib.luaL_loadbuffer(L, to_luastring(src), null, to_luastring(name)) !== lua.LUA_OK ||
+        lua.lua_pcall(L, 0, 0, 0) !== lua.LUA_OK) {
+      console.error('LUA ERROR in ' + what + ': ' + lua.lua_tojsstring(L, -1));
+      process.exit(1);
+    }
+  }
+}
+
 function runPhase(phase, saved, offset, overrides, mainOnly) {
   const files = mainOnly ? mainFiles : mainFiles.concat(companionFiles);
   const L = lauxlib.luaL_newstate();
@@ -45,14 +56,8 @@ function runPhase(phase, saved, offset, overrides, mainOnly) {
   lua.lua_pushinteger(L, offset); lua.lua_setglobal(L, to_luastring('PHASE_OFFSET'));
   if (saved) setStr('SAVED', saved);
 
-  for (const script of ['mock_wow.lua', 'scenario.lua']) {
-    const src = fs.readFileSync(path.join(__dirname, script), 'utf8');
-    if (lauxlib.luaL_loadbuffer(L, to_luastring(src), null, to_luastring(script)) !== lua.LUA_OK ||
-        lua.lua_pcall(L, 0, 0, 0) !== lua.LUA_OK) {
-      console.error('LUA ERROR in phase ' + phase + ': ' + lua.lua_tojsstring(L, -1));
-      process.exit(1);
-    }
-  }
+  runChunks(L, ['mock_wow.lua', 'scenario.lua'].map(f => [f, fs.readFileSync(path.join(__dirname, f), 'utf8')]),
+    'phase ' + phase);
   lua.lua_getglobal(L, to_luastring('SAVED_OUT'));
   return lua.lua_isstring(L, -1) ? lua.lua_tojsstring(L, -1) : null;
 }
@@ -64,13 +69,8 @@ function runQueueTests() {
   const queueSrc = fs.readFileSync(path.join(addonDir, 'Modules', 'ScreenshotQueue.lua'), 'utf8');
   const setup = 'local ns = {}\nlocal chunk = assert(load(QUEUE_SRC, "@ScreenshotQueue.lua"))\nchunk("ForeverChronicle", ns)\nQUEUE = ns.ScreenshotQueue';
   lua.lua_pushstring(L, to_luastring(queueSrc)); lua.lua_setglobal(L, to_luastring('QUEUE_SRC'));
-  for (const [name, src] of [['setup', setup], ['queue_tests.lua', fs.readFileSync(path.join(__dirname, 'queue_tests.lua'), 'utf8')]]) {
-    if (lauxlib.luaL_loadbuffer(L, to_luastring(src), null, to_luastring(name)) !== lua.LUA_OK ||
-        lua.lua_pcall(L, 0, 0, 0) !== lua.LUA_OK) {
-      console.error('LUA ERROR in queue tests: ' + lua.lua_tojsstring(L, -1));
-      process.exit(1);
-    }
-  }
+  runChunks(L, [['setup', setup], ['queue_tests.lua', fs.readFileSync(path.join(__dirname, 'queue_tests.lua'), 'utf8')]],
+    'queue tests');
 }
 
 console.log('screenshot queue');
@@ -86,10 +86,7 @@ console.log('fixture written: tests/fixtures/ForeverChronicle.lua');
 runPhase(4, null, 0);
 runPhase(5, null, 0);
 runPhase(6, null, 0);
-const oldSettings = interval =>
-  `ForeverChronicleDB = { schemaVersion = 1, settings = { modules = { Positions = { enabled = true, interval = ${interval} } } } }`;
-runPhase(7, oldSettings(10), 0);
-runPhase(8, oldSettings(5), 0);
+runPhase(7, 'ForeverChronicleDB = { schemaVersion = 1, settings = { modules = { Positions = { enabled = true, interval = 10 } } } }', 0);
 runPhase(9, null, 0);
 runPhase(10, null, 0);
 runPhase(11, null, 0);

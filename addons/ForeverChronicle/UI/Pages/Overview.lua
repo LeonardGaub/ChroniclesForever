@@ -12,11 +12,6 @@ local page = { id = "overview", labelKey = "TAB_OVERVIEW", icon = "portrait", or
 local TILE_W, TILE_H, TILE_COLUMNS = 178, 40, 2
 local SLOT_SIZE, SLOT_GAP, MODEL_W = 37, 4, 260
 
--- Gear slots as in the Classic character window: left column, right column, weapons at the bottom.
-local LEFT_SLOTS = { "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot", "ShirtSlot", "TabardSlot", "WristSlot" }
-local RIGHT_SLOTS = { "HandsSlot", "WaistSlot", "LegsSlot", "FeetSlot", "Finger0Slot", "Finger1Slot", "Trinket0Slot", "Trinket1Slot" }
-local WEAPON_SLOTS = { "MainHandSlot", "SecondaryHandSlot", "RangedSlot" }
-
 -------------------------------------------------------------------------------
 -- Stat tiles: icon, name (gold, small) and value (white)
 -------------------------------------------------------------------------------
@@ -302,21 +297,18 @@ function page:CreateGearPanel(c)
   self.gearPanel = panel
   panel:SetPoint("TOPRIGHT", -16, -16)
   panel:SetSize(2 * SLOT_SIZE + MODEL_W + 2 * 10, 8 * (SLOT_SIZE + SLOT_GAP) + SLOT_SIZE + 16)
+  -- As in the Classic character window: 8 slots on the left, 8 on the right, the weapons at the bottom.
   self.slots = {}
-  for i, name in ipairs(LEFT_SLOTS) do
+  for i, name in ipairs(FC:GetModule("Gear").SLOTS) do
     local b = gearSlot(panel, name)
-    b:SetPoint("TOPLEFT", 0, -(i - 1) * (SLOT_SIZE + SLOT_GAP))
-    self.slots[#self.slots + 1] = b
-  end
-  for i, name in ipairs(RIGHT_SLOTS) do
-    local b = gearSlot(panel, name)
-    b:SetPoint("TOPRIGHT", 0, -(i - 1) * (SLOT_SIZE + SLOT_GAP))
-    self.slots[#self.slots + 1] = b
-  end
-  for i, name in ipairs(WEAPON_SLOTS) do
-    local b = gearSlot(panel, name)
-    b:SetPoint("BOTTOM", panel, "BOTTOM", (i - 2) * (SLOT_SIZE + 10), 0)
-    self.slots[#self.slots + 1] = b
+    if i <= 8 then
+      b:SetPoint("TOPLEFT", 0, -(i - 1) * (SLOT_SIZE + SLOT_GAP))
+    elseif i <= 16 then
+      b:SetPoint("TOPRIGHT", 0, -(i - 9) * (SLOT_SIZE + SLOT_GAP))
+    else
+      b:SetPoint("BOTTOM", panel, "BOTTOM", (i - 18) * (SLOT_SIZE + 10), 0)
+    end
+    self.slots[i] = b
   end
 
   local modelBg = panel:CreateTexture(nil, "BACKGROUND")
@@ -401,7 +393,7 @@ function page:RefreshGraph()
   local Metrics = FC.Metrics
   local spans, length = Metrics:PlayedWindow(GRAPH_SECONDS)
   local points = spans[1] and Metrics:WindowPoints(def.series(spans[1].from), spans, def) or {}
-  local format = def.format or function(v) return Util.FormatNumber(v) end
+  local format = def.format or Util.FormatNumber
 
   -- Time labels: start, every 30 minutes of play, end. Faint lines where sessions were joined.
   local ticks, breaks = {}, {}

@@ -48,8 +48,6 @@ local function serialize(v, indent)
   return table.concat(out)
 end
 
-serializeValue = function(v) return serialize(v) end
-
 local function save()
   return "\nForeverChronicleDB = " .. serialize(ForeverChronicleDB) .. "\n"
 end
@@ -61,8 +59,28 @@ local function startClient(isInitialLogin, isReloadingUi)
   return FC
 end
 
-local function sessions() return S(ForeverChronicleDB.characters["Player-4619-0112A417"].streams.sessions).records end
-local function events() return S(ForeverChronicleDB.characters["Player-4619-0112A417"].streams.events).records end
+local ME = "Player-4619-0112A417" -- the played character's GUID (UnitGUID("player") in the mock)
+
+local function sessions() return S(ForeverChronicleDB.characters[ME].streams.sessions).records end
+local function events() return S(ForeverChronicleDB.characters[ME].streams.events).records end
+
+-- The played character's events of one type, oldest first.
+local function eventsOfType(t)
+  local out = {}
+  for _, r in ipairs(events()) do if r.type == t then out[#out + 1] = r end end
+  return out
+end
+
+-- Shows the window page with this id and returns it.
+local function openPage(id)
+  local UI = ForeverChronicle.UI
+  for i, page in ipairs(UI.pages) do
+    if page.id == id then
+      UI:SelectPage(i)
+      return page
+    end
+  end
+end
 
 if PHASE == 1 then
   print("phase 1: first login, gameplay, UI")
@@ -115,12 +133,12 @@ if PHASE == 1 then
   check(FC:DescribeEvent(death) == "Getötet von Taragaman the Hungerer in Ragefire Chasm", "death text names the killer")
   check(FC:EventDetails(death)[1] == "Uppercut: 412 Schaden (37 Überschaden)", "death tooltip: the killing blow")
   check(events()[5].seq == 5, "seq numbers assigned")
-  local stats = ForeverChronicleDB.characters["Player-4619-0112A417"].stats
-  check(stats.quests_completed == 1 and stats.deaths == 1 and stats.levels_gained == 1 and stats.sessions == 1, "stats counted")
+  local stats = ForeverChronicleDB.characters[ME].stats
+  check(stats.quests_completed == 1 and stats.deaths == 1 and stats.sessions == 1, "stats counted")
 
   -- Kills and experience (a level-up wraps the XP bar: rest of the old level is added).
-  MOCK.fire("PARTY_KILL", "Player-4619-0112A417", "Creature-1")
-  MOCK.fire("PARTY_KILL", "Player-4619-0112A417", "Creature-2")
+  MOCK.fire("PARTY_KILL", ME, "Creature-1")
+  MOCK.fire("PARTY_KILL", ME, "Creature-2")
   MOCK.xp = 1500; MOCK.fire("PLAYER_XP_UPDATE", "player")
   MOCK.xp, MOCK.xpMax = 4800, 5000; MOCK.fire("PLAYER_XP_UPDATE", "player")
   MOCK.xp, MOCK.xpMax = 200, 6000; MOCK.fire("PLAYER_XP_UPDATE", "player")
@@ -187,12 +205,10 @@ if PHASE == 1 then
   for _, tile in ipairs(overview.tiles) do if tile.def.key == "kills" then kills = tile end end
   check(kills.value.text == "2" and kills.name.text ~= nil, "tile shows name and value")
   check(#overview.slots == 19 and overview.slots[1].border ~= nil, "19 gear slots")
-  local settingsIndex
-  for i, pg in ipairs(FC.UI.pages) do if pg.id == "settings" then settingsIndex = i end end
-  FC.UI:SelectPage(settingsIndex)
-  check(#FC.UI.pages[settingsIndex].bars == 6, "storage bars on the settings page (" .. #FC.UI.pages[settingsIndex].bars .. ")")
+  settingsPage = openPage("settings")
+  check(#settingsPage.bars == 6, "storage bars on the settings page (" .. #settingsPage.bars .. ")")
   local testButton
-  for _, control in ipairs(FC.UI.pages[settingsIndex].controls) do if type(rawget(control, "button")) == "table" then testButton = control.button end end
+  for _, control in ipairs(settingsPage.controls) do if type(rawget(control, "button")) == "table" then testButton = control.button end end
   check(testButton and testButton.text == FC.L.SHOT_TEST_BUTTON, "test screenshot button in the screenshot settings")
   SlashCmdList.FOREVERCHRONICLE("lang de")
   SlashCmdList.FOREVERCHRONICLE("status")
@@ -210,7 +226,7 @@ if PHASE == 1 then
   MOCK.advance(600)
   MOCK.fire("PLAYER_LOGOUT")
   check(sessions()[1].endReason == "logout" and sessions()[1].endedAt, "session closed on logout")
-  local positions = S(ForeverChronicleDB.characters["Player-4619-0112A417"].streams.positions).records
+  local positions = S(ForeverChronicleDB.characters[ME].streams.positions).records
   check(#positions >= 12 and #positions <= 20, "route sampled (" .. #positions .. " points)")
   local lastFields = {}
   for f in (positions[#positions] .. ","):gmatch("([^,]*),") do lastFields[#lastFields + 1] = f end
@@ -241,7 +257,7 @@ if PHASE == 1 then
   check(FC.db.settings.overviewGraph == "gold" and ov.graph.points[1].value == 123456, "gold graph shows the money held")
   ov:StepGraph(1)
   check(FC.db.settings.overviewGraph == "xp", "switching wraps around")
-  local shots = S(ForeverChronicleDB.characters["Player-4619-0112A417"].streams.screenshots).records
+  local shots = S(ForeverChronicleDB.characters[ME].streams.screenshots).records
   for _, r in ipairs(shots) do print("    shot", r.trigger, r.status, #r.events) end
   check(#shots == 1 and #MOCK.screenshots == 1, "level-up and achievement produced one screenshot")
   check(shots[1].status == "confirmed" and #shots[1].events == 2 and shots[1].trigger == "level",
@@ -292,7 +308,7 @@ elseif PHASE == 4 then
   local FC = startClient(true, false)
   FC.Storage.streams.events.cap = 5
   for i = 1, 10 do MOCK.fire("PLAYER_DEAD") end
-  local stream = ForeverChronicleDB.characters["Player-4619-0112A417"].streams.events
+  local stream = ForeverChronicleDB.characters[ME].streams.events
   check(#stream.records <= 5 * 1.1 + 1, "stream trimmed (" .. #stream.records .. " records)")
   MOCK.fire("PLAYER_LOGOUT")
   check(#S(stream).records == 5, "trimmed to cap on logout")
@@ -343,7 +359,7 @@ end
 if PHASE == 5 then
   print("phase 5: zones, flights and screenshot rules")
   local FC = startClient(true, false)
-  local char = ForeverChronicleDB.characters["Player-4619-0112A417"]
+  local char = ForeverChronicleDB.characters[ME]
   local function shots() return S(char.streams.screenshots).records end
   local function statuses()
     local s = {}
@@ -484,9 +500,7 @@ if PHASE == 5 then
   SlashCmdList.FOREVERCHRONICLE("")
   for i = 1, #FC.UI.pages do FC.UI:SelectPage(i) end
   -- Chronicle: screenshots appear with their entry; test screenshots (no entry) as entries of their own.
-  local chronicle, chronicleIndex
-  for i, pg in ipairs(FC.UI.pages) do if pg.id == "chronicle" then chronicle, chronicleIndex = pg, i end end
-  FC.UI:SelectPage(chronicleIndex)
+  local chronicle = openPage("chronicle")
   local zoneItem, tests = nil, 0
   for _, item in ipairs(chronicle.items) do
     if item.event and item.event.type == "zone_discovered" and item.event.data.zone == "Durotar" then zoneItem = item end
@@ -558,7 +572,7 @@ end
 if PHASE == 6 then
   print("phase 6: position sampling")
   local FC = startClient(true, false)
-  local function points() return S(ForeverChronicleDB.characters["Player-4619-0112A417"].streams.positions).records end
+  local function points() return S(ForeverChronicleDB.characters[ME].streams.positions).records end
   MOCK.advance(2)
   local start = #points()
   check(start == 1, "first point after entering the world")
@@ -585,17 +599,12 @@ if PHASE == 6 then
   check(#points() == 4, "no sampling when disabled")
 end
 
-if PHASE == 7 or PHASE == 8 then
-  print("phase " .. PHASE .. ": position interval settings migration")
+if PHASE == 7 then
+  print("phase 7: an older saved file (schema 1)")
   assert(load(SAVED))()
-  local before = ForeverChronicleDB.settings.modules.Positions.interval
   startClient(true, false)
-  local s = ForeverChronicleDB.settings.modules.Positions
-  if PHASE == 7 then
-    check(before == 10 and s.interval == 2 and s.rev == 2, "old default 10 s moved to 2 s")
-  else
-    check(before == 5 and s.interval == 5 and s.rev == 2, "user's own choice (5 s) kept")
-  end
+  check(ForeverChronicleDB.schemaVersion == 2 and ForeverChronicleDB.settings.modules.Positions.interval == 10,
+    "schema upgraded, the saved interval kept")
 end
 
 if PHASE == 9 then
@@ -647,10 +656,7 @@ if PHASE == 9 then
 
   -- Window: open the map page.
   SlashCmdList.FOREVERCHRONICLE("")
-  local index
-  for i, pg in ipairs(FC.UI.pages) do if pg.id == "map" then index = i end end
-  FC.UI:SelectPage(index)
-  local page = FC.UI.pages[index]
+  local page = openPage("map")
   check(page.live and page.viewMap == 1411, "live view shows the current map")
   check(page.canvas.marker:IsShown(), "position marker shown")
   check(page.canvas.tiles[12] and page.canvas.tiles[12]:IsShown(), "map art tiles from the client")
@@ -716,7 +722,7 @@ if PHASE == 9 then
   page.prevEvent:GetScript("OnClick")(page.prevEvent)
   check(stepped == mark and page.current == mark and not page.live, "event step buttons jump to the mark")
   FC.UI:FocusMap(dungeonTime + 2)
-  ForeverChronicleDB.entrances = nil
+  ForeverChronicleDB.entrances = {}
   check(Route.Entrance(389) and Route.Entrance(389).mapID == 1413, "entrance derived from the route for older data")
 
   -- Playback from the start.
@@ -867,20 +873,15 @@ end
 if PHASE == 10 then
   print("phase 10: rare enemies")
   local FC = startClient(true, false)
-  local char = ForeverChronicleDB.characters["Player-4619-0112A417"]
-  local function rareEvents()
-    local out = {}
-    for _, r in ipairs(S(char.streams.events).records) do if r.type == "rare_killed" then out[#out + 1] = r end end
-    return out
-  end
-  local me = "Player-4619-0112A417"
+  local char = ForeverChronicleDB.characters[ME]
+  local function rareEvents() return eventsOfType("rare_killed") end
   MOCK.advance(2)
 
   -- Rare as target, killed.
   local rare = "Creature-0-4619-1-1-3398-00001A2B"
   MOCK.units.target = { guid = rare, classification = "rareelite", name = "Gesharahan" }
   MOCK.fire("PLAYER_TARGET_CHANGED")
-  MOCK.fire("PARTY_KILL", me, rare)
+  MOCK.fire("PARTY_KILL", ME, rare)
   local events = rareEvents()
   check(#events == 1 and events[1].data.name == "Gesharahan" and events[1].data.npcID == 3398,
     "rare kill recorded with name and NPC ID")
@@ -890,20 +891,20 @@ if PHASE == 10 then
   local shots = S(char.streams.screenshots).records
   check(shots[#shots].trigger == "rare" and shots[#shots].status == "confirmed", "screenshot for the rare kill")
 
-  MOCK.fire("PARTY_KILL", me, rare)
+  MOCK.fire("PARTY_KILL", ME, rare)
   check(#rareEvents() == 1, "a second kill report for the same rare is ignored")
 
   -- Normal mob: no event.
   MOCK.units.target = { guid = "Creature-0-4619-1-1-3035-00002222", classification = "normal", name = "Plainstrider" }
   MOCK.fire("PLAYER_TARGET_CHANGED")
-  MOCK.fire("PARTY_KILL", me, "Creature-0-4619-1-1-3035-00002222")
+  MOCK.fire("PARTY_KILL", ME, "Creature-0-4619-1-1-3035-00002222")
   check(#rareEvents() == 1, "normal mobs are not rare kills")
 
   -- Rare only seen on a nameplate.
   local rare2 = "Creature-0-4619-1-1-5865-00003333"
   MOCK.units.nameplate3 = { guid = rare2, classification = "rare", name = "Dishu" }
   MOCK.fire("NAME_PLATE_UNIT_ADDED", "nameplate3")
-  MOCK.fire("PARTY_KILL", me, rare2)
+  MOCK.fire("PARTY_KILL", ME, rare2)
   check(#rareEvents() == 2, "rare seen on a nameplate")
 
   -- GUIDs hidden (secret): the dead rare target is used.
@@ -916,29 +917,15 @@ if PHASE == 10 then
   SlashCmdList.FOREVERCHRONICLESHOT("rare off")
   check(FC:GetModule("Screenshots"):GetSettings().triggers.rare == false, "/fjshot rare off")
 
-  -- Dungeons: the probe on entering, boss kills, and the first kill of the last boss.
-  local function ofType(t)
-    local out = {}
-    for _, r in ipairs(S(char.streams.events).records) do if r.type == t then out[#out + 1] = r end end
-    return out
-  end
+  -- Dungeons: boss kills, and the first kill of the last boss.
   MOCK.instance, MOCK.zone = true, "Ragefire Chasm"
   MOCK.fire("PLAYER_ENTERING_WORLD", false, false)
   MOCK.advance(4)
-  local probe = ForeverChronicleDB.dungeonProbe and ForeverChronicleDB.dungeonProbe["389"]
-  check(probe and probe.map == 213 and probe.mapSource == "journal" and probe.position == nil and probe.artTiles == 12
-    and probe.journalID == 226 and probe.journalBosses == 4 and probe.lastEncounterID == 1446 and #probe.bossPins == 2,
-    "dungeon probe: map from the journal, no position, art, bosses (" .. FC:GetModule("Dungeons"):Describe(probe or {}) .. ")")
-  MOCK.instanceArea = "Molten Bridge"
-  MOCK.fire("ZONE_CHANGED_INDOORS")
-  MOCK.fire("ZONE_CHANGED")                                    -- same area again: not repeated
-  check(#probe.areas == 1 and probe.areas[1]:find(",Molten Bridge$"), "sub-area inside the dungeon noted")
-  MOCK.instanceArea = nil
   MOCK.fire("ENCOUNTER_START", 1443, "Oggleflint", 1, 5)
   MOCK.fire("ENCOUNTER_END", 1443, "Oggleflint", 1, 5, 1)
   MOCK.fire("BOSS_KILL", 1443, "Oggleflint")                   -- the same kill reported twice
   MOCK.fire("ENCOUNTER_END", 1444, "Taragaman the Hungerer", 1, 5, 0) -- a wipe
-  local bosses = ofType("boss_killed")
+  local bosses = eventsOfType("boss_killed")
   check(#bosses == 1 and bosses[1].data.first == true and bosses[1].data.final == false
     and bosses[1].data.instance == "Ragefire Chasm" and bosses[1].location.instanceID == 389,
     "boss kill recorded once, a wipe is not a kill")
@@ -946,9 +933,9 @@ if PHASE == 10 then
   local shotsBefore = #S(char.streams.screenshots).records
   MOCK.advance(20)
   MOCK.fire("ENCOUNTER_END", 1446, "Bazzalan", 1, 5, 1)
-  local done = ofType("dungeon_completed")
+  local done = eventsOfType("dungeon_completed")
   check(#done == 1 and done[1].data.instance == "Ragefire Chasm" and done[1].data.boss == "Bazzalan"
-    and ofType("boss_killed")[2].data.final == true, "last boss: dungeon completed")
+    and eventsOfType("boss_killed")[2].data.final == true, "last boss: dungeon completed")
   check(FC:DescribeEvent(done[1]) == "Dungeon abgeschlossen: Ragefire Chasm (Bazzalan)", "completed text")
   MOCK.advance(8)
   local allShots = S(char.streams.screenshots).records
@@ -958,9 +945,8 @@ if PHASE == 10 then
   check(char.stats.bosses_killed == 2 and char.stats.dungeons_completed == 1, "boss and dungeon stats")
   MOCK.advance(60)
   MOCK.fire("ENCOUNTER_END", 1446, "Bazzalan", 1, 5, 1)          -- a second run
-  check(#ofType("dungeon_completed") == 1 and ofType("boss_killed")[3].data.first == false,
+  check(#eventsOfType("dungeon_completed") == 1 and eventsOfType("boss_killed")[3].data.first == false,
     "only the first kill of the last boss completes the dungeon")
-  check(#probe.encounters >= 3 and probe.encounters[1]:find("^start,1443"), "encounters noted in the probe")
   MOCK.instance, MOCK.zone = nil, nil
 
   local errors = 0
@@ -971,13 +957,8 @@ end
 if PHASE == 11 then
   print("phase 11: professions and recipes")
   local FC = startClient(true, false)
-  local char = ForeverChronicleDB.characters["Player-4619-0112A417"]
+  local char = ForeverChronicleDB.characters[ME]
   local P = FC:GetModule("Professions")
-  local function evts(t)
-    local out = {}
-    for _, r in ipairs(S(char.streams.events).records) do if r.type == t then out[#out + 1] = r end end
-    return out
-  end
 
   local snap = char.snapshots.professions
   check(snap and #snap.list == 4 and snap.baseline, "four professions captured at login")
@@ -985,10 +966,10 @@ if PHASE == 11 then
   check(lw.name == "Leatherworking" and lw.rank == 126 and lw.maxRank == 150 and lw.kind == "primary",
     "leatherworking skill and rank")
   check(P:Find(129).kind == "secondary" and P:Find(185).kind == "secondary", "first aid and cooking are secondary")
-  check(#evts("profession_learned") == 0, "professions known at install are not reported as learned")
+  check(#eventsOfType("profession_learned") == 0, "professions known at install are not reported as learned")
   check(lw.recipes == nil, "no recipes before a profession window was opened")
   MOCK.advance(6)
-  check(#evts("profession_learned") == 0, "delayed login scan adds no events")
+  check(#eventsOfType("profession_learned") == 0, "delayed login scan adds no events")
 
   -- Opening the window captures the learned recipes from the unfiltered list.
   MOCK.openProfession(165)
@@ -1000,8 +981,6 @@ if PHASE == 11 then
     "compact recipe format with item quality: " .. lw.recipes.list[1])
   check(lw.recipes.list[2] == "3816,2550,134366,1,Cured Light Hide", "quality from the item ID when there is no link")
   check(lw.recipes.list[4] == "9058,2552,133150,2,Handstitched Leather Cloak", "uncommon (green) recipe")
-  local old = P.ParseRecipe("2881,2550,134252,Light Leather")
-  check(old.name == "Light Leather" and old.quality == nil, "format 1 recipes (v0.10.0) still readable")
   local cats = P.ParseCategories(lw.recipes.categories)
   check(cats[2550].name == "Materials" and cats[2550].parent == 2549 and cats[2549].name == "Leatherworking",
     "categories stored with their parents")
@@ -1018,7 +997,7 @@ if PHASE == 11 then
   -- Learning a recipe: chronicle event and a new capture.
   MOCK.recipes[165][5].learned = true
   MOCK.fire("NEW_RECIPE_LEARNED", 2149)
-  local learned = evts("recipe_learned")
+  local learned = eventsOfType("recipe_learned")
   check(#learned == 1 and learned[1].data.name == "Handstitched Leather Boots" and learned[1].data.recipeID == 2149,
     "recipe_learned event")
   check(FC:DescribeEvent(learned[1]) == "Rezept gelernt: Handstitched Leather Boots", "recipe event text")
@@ -1060,7 +1039,7 @@ if PHASE == 11 then
   MOCK.professions[6][4] = 225
   MOCK.fire("SKILL_LINES_CHANGED")
   MOCK.advance(2)
-  local ranks = evts("profession_rank")
+  local ranks = eventsOfType("profession_rank")
   check(#ranks == 1 and ranks[1].data.maxRank == 225 and lw.maxRank == 225, "rank event")
   check(FC:DescribeEvent(ranks[1]) == "Leatherworking: Experte", "rank text: " .. FC:DescribeEvent(ranks[1]))
 
@@ -1070,7 +1049,7 @@ if PHASE == 11 then
   MOCK.professionSlots[2] = nil
   MOCK.fire("CHAT_MSG_SKILL", "Your skill in Fishing has increased to 1.")
   MOCK.advance(2)
-  local learnedProf = evts("profession_learned")
+  local learnedProf = eventsOfType("profession_learned")
   check(#learnedProf == 1 and learnedProf[1].data.name == "Fishing", "profession_learned event")
   check(P:Find(182).active == false and P:Find(182).unlearnedAt, "herbalism marked as unlearned")
   check(#P:GetActive() == 4 and P:GetActive()[1].skillLine == 165, "active professions, primary first")
@@ -1080,10 +1059,7 @@ if PHASE == 11 then
 
   -- In-game page: profession buttons, recipes grouped by category, search.
   FC.UI:Toggle()
-  local index
-  for i, pg in ipairs(FC.UI.pages) do if pg.id == "professions" then index = i end end
-  FC.UI:SelectPage(index)
-  local page = FC.UI.pages[index]
+  local page = openPage("professions")
   local buttons = 0
   for _, b in ipairs(page.buttons) do if b:IsShown() then buttons = buttons + 1 end end
   check(buttons == 4 and page.selected == 165 and page.title.text == "Leatherworking", "profession buttons")
@@ -1101,6 +1077,10 @@ if PHASE == 11 then
   page.search:SetText("hide")
   page.search:GetScript("OnTextChanged")(page.search)
   check(shownRows() == 3 and page.status.text:find("2 angezeigt", 1, true), "search filters recipes")
+  page.search:SetText("HIDE")
+  page.search:GetScript("OnTextChanged")(page.search)
+  check(shownRows() == 3, "recipe search ignores case")
+  check(FC.Util.Fold("Ärmel ÖL Über") == "ärmel öl über", "umlauts folded for searching")
   page.buttons[4]:GetScript("OnClick")(page.buttons[4])
   check(page.selected == 356 and page.recipeEmpty.text:find("Sammelberufe", 1, true), "profession without recipes")
 
@@ -1117,7 +1097,6 @@ end
 if PHASE == 12 then
   print("phase 12: character layer with an alt and a friend's characters")
   local FC = startClient(true, false)
-  local me = "Player-4619-0112A417"
   -- An alt on the same account (all characters share the SavedVariables).
   ForeverChronicleDB.characters["Player-4619-0ALT0001"] = {
     info = { name = "Altie", level = 10, classFile = "MAGE", realm = "Classic Beta PvP", lastSeenAt = 1791900000 },
@@ -1127,7 +1106,7 @@ if PHASE == 12 then
   }
 
   local entries = FC:ViewEntries()
-  check(#entries == 4 and entries[1].played and entries[1].key == me, "played character first")
+  check(#entries == 4 and entries[1].played and entries[1].key == ME, "played character first")
   check(entries[2].key == "Player-4619-0ALT0001" and not entries[2].owner, "then the account's other characters")
   check(entries[3].owner == 'Bob "the" Friend' and entries[3].char.info.name == "Thrall"
     and entries[4].owner == 'Bob "the" Friend', "then the friend's characters, names exactly as shared")
@@ -1157,10 +1136,7 @@ if PHASE == 12 then
   check(ForeverChronicleFrame.portraitClass == "HUNTER" and rawget(ForeverChronicleFrame, "portraitUnit") == nil,
     "portrait: the friend's class emblem")
 
-  local function page(id)
-    for i, p in ipairs(UI.pages) do if p.id == id then UI:SelectPage(i); return p end end
-  end
-  local ov = page("overview")
+  local ov = openPage("overview")
   check(ov.name.text:find("Thrall", 1, true) and ov.details.text:find("Charakter von", 1, true), "overview header")
   check(ov.otherNote:IsShown() and ov.gearPanel:IsShown() and not ov.model:IsShown() and not ov.xp:IsShown(),
     "model and live parts hidden, gear shown")
@@ -1176,47 +1152,47 @@ if PHASE == 12 then
   end
   check(played and played ~= "-", "friend stats (played " .. tostring(played) .. ")")
 
-  local chron = page("chronicle")
+  local chron = openPage("chronicle")
   local shown, headings = 0, 0
   for _, item in ipairs(chron.shown) do if item.header then headings = headings + 1 else shown = shown + 1 end end
   local friendEvents = #FC:ViewStream("events").records
   check(friendEvents > 0 and shown == friendEvents and headings >= 1, "friend's chronicle (" .. shown .. " entries)")
 
-  local map = page("map")
+  local map = openPage("map")
   check(#map.points >= 8 and map.viewMap == 1413 and map.canvas.marker:IsShown(), "friend's route on the map")
 
-  local prof = page("professions")
+  local prof = openPage("professions")
   local profButtons = 0
   for _, b in ipairs(prof.buttons) do if b:IsShown() then profButtons = profButtons + 1 end end
   check(profButtons == 4 and prof.title.text == "Herbalism", "friend's professions (" .. profButtons .. ")")
   local marked = 0
-  for _, item in ipairs(page("chronicle").items) do if item.shot then marked = marked + 1 end end
+  for _, item in ipairs(openPage("chronicle").items) do if item.shot then marked = marked + 1 end end
   check(marked == 0, "no screenshots for the friend in game")
 
   -- Recording continues for the played character only.
-  local mine = #S(ForeverChronicleDB.characters[me].streams.events).records
+  local mine = #S(ForeverChronicleDB.characters[ME].streams.events).records
   MOCK.fire("PLAYER_DEAD")
-  check(#S(ForeverChronicleDB.characters[me].streams.events).records == mine + 1, "events still recorded for me")
+  check(#S(ForeverChronicleDB.characters[ME].streams.events).records == mine + 1, "events still recorded for me")
   check(#FC:ViewStream("events").records == friendEvents, "the friend's data is not changed")
 
   -- The alt, then back to me.
   FC:SetView("Player-4619-0ALT0001")
-  page("overview")
+  openPage("overview")
   check(ov.name.text:find("Altie", 1, true) and UI.viewBar.sub.text:find("Anderer Charakter", 1, true), "alt shown")
   check(link(ov.slots[1]) == nil, "the alt has no gear snapshot: empty slots")
   check(ForeverChronicleFrame.portraitClass == "MAGE", "portrait: the alt's class emblem")
   local overviewTab = ForeverChronicleFrame.Tabs[1]
   check(overviewTab.icon.texture == "Interface\\TargetingFrame\\UI-Classes-Circles", "overview tab icon follows")
-  page("chronicle")
+  openPage("chronicle")
   shown = #chron.items
   check(shown == 1, "alt's chronicle")
   UI.viewBack:GetScript("OnClick")(UI.viewBack)
   check(FC:IsViewingPlayed() and not UI.viewBack:IsShown(), "back to me")
   check(ForeverChronicleFrame.portraitUnit == "player", "portrait: back to the played character")
-  page("overview")
+  openPage("overview")
   check(ov.gearPanel:IsShown() and ov.model:IsShown() and not ov.otherNote:IsShown() and link(ov.slots[1]) == nil,
     "live parts back (gear from the live inventory again)")
-  local gear = ForeverChronicleDB.characters[me].snapshots.gear
+  local gear = ForeverChronicleDB.characters[ME].snapshots.gear
   check(gear and #gear.slots == 2 and gear.slots[1].slotName == "HeadSlot" and gear.slots[1].quality == 3,
     "my gear snapshot")
   for i = 1, #UI.pages do UI:SelectPage(i) end
@@ -1229,7 +1205,6 @@ end
 if PHASE == 13 then
   print("phase 13: data for friends (Share module, cloud sync)")
   local FC = startClient(true, false)
-  local me = "Player-4619-0112A417"
   local Share = FC:GetModule("Share")
   -- Some play: a route over two sessions, events.
   for i = 1, 8 do MOCK.x = 0.30 + i * 0.01; MOCK.advance(2) end
@@ -1246,7 +1221,7 @@ if PHASE == 13 then
   MOCK.fire("PLAYER_LOGOUT")
   -- What the game writes as SavedVariables\ForeverChronicle_Share.lua (test data for the sync script), taken
   -- before the checks below unpack streams.
-  local shareText = "\nForeverChronicleShareDB = " .. serializeValue(ForeverChronicleShareDB) .. "\n"
+  local shareText = "\nForeverChronicleShareDB = " .. serialize(ForeverChronicleShareDB) .. "\n"
   local data = ForeverChronicleShareDB
   for _, name in ipairs({ "events", "positions", "sessions" }) do
     check(data.characters[1].streams[name].packed ~= nil, "share stream packed: " .. name)
@@ -1254,7 +1229,7 @@ if PHASE == 13 then
   check(type(data) == "table" and data.format == 2 and data.name == "Blind" and #data.characters == 2,
     "written on logout: both characters, name defaults to the character's")
   local mine = data.characters[1]
-  check(mine.info.name == "Blind" and mine.info.key == me and mine.stats.kills == ForeverChronicleDB.characters[me].stats.kills,
+  check(mine.info.name == "Blind" and mine.info.key == ME and mine.stats.kills == ForeverChronicleDB.characters[ME].stats.kills,
     "info and stats")
   check(#S(mine.streams.events).records >= 2 and #S(mine.streams.positions).records >= 8, "chronicle and route")
   check(mine.snapshots.gear and #mine.snapshots.gear.slots == 2, "gear")
@@ -1271,7 +1246,7 @@ if PHASE == 13 then
   data = Share:Build()
   check(#S(data.characters[1].streams.events).records == 1, "event limit")
   Share.EVENTS = 200
-  local all = S(ForeverChronicleDB.characters[me].streams.positions).records
+  local all = S(ForeverChronicleDB.characters[ME].streams.positions).records
   check(#S(data.characters[1].streams.positions).records == #all, "the whole route, all sessions")
   Share.MAX_POINTS = 3
   data = Share:Build()
@@ -1300,8 +1275,7 @@ if PHASE == 13 then
 
   -- Settings page: the name field and one check box per character.
   FC.UI:Toggle()
-  local settings
-  for i, p in ipairs(FC.UI.pages) do if p.id == "settings" then settings = p; FC.UI:SelectPage(i) end end
+  local settings = openPage("settings")
   local nameRow, charRow
   for _, control in ipairs(settings.controls) do
     if rawget(control, "box") then nameRow = control end
@@ -1335,14 +1309,10 @@ if PHASE == 13 then
   FC.UI:SelectPage(1)
   check(ov.name.text:find("Blind", 1, true) and rawget(ov.slots[1], "link"), "overview of the shared character")
 
-  -- Without the data addon nothing is written.
-  ForeverChronicleShareDB = nil
-  MOCK.shareMissing = true
-  check(Share:Write() == false and ForeverChronicleShareDB == nil, "nothing written without ForeverChronicle_Share")
   SlashCmdList.FOREVERCHRONICLE("share")
   local said = false
-  for _, line in ipairs(MOCK.chat) do if line:find("nicht aktiv", 1, true) then said = true end end
-  check(said, "/fj share explains that the data addon is missing")
+  for _, line in ipairs(MOCK.chat) do if line:find("wird beim nächsten Logout", 1, true) then said = true end end
+  check(said, "/fj share tells when the data is saved")
 
   local errors = 0
   for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
@@ -1378,10 +1348,10 @@ end
 if PHASE == 15 then
   print("phase 15: causes of death")
   local FC = startClient(true, false)
-  local char = ForeverChronicleDB.characters["Player-4619-0112A417"]
+  local char = ForeverChronicleDB.characters[ME]
   local function lastDeath()
-    local records = S(char.streams.events).records
-    for i = #records, 1, -1 do if records[i].type == "player_died" then return records[i] end end
+    local deaths = eventsOfType("player_died")
+    return deaths[#deaths]
   end
   MOCK.advance(2)
 

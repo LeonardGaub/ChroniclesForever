@@ -55,10 +55,17 @@ function Canvas.New(parent, width, height)
   self.name = content:CreateFontString(nil, "ARTWORK", "GameFontDisableHuge")
   self.name:SetPoint("CENTER")
 
-  self.lines, self.dots, self.pins = {}, {}, {}
-  self.lineLayer = CreateFrame("Frame", nil, content)
-  self.lineLayer:SetAllPoints()
-  self.lineLayer:SetFrameLevel(content:GetFrameLevel() + 2)
+  self.pins = {}
+  local lineLayer = CreateFrame("Frame", nil, content)
+  lineLayer:SetAllPoints()
+  lineLayer:SetFrameLevel(content:GetFrameLevel() + 2)
+  self.lineLayer = lineLayer
+  self.lines = UI:Pool(function() return lineLayer:CreateLine(nil, "ARTWORK") end)
+  self.dots = UI:Pool(function()
+    local dot = lineLayer:CreateTexture(nil, "ARTWORK", nil, 1)
+    dot:SetTexture("Interface\\Common\\Indicator-Gray")
+    return dot
+  end)
   self.pinLayer = CreateFrame("Frame", nil, content)
   self.pinLayer:SetAllPoints()
   self.pinLayer:SetFrameLevel(content:GetFrameLevel() + 4)
@@ -241,22 +248,13 @@ function Canvas:ToPixels(x, y)
 end
 
 local function lineRegion(self, i)
-  local line = self.lines[i]
-  if not line then
-    line = self.lineLayer:CreateLine(nil, "ARTWORK")
-    self.lines[i] = line
-  end
+  local line = self.lines:Get(i)
   line:SetThickness(LINE_THICKNESS / self.zoom)
   return line
 end
 
 local function dotRegion(self, i)
-  local dot = self.dots[i]
-  if not dot then
-    dot = self.lineLayer:CreateTexture(nil, "ARTWORK", nil, 1)
-    dot:SetTexture("Interface\\Common\\Indicator-Gray")
-    self.dots[i] = dot
-  end
+  local dot = self.dots:Get(i)
   dot:SetSize(DOT_SIZE / self.zoom, DOT_SIZE / self.zoom)
   return dot
 end
@@ -309,25 +307,21 @@ function Canvas:RenderRoute()
     minDist = minDist * math.max(1.5, n / MAX_LINES)
   end
 
-  local canLine = self.lineLayer.CreateLine ~= nil
   local times, colors = {}, {}
   local colorFn = self.colorFn
-  local lineCount = 0
-  if canLine then
-    lineCount = walk(self, segments, rect, minDist, function(n, seg, ax, ay, bx, by, t)
-      if n > MAX_LINES then return end
-      local line = lineRegion(self, n)
-      local c
-      if colorFn then c = { colorFn(seg, t) } end
-      if not c or not c[1] then c = seg.taxi and TAXI_COLOR or ROUTE_COLOR end
-      line:SetStartPoint("TOPLEFT", self.content, ax, -ay)
-      line:SetEndPoint("TOPLEFT", self.content, bx, -by)
-      line:Hide()
-      times[n], colors[n] = t, c
-    end)
-    lineCount = math.min(lineCount, MAX_LINES)
-  end
-  for i = lineCount + 1, #self.lines do self.lines[i]:Hide() end
+  local lineCount = walk(self, segments, rect, minDist, function(n, seg, ax, ay, bx, by, t)
+    if n > MAX_LINES then return end
+    local line = lineRegion(self, n)
+    local c
+    if colorFn then c = { colorFn(seg, t) } end
+    if not c or not c[1] then c = seg.taxi and TAXI_COLOR or ROUTE_COLOR end
+    line:SetStartPoint("TOPLEFT", self.content, ax, -ay)
+    line:SetEndPoint("TOPLEFT", self.content, bx, -by)
+    line:Hide()
+    times[n], colors[n] = t, c
+  end)
+  lineCount = math.min(lineCount, MAX_LINES)
+  self.lines:HideFrom(lineCount + 1)
 
   local dotTimes, dotCount = {}, 0
   for _, seg in ipairs(segments) do
@@ -343,7 +337,7 @@ function Canvas:RenderRoute()
       end
     end
   end
-  for i = dotCount + 1, #self.dots do self.dots[i]:Hide() end
+  self.dots:HideFrom(dotCount + 1)
 
   self.lineTimes, self.lineColors, self.dotTimes = times, colors, dotTimes
   self.lineWindow, self.dotWindow = { 1, 0 }, { 1, 0 }
@@ -355,14 +349,7 @@ end
 -------------------------------------------------------------------------------
 
 -- First index whose time is > t (times ascending); #times + 1 if none.
-local function firstAfter(times, t)
-  local lo, hi = 1, #times
-  while lo <= hi do
-    local mid = math.floor((lo + hi) / 2)
-    if times[mid] > t then hi = mid - 1 else lo = mid + 1 end
-  end
-  return lo
-end
+local function firstAfter(times, t) return Util.BinarySearch(times, t) + 1 end
 
 -- Shows the lines with a time in (from, to]; nil = no limit. fade: the lines get fainter towards from.
 function Canvas:SetPaint(from, to, fade)

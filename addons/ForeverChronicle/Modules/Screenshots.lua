@@ -41,8 +41,8 @@ local POPUP_FRAMES = { "EventToastManagerFrame", "LevelUpDisplay", "BossBanner",
 
 -------------------------------------------------------------------------------
 -- Triggers: which recorded event types request a screenshot. Other modules can add their own.
---   def = { eventType, priority, maxAge, bypassable, identity = function(record), immediate }
--- The delay before capturing is the shared "delay" setting; immediate triggers ignore it.
+--   def = { eventType, priority, maxAge, bypassable, identity = function(record) }
+-- The delay before capturing is the shared "delay" setting.
 -------------------------------------------------------------------------------
 
 Shots.triggers = {}
@@ -79,7 +79,7 @@ FC:RegisterCapability("screenshots", "CAP_SCREENSHOTS", function() return type(S
 function Shots:OnInitialize()
   local s = self:GetSettings()
   s.enabled = nil -- no main switch any more (0.15.0): each ticked trigger takes screenshots
-  if s.hideUI == true then s.hideUI = "all" elseif s.hideUI ~= "all" and s.hideUI ~= "popups" then s.hideUI = "off" end
+  if s.hideUI ~= "all" and s.hideUI ~= "popups" then s.hideUI = "off" end
   self.queue = FC.ScreenshotQueue.New({ capacity = s.capacity, cooldown = s.cooldown, minGap = 2, coalesceWindow = 2 })
 end
 
@@ -113,7 +113,7 @@ function Shots:Request(triggerName, eventIds, record)
   local s = self:GetSettings()
   local req = {
     trigger = triggerName, priority = def.priority, eventIds = eventIds or {},
-    delay = def.immediate and 0 or s.delay,
+    delay = s.delay,
     maxAge = def.maxAge,
     bypassCooldown = def.alwaysBypass or (def.bypassable and s.bypass) or false,
     identity = record and def.identity and def.identity(record) or nil,
@@ -402,8 +402,8 @@ end)
 -- Status and settings helpers (used by the UI and /fjshot)
 -------------------------------------------------------------------------------
 
-function Shots:GetRecent(limit, stream)
-  local records = (stream or FC.Storage:GetStream("screenshots")).records
+function Shots:GetRecent(limit)
+  local records = FC.Storage:GetStream("screenshots").records
   local out = {}
   for i = #records, math.max(1, #records - (limit or 20) + 1), -1 do out[#out + 1] = records[i] end
   return out
@@ -426,15 +426,13 @@ for i, name in ipairs(TRIGGER_OPTIONS) do
     tooltipKey = name == "dungeon" and "OPT_SHOT_DUNGEON_TIP" or nil,
     get = function() return settings().triggers[name] end, set = function(v) settings().triggers[name] = v end })
 end
-FC:RegisterOption({ section = "screenshots", type = "choice", labelKey = "OPT_SHOT_HIDE_UI",
-  tooltipKey = "OPT_SHOT_HIDE_UI_TIP", order = 9, buttonWidth = 82,
+FC:RegisterOption({ section = "screenshots", module = "Screenshots", key = "hideUI", type = "choice",
+  labelKey = "OPT_SHOT_HIDE_UI", tooltipKey = "OPT_SHOT_HIDE_UI_TIP", order = 9, buttonWidth = 82,
   choices = { { value = "off", labelKey = "OPT_SHOT_HIDE_OFF" }, { value = "all", labelKey = "OPT_SHOT_HIDE_ALL" },
     { value = "popups", labelKey = "OPT_SHOT_HIDE_POPUPS" } },
-  get = function() return settings().hideUI end,
-  set = function(v) settings().hideUI = v; Shots:UpdateSnapshots() end })
-FC:RegisterOption({ section = "screenshots", type = "toggle", labelKey = "OPT_SHOT_COUNTDOWN",
-  tooltipKey = "OPT_SHOT_COUNTDOWN_TIP", order = 10,
-  get = function() return settings().countdown end, set = function(v) settings().countdown = v end })
+  onChange = function() Shots:UpdateSnapshots() end })
+FC:RegisterOption({ section = "screenshots", module = "Screenshots", key = "countdown", type = "toggle",
+  labelKey = "OPT_SHOT_COUNTDOWN", tooltipKey = "OPT_SHOT_COUNTDOWN_TIP", order = 10 })
 
 -- A test screenshot with the current delay, countdown and hide settings.
 function Shots:TestShot()
@@ -443,19 +441,18 @@ function Shots:TestShot()
 end
 FC:RegisterOption({ section = "screenshots", type = "button", labelKey = "SHOT_TEST_BUTTON",
   tooltipKey = "SHOT_TEST_TIP", order = 11, onClick = function() Shots:TestShot() end })
-FC:RegisterOption({ section = "screenshots", column = 2, type = "choice", labelKey = "OPT_SHOT_DELAY", order = 9,
-  choices = { { value = 0, text = "0 s" }, { value = 2, text = "2 s" }, { value = 5, text = "5 s" }, { value = 10, text = "10 s" } },
-  get = function() return settings().delay end, set = function(v) settings().delay = v end })
-FC:RegisterOption({ section = "screenshots", column = 2, type = "toggle", labelKey = "OPT_SHOT_BYPASS",
-  tooltipKey = "OPT_SHOT_BYPASS_TIP", order = 10,
-  get = function() return settings().bypass end, set = function(v) settings().bypass = v end })
-FC:RegisterOption({ section = "screenshots", column = 2, type = "choice", labelKey = "OPT_SHOT_COOLDOWN", order = 11,
+FC:RegisterOption({ section = "screenshots", module = "Screenshots", key = "delay", column = 2, type = "choice",
+  labelKey = "OPT_SHOT_DELAY", order = 9,
+  choices = { { value = 0, text = "0 s" }, { value = 2, text = "2 s" }, { value = 5, text = "5 s" }, { value = 10, text = "10 s" } } })
+FC:RegisterOption({ section = "screenshots", module = "Screenshots", key = "bypass", column = 2, type = "toggle",
+  labelKey = "OPT_SHOT_BYPASS", tooltipKey = "OPT_SHOT_BYPASS_TIP", order = 10 })
+FC:RegisterOption({ section = "screenshots", module = "Screenshots", key = "cooldown", column = 2, type = "choice",
+  labelKey = "OPT_SHOT_COOLDOWN", order = 11,
   choices = { { value = 10, text = "10 s" }, { value = 30, text = "30 s" }, { value = 60, text = "60 s" } },
-  get = function() return settings().cooldown end, set = function(v) Shots:SetCooldown(v) end })
-FC:RegisterOption({ section = "screenshots", column = 2, type = "choice", labelKey = "OPT_SHOT_DWELL", order = 12,
-  choices = { { value = 3, text = "3 s" }, { value = 5, text = "5 s" }, { value = 10, text = "10 s" } },
-  get = function() return FC.db.settings.modules.Travel.dwellSeconds end,
-  set = function(v) FC.db.settings.modules.Travel.dwellSeconds = v end })
+  onChange = function(v) Shots.queue.cooldown = v end })
+FC:RegisterOption({ section = "screenshots", module = "Travel", key = "dwellSeconds", column = 2, type = "choice",
+  labelKey = "OPT_SHOT_DWELL", order = 12,
+  choices = { { value = 3, text = "3 s" }, { value = 5, text = "5 s" }, { value = 10, text = "10 s" } } })
 
 -------------------------------------------------------------------------------
 -- /fjshot (spec F-003)

@@ -11,6 +11,7 @@
 local ADDON, FC = ...
 local L = FC.L
 local UI = FC.UI
+local Util = FC.Util
 
 local page = { id = "chronicle", labelKey = "TAB_CHRONICLE", icon = "Interface\\Icons\\INV_Misc_Book_09", order = 20 }
 local ROW_H, MILESTONE_H, HEADER_H = 30, 44, 30
@@ -296,17 +297,11 @@ local function indexShots(stream)
   return byEvent, loose
 end
 
--- Lower case for searching, including the German umlauts (string.lower leaves non-ASCII letters alone).
-local UMLAUTS = { ["\195\132"] = "\195\164", ["\195\150"] = "\195\182", ["\195\156"] = "\195\188" }
-local function fold(s)
-  return (string.lower(s):gsub("\195[\132\150\156]", UMLAUTS))
-end
-
 local function matches(query, ...)
   if not query then return true end
   for i = 1, select("#", ...) do
     local s = select(i, ...)
-    if type(s) == "string" and fold(s):find(query, 1, true) then return true end
+    if type(s) == "string" and Util.Fold(s):find(query, 1, true) then return true end
   end
   return false
 end
@@ -316,7 +311,7 @@ end
 -- search: text the entry or its place must contain. Also returns the number of events per category
 -- (for the filter tooltips).
 local function buildItems(hidden, onlyShots, search)
-  local query = search and search ~= "" and fold(search) or nil
+  local query = search and search ~= "" and Util.Fold(search) or nil
   local events = FC:ViewStream("events").records
   local byEvent, loose = indexShots(FC:ViewStream("screenshots"))
   local items, counts = {}, {}
@@ -394,7 +389,7 @@ function page:Create(c)
   self.filter:SetPoint("TOPRIGHT", -14, -10)
   UI:SetToggle(self.filter, false)
 
-  self:CreateSearch(c)
+  self.searchBox = UI:SearchBox(c, SEARCH_W, function(text) self:SetSearch(text) end, "CHRONICLE_SEARCH")
   self.searchBox:SetPoint("RIGHT", self.filter, "LEFT", -14, 0)
 
   -- The filter icons, one per event category, in the foldable row under the bar.
@@ -440,35 +435,6 @@ function page:Create(c)
   self:ApplyStyle()
   self:SyncFilters()
   self:SetFiltersOpen(settings().chronicleFiltersOpen, false)
-end
-
--- Search box: the game's search box (magnifier, clear button, grey hint) where available.
-function page:CreateSearch(c)
-  local ok, box = pcall(CreateFrame, "EditBox", nil, c, "SearchBoxTemplate")
-  if not ok or not box then box = CreateFrame("EditBox", nil, c, "InputBoxTemplate") end
-  box:SetSize(SEARCH_W, 20)
-  box:SetAutoFocus(false)
-  box:SetMaxLetters(60)
-  -- The template's own hint text, or our own grey hint while the box is empty and not focused.
-  local hint = type(box.Instructions) == "table" and box.Instructions
-  if not hint then
-    hint = box:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-    hint:SetPoint("LEFT", 4, 0)
-    box.fcHint = hint
-  end
-  hint:SetText(L.CHRONICLE_SEARCH)
-  UI:Track(hint, "CHRONICLE_SEARCH")
-  local function changed(b)
-    local text = b:GetText() or ""
-    if b.fcHint then b.fcHint:SetShown(text == "" and not (b.HasFocus and b:HasFocus() == true)) end
-    self:SetSearch(text)
-  end
-  box:HookScript("OnTextChanged", changed)
-  box:HookScript("OnEditFocusGained", changed)
-  box:HookScript("OnEditFocusLost", changed)
-  box:HookScript("OnEnterPressed", function(b) b:ClearFocus() end)
-  box:HookScript("OnEscapePressed", function(b) b:ClearFocus() end)
-  self.searchBox = box
 end
 
 -- Shows only entries whose text or place contains `text` (ignoring case); "" shows all.

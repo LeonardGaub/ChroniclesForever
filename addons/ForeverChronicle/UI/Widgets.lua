@@ -96,6 +96,23 @@ function UI:CheckBox(parent, key, tooltipKey, onClick)
   return cb
 end
 
+-- The game's search box (magnifier, clear button, grey hint). onChange(text) runs whenever the text changes;
+-- hintKey (optional) replaces the template's "Search" hint.
+function UI:SearchBox(parent, width, onChange, hintKey)
+  local box = CreateFrame("EditBox", nil, parent, "SearchBoxTemplate")
+  box:SetSize(width, 20)
+  box:SetAutoFocus(false)
+  box:SetMaxLetters(60)
+  if hintKey then
+    box.Instructions:SetText(L[hintKey])
+    self:Track(box.Instructions, hintKey)
+  end
+  box:HookScript("OnTextChanged", function(b) onChange(b:GetText() or "") end)
+  box:HookScript("OnEnterPressed", function(b) b:ClearFocus() end)
+  box:HookScript("OnEscapePressed", function(b) b:ClearFocus() end)
+  return box
+end
+
 -- Sets a backdrop (nil clears it) with optional { r, g, b, a } colours. No-op where the client has no backdrops.
 function UI:Backdrop(frame, def, bg, border)
   if not frame.SetBackdrop then return end
@@ -104,10 +121,9 @@ function UI:Backdrop(frame, def, bg, border)
   if border then frame:SetBackdropBorderColor(unpack(border)) end
 end
 
--- Gold border around a selected button (choices, toggles, tabs). nil where the client has no backdrops.
+-- Gold border around a selected button (choices, toggles, tabs).
 function UI:SelectionBorder(button)
-  local ok, border = pcall(CreateFrame, "Frame", nil, button, "BackdropTemplate")
-  if not ok or not border.SetBackdrop then return nil end
+  local border = CreateFrame("Frame", nil, button, "BackdropTemplate")
   border:SetPoint("TOPLEFT", -4, 4)
   border:SetPoint("BOTTOMRIGHT", 4, -4)
   border:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12 })
@@ -233,6 +249,31 @@ function UI:ArrowButton(parent, dir, onClick)
 end
 
 -------------------------------------------------------------------------------
+-- Recycled regions: pool:Get(i) returns region i, made by create(i) the first time; pool:HideFrom(i) hides
+-- region i and all after it. The regions are the pool's list part (pool[1], pool[2], ...).
+-------------------------------------------------------------------------------
+
+local Pool = {}
+Pool.__index = Pool
+
+function UI:Pool(create)
+  return setmetatable({ create = create }, Pool)
+end
+
+function Pool:Get(i)
+  local region = self[i]
+  if not region then
+    region = self.create(i)
+    self[i] = region
+  end
+  return region
+end
+
+function Pool:HideFrom(i)
+  for j = i, #self do self[j]:Hide() end
+end
+
+-------------------------------------------------------------------------------
 -- Scrolling list with recycled rows
 --   createRow(rowFrame)            builds the row's regions once
 --   updateRow(rowFrame, item, i)   fills them for an item
@@ -247,24 +288,24 @@ function UI:List(parent, rowHeight, createRow, updateRow)
   scroll:SetScrollChild(content)
   scroll:SetScript("OnSizeChanged", function(_, w) content:SetWidth(w) end)
 
-  local list = { scroll = scroll, content = content, rows = {} }
   local fixed = type(rowHeight) == "number"
+  local list = { scroll = scroll, content = content }
+  list.rows = self:Pool(function(i)
+    local row = CreateFrame("Frame", nil, content)
+    row:SetPoint("RIGHT", content, "RIGHT")
+    if fixed and i % 2 == 0 then
+      local stripe = row:CreateTexture(nil, "BACKGROUND")
+      stripe:SetAllPoints()
+      stripe:SetColorTexture(1, 1, 1, 0.03)
+    end
+    createRow(row)
+    return row
+  end)
 
   function list:SetItems(items)
     local y = 0
     for i, item in ipairs(items) do
-      local row = self.rows[i]
-      if not row then
-        row = CreateFrame("Frame", nil, content)
-        row:SetPoint("RIGHT", content, "RIGHT")
-        if fixed and i % 2 == 0 then
-          local stripe = row:CreateTexture(nil, "BACKGROUND")
-          stripe:SetAllPoints()
-          stripe:SetColorTexture(1, 1, 1, 0.03)
-        end
-        createRow(row)
-        self.rows[i] = row
-      end
+      local row = self.rows:Get(i)
       local h = fixed and rowHeight or rowHeight(item)
       row.y = y
       row:SetHeight(h)
@@ -273,7 +314,7 @@ function UI:List(parent, rowHeight, createRow, updateRow)
       row:Show()
       y = y + h
     end
-    for i = #items + 1, #self.rows do self.rows[i]:Hide() end
+    self.rows:HideFrom(#items + 1)
     content:SetHeight(math.max(1, y))
   end
 
@@ -373,15 +414,7 @@ end
 -- Vertical or horizontal colour gradient (r, g, b, a from the bottom/left to the top/right).
 function UI:Gradient(tex, orientation, r1, g1, b1, a1, r2, g2, b2, a2)
   tex:SetTexture(self.WHITE)
-  if CreateColor and tex.SetGradient then
-    local ok = pcall(tex.SetGradient, tex, orientation, CreateColor(r1, g1, b1, a1), CreateColor(r2, g2, b2, a2))
-    if ok then return end
-  end
-  if tex.SetGradientAlpha then
-    local ok = pcall(tex.SetGradientAlpha, tex, orientation, r1, g1, b1, a1, r2, g2, b2, a2)
-    if ok then return end
-  end
-  tex:SetColorTexture((r1 + r2) / 2, (g1 + g2) / 2, (b1 + b2) / 2, (a1 + a2) / 2)
+  tex:SetGradient(orientation, CreateColor(r1, g1, b1, a1), CreateColor(r2, g2, b2, a2))
 end
 
 -- Font object by name, if the client has it; otherwise the fallback.
