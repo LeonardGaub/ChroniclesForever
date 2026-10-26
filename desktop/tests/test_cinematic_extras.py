@@ -202,3 +202,33 @@ def test_trips_to_and_from_a_sky_island_go_through_the_clouds(app, ctx, imported
     window.seek(isle[5].time)               # a jump onto the island is no trip
     assert window.sky_trip is None and window.view_map == island
     window.close()
+
+
+def test_window_opens_with_a_dive(app, ctx, imported):
+    """The replay starts over the whole map under the character's title and dives to where it begins; a jump
+    skips the opening."""
+    from forever_chronicle.ui import cinematic
+    from forever_chronicle.ui.cinematic import CinematicWindow
+
+    cid = ctx.repo.list_characters()[0].character_id
+    points = ctx.repo.positions(cid)
+    start, end = points[0].time, max(p.end for p in points)
+    window = CinematicWindow(ctx, cid, start, end, speed=10)
+    window.resize(1200, 800)
+    window.show()
+    window.timer.stop()
+    t0 = window.t
+    window.advance(0.05)
+    far = window.view.transform().m11()
+    assert window.intro is not None and window.title.isVisible() and window.title.text == window.char_name
+    for _ in range(int((cinematic.INTRO_HOLD + cinematic.INTRO_DIVE) / 0.05) - 2):
+        window.advance(0.05)
+    assert window.t == t0 and window.view.transform().m11() > far, "the camera dives in; the replay waits"
+    for _ in range(4):
+        window.advance(0.05)
+    assert window.intro is None and window.view.transform().m11() == pytest.approx(window._scale())
+    window.advance(0.5)
+    assert window.t > t0, "then it plays"
+    window.seek(start)
+    assert window.intro is None, "a jump never opens again"
+    window.close()

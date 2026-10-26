@@ -1,5 +1,7 @@
 """Cinematic mode: a full-screen replay of the selected time range on the map.
 
+- Opening: the replay starts over the whole map under the character's title (name, level, race, class) and the
+  camera dives straight to where it begins; a jump on the timeline skips it.
 - The route is painted up to the current moment: older parts thin and dim, the last 15 minutes brighter
   towards the marker, the newest minutes glowing; flight paths dashed with moving dashes. Its colours follow
   the map page's choice (by level, by session, one colour), as in the addon (domain/route_colors.py).
@@ -138,6 +140,8 @@ SKY_MARKER = 1.8           # the marker's size high up (it shrinks as the player
 LIGHT_SECONDS = 1.2        # time constant of the light following the time of day
 OUTRO_SECONDS = 4.0        # the camera pulling back over the whole route at the end
 OUTRO_MARGIN = 1.3
+INTRO_HOLD = 1.2           # real seconds the opening shows the whole map under the character's title ...
+INTRO_DIVE = 2.4           # ... and the camera then takes to dive to where the replay starts
 
 
 @dataclass
@@ -416,6 +420,7 @@ class CinematicWindow(QWidget):
         self.light = daylight.light_at(self.t) if self.daylight else daylight.DAY   # the time of day (smoothed)
         self.credits: CreditsOverlay | None = None
         self.outro: list | None = None      # [scale, centre at the end, scale, centre over the whole route, age]
+        self.intro: float | None = 0.0      # the opening dive's age (None once it is over or skipped by a jump)
         self._art: dict[int, QPixmap] = {}
         self._soft: dict[int, QPixmap | None] = {}
         self._thumbs: dict[str, QPixmap | None] = {}
@@ -661,6 +666,7 @@ class CinematicWindow(QWidget):
             super().keyPressEvent(event)
 
     def seek(self, t: float) -> None:
+        self.intro = None
         self.t = float(max(self.start, min(self.end, t)))
         self.cue_index = bisect.bisect_left(self.cue_times, self.t)
         self.ended = False
@@ -805,6 +811,9 @@ class CinematicWindow(QWidget):
             return
         if self.sky_trip is not None:
             self._sky_travel(dt)
+            return
+        if self.intro is not None:
+            self._advance_intro(dt)
             return
         if self.hold > 0:
             self.hold = max(0.0, self.hold - dt)
@@ -1425,6 +1434,31 @@ class CinematicWindow(QWidget):
             self.sound.music.play(None)             # the music chosen in the settings (the built-in theme)
         return True
 
+    def _advance_intro(self, dt: float) -> None:
+        """The opening: the whole map under the character's title, then the camera dives to where the replay
+        starts (the camera there is already set by the first picture), and the replay begins."""
+        if self.intro == 0.0:
+            level = self.levels.at(self.t)
+            char = self.ctx.repo.character(self.character_id)
+            details = (tr("char.details", level=level, race=char.race_name or "", cls=char.class_name or "").strip()
+                       if char and level else "")
+            self.title.show_text(self.char_name, INTRO_HOLD + INTRO_DIVE * 0.4, heading="Journey Forever",
+                                 subtitle=details)
+        self.intro += dt
+        if self.camera is None or self.intro >= INTRO_HOLD + INTRO_DIVE:
+            self.intro = None
+            self.ramp = 0.0                 # set off gently
+            self._apply_zoom()
+            return
+        end = self._scale()
+        area = self.picture_area()
+        start = min(max(area.width() / W, area.height() / H), end)   # the whole map, filling the picture
+        f = ease_in_out((self.intro - INTRO_HOLD) / INTRO_DIVE)
+        scale = geo_mix(start, end, f)
+        # Straight in: the start's place on the screen moves evenly to the middle while the camera zooms.
+        off = (QPointF(W / 2, H / 2) - self.camera) * (start * (1 - f) / scale)
+        self._set_view(scale, self.camera + off)
+
     def _start_outro(self) -> None:
         """The camera pulls back until the whole replayed route is in view."""
         if self.route_item is None or not self.route_item.segs:
@@ -1563,7 +1597,7 @@ class CinematicWindow(QWidget):
 
     def _apply_zoom(self) -> None:
         vw, vh = self.view.viewport().width(), self.view.viewport().height()
-        if vw <= 0 or vh <= 0 or self.voyage is not None or self.sky_trip is not None:
+        if vw <= 0 or vh <= 0 or self.voyage is not None or self.sky_trip is not None or self.intro is not None:
             return
         self._set_view(self._scale(), self.camera)
 
