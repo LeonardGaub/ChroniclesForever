@@ -20,6 +20,9 @@ look that they cut into nine slices (border-image), so the pieces are put togeth
 - xp_frame.png:   the experience bar's frame with its twenty bubbles (UI-MainMenuBar-Dwarf: four 256 px pieces,
                   as MainMenuXPBarTexture0-3 place them), 1024 x 15; xp_fill.png: UI-StatusBar in the bar's purple
                   (0.58, 0, 0.55) (the cinematic's XP bar, ui/cinematic_hud.py)
+- levelup_*.png:  pieces of the game's level-up display (Interface\\LevelUp\\LevelUpTex): its gold line and
+                  golden glow (the cinematic's level-up, ui/cinematic_fx.py); its dark backdrop overlaps other
+                  pieces there, so the title keeps its own soft band
 
 Rerun after a client patch if the textures change. Needs numpy and Pillow (as tools/extract_icons.py).
 """
@@ -60,10 +63,13 @@ TEXTURES = {
     "slider_handle": r"Interface\Buttons\UI-SliderBar-Button-Horizontal",
     "menubar": r"Interface\MainMenuBar\UI-MainMenuBar-Dwarf",
     "statusbar": r"Interface\TargetingFrame\UI-StatusBar",
+    "levelup": r"Interface\LevelUp\LevelUpTex",
 }
 XP_PIECES = (192, 128, 64, 0)      # rows of the four frame pieces in UI-MainMenuBar-Dwarf, left to right
 XP_ROWS = (8, 23)                  # the frame's rows within each 64 px block (its shadow included)
 XP_COLOR = (148, 0, 140)           # the game's experience colour (0.58, 0, 0.55)
+# Pieces of LevelUpTex (512 x 512), measured by their alpha: (left, top, right, bottom).
+LEVELUP_PIECES = {"levelup_line.png": (11, 14, 408, 20), "levelup_glow.png": (284, 119, 502, 240)}
 
 
 def load(folder: Path, key: str) -> Image.Image:
@@ -173,6 +179,9 @@ def build(src: Path, out: Path) -> list[str]:
         frame.alpha_composite(menubar.crop((0, top + XP_ROWS[0], 256, top + XP_ROWS[1])), (i * 256, 0))
     save(frame, "xp_frame.png")
     save(tint(load(src, "statusbar"), XP_COLOR), "xp_fill.png")
+    levelup = load(src, "levelup")
+    for name, box in LEVELUP_PIECES.items():
+        save(levelup.crop(box), name)
     return made
 
 

@@ -70,6 +70,16 @@ BARS_SECONDS = 1.2         # time the bars take to slide in
 
 # -- helpers ------------------------------------------------------------------------------------------------
 
+_SKIN: dict[str, QPixmap] = {}
+
+
+def skin_pixmap(name: str) -> QPixmap:
+    """A picture of the skin (tools/build_ui_skin.py: the game's own UI textures), loaded once."""
+    if name not in _SKIN:
+        _SKIN[name] = QPixmap(str(theme.SKIN / name))
+    return _SKIN[name]
+
+
 def clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, x))
 
@@ -694,6 +704,19 @@ class PinsItem(QGraphicsItem):
                 painter.setPen(QPen(with_alpha(b.color, 230 * (1 - y)), 1 + 3 * (1 - y)))
                 painter.drawEllipse(p, radius, radius)
         if b.kind == "level":
+            # The game's level-up light: its golden glow (bright at the foot) stretched into a pillar rising
+            # from the player.
+            light = skin_pixmap("levelup_glow.png")
+            if not light.isNull():
+                rise, sink = ease_out(x / 0.25), 1 - ease_in((x - 0.45) / 0.55)
+                width, height = 120.0, 380.0 * rise
+                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
+                painter.setOpacity(sink)
+                for k in (1.0, 0.55):                     # twice, the second narrower: a brighter core
+                    painter.drawPixmap(QRectF(p.x() - width * k / 2, p.y() + 16 - height, width * k, height),
+                                       light, QRectF(light.rect()))
+                painter.setOpacity(1.0)
+                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
             pen = QPen(with_alpha(b.color, 220 * fade), 2)
             pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             painter.setPen(pen)
@@ -1028,7 +1051,8 @@ class CloudCover(_Overlay):
 
 class TitleCard(_TimedOverlay):
     """A large centred title: a small heading between gold lines, the title in gold with a glow and a passing
-    shine, and a subtitle. It scales in and fades out."""
+    shine, and a subtitle. It scales in and fades out. The "level" tone is the game's level-up display: its gold
+    lines above and below, growing from the middle, and its golden glow flaring up behind the title."""
 
     INTRO = 0.45
     SHINE = (0.35, 1.25)          # when the shine passes, in seconds of its life
@@ -1036,7 +1060,9 @@ class TitleCard(_TimedOverlay):
     TONES = {
         "gold": (GOLD_GLOW, GOLD_LETTERS, BANNER_HEADING, TRIM),
         "death": (QColor(220, 40, 30), ("#ffd9d2", "#d8352b", "#6e0f0c"), QColor("#e8a39b"), QColor("#a8433a")),
+        "level": (GOLD_GLOW, GOLD_LETTERS, BANNER_HEADING, TRIM),
     }
+    LINES = (0.1, 0.5)            # the level-up's lines grow from the middle: start and duration, in seconds
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -1085,20 +1111,62 @@ class TitleCard(_TimedOverlay):
         path.translate(-box.center().x(), -box.center().y())
         box = path.boundingRect()
         glow, letters, heading_color, trim = self.TONES[self.tone]
+        level = self.tone == "level"
+        if level:
+            self._level_glow(painter, box)
         _gold_letters(painter, path, glow, [(width, alpha * intro) for width, alpha in ((26, 22), (14, 40), (7, 70))],
                       5, letters, (self.age - self.SHINE[0]) / (self.SHINE[1] - self.SHINE[0]))
         half = box.width() * fit / 2
         top, bottom = box.top() * fit, box.bottom() * fit
         painter.restore()
 
-        if self.heading:
+        if level:
+            self._level_lines(painter, w, h, top - h * 0.2, bottom + h * 0.04, half)
+            if self.heading:
+                font = pixel_font(h * 0.085)
+                font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 135)
+                painter.setFont(font)
+                draw_shadowed_text(painter, QRectF(-w / 2, top - h * 0.16, w, h * 0.12), self.heading.upper(),
+                                   heading_color, offset=1.5)
+        elif self.heading:
             draw_flourish_heading(painter, QPointF(0, top - h * 0.1), self.heading, h * 0.085, heading_color, trim,
                                   reach=40 + 70 * intro, least=half + 70 * intro)
         if self.subtitle:
             painter.setFont(pixel_font(h * 0.08))
-            draw_shadowed_text(painter, QRectF(-w / 2, bottom + h * 0.05, w, h * 0.12), self.subtitle,
-                               QColor("#d9c9a3"), offset=1.5)
+            draw_shadowed_text(painter, QRectF(-w / 2, bottom + h * (0.075 if level else 0.05), w, h * 0.12),
+                               self.subtitle, QColor("#d9c9a3"), offset=1.5)
         painter.end()
+
+    def _level_glow(self, painter: QPainter, box: QRectF) -> None:
+        """The game's golden glow behind the title: flaring up, then settling."""
+        light = skin_pixmap("levelup_glow.png")
+        if light.isNull():
+            return
+        flare = 0.6 + 0.4 * (1 - ease_out(self.age / 0.9))
+        width, height = box.width() * 1.9, box.height() * 1.9
+        painter.save()
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
+        painter.setOpacity(painter.opacity() * flare)
+        for _ in range(2):                                # added twice: the texture alone is faint on the map
+            painter.drawPixmap(QRectF(box.center().x() - width / 2, box.bottom() + box.height() * 0.25 - height,
+                                      width, height), light, QRectF(light.rect()))
+        painter.restore()
+
+    def _level_lines(self, painter: QPainter, w: float, h: float, above: float, below: float, half: float) -> None:
+        """The game's gold lines above the heading and below the title, growing from the middle."""
+        line = skin_pixmap("levelup_line.png")
+        if line.isNull():
+            return
+        grow = ease_out((self.age - self.LINES[0]) / self.LINES[1])
+        length = max(2.4 * half, w * 0.42) * grow
+        thick = max(4.0, h * 0.03)
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        for mode in (QPainter.CompositionMode.CompositionMode_SourceOver, QPainter.CompositionMode.CompositionMode_Plus):
+            painter.setCompositionMode(mode)              # laid on, then added once more: it shines
+            for y in (above, below):
+                painter.drawPixmap(QRectF(-length / 2, y - thick / 2, length, thick), line, QRectF(line.rect()))
+        painter.restore()
 
 
 # -- achievement banner -------------------------------------------------------------------------------------

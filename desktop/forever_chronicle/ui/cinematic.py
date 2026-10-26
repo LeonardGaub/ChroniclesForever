@@ -1669,7 +1669,7 @@ class CinematicWindow(QWidget):
             self.pins.burst(self.marker.pos(), color, kind)
         if cue.kind == "level" and cue.level is not None:
             self.title.show_text(tr("cine.level", level=cue.level), LEVEL_SECONDS, heading=tr("cine.banner.level_up"),
-                                 subtitle=self._level_subtitle(cue))
+                                 subtitle=self._level_subtitle(cue), tone="level")
             if self.sound.play("level_up"):
                 self.sound.music.duck(LEVEL_DUCK)
             return
