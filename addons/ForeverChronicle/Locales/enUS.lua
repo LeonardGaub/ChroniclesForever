@@ -95,7 +95,7 @@ FC:RegisterLocale("enUS", {
   CHRONICLE_ONLY_SHOTS = "Only with screenshot",
   CHRONICLE_ONLY_SHOTS_TIP = "Shows only entries that have a screenshot, and test screenshots.",
   CHRONICLE_SHOT_LINE = "Screenshot: %s",
-  CHRONICLE_SHOT_HINT = "The picture is in the Screenshots folder of your WoW folder. The Journey Forever desktop app shows it right in its chronicle.",
+  CHRONICLE_SHOT_HINT = "The picture is in the Screenshots folder of your WoW folder.",
   EVT_SESSION_STARTED = "Logged in",
   EVT_LEVEL_UP = "Reached level %s",
   EVT_QUEST_COMPLETED = "Quest completed: %s",

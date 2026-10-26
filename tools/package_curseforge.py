@@ -44,6 +44,12 @@ FORBIDDEN_CODE = {
     r"ForeverChronicleFriends|ForeverChronicleShareDB|ForeverChronicle_Share": "friends companion data",
     r"\bloadstring\b|\bRunScript\b": "loading code at runtime",
 }
+# Reviewed exceptions: (file, what) -> why it is allowed.
+ALLOWED_CODE = {
+    ("Core/Storage.lua", "loading code at runtime"):
+        "unpacks the saved file's packed records: only text that passes plainData() (literal data, no names or "
+        "calls) is compiled, with an empty environment",
+}
 
 
 def toc_info(folder: Path) -> tuple[dict[str, str], list[str]]:
@@ -91,7 +97,7 @@ def check(folder: Path) -> list[str]:
             visible += [f"{f}: {s}" for s in locale_strings(text)]
         code = "\n".join(line.split("--", 1)[0] for line in text.splitlines())  # without comments
         for pattern, what in FORBIDDEN_CODE.items():
-            if re.search(pattern, code):
+            if re.search(pattern, code) and (f, what) not in ALLOWED_CODE:
                 errors.append(f"{f}: uses {what}")
     for item in visible:
         for pattern, what in FORBIDDEN_TEXT.items():

@@ -5,8 +5,9 @@ at the time (older entries may describe things that changed later). Architecture
 `ARCHITECTURE.md`. Player-facing addon changes for the next upload: `CHANGELOG.md`.
 
 ## Current state (2026-10-18)
-- Main addon `addons/ForeverChronicle` 0.15.0, not uploaded yet (last CurseForge build 0.14.1; the changes are
-  collected under "Unreleased" in `CHANGELOG.md`). Companion `addons/ForeverChronicle_Share` 0.14.4, distributed
+- Main addon `addons/ForeverChronicle` 0.15.0, packaged on 2026-10-20 (`dist/curseforge/JourneyForever-0.15.0.zip`,
+  changelog section "0.15.0" in `CHANGELOG.md`, description in `docs/CurseForge.md`), not uploaded yet (last
+  CurseForge upload 0.14.1). Companion `addons/ForeverChronicle_Share` 0.14.4, distributed
   through the git repository (friends with repo access; the sync script installs it after a `git pull`). Release
   both together: since 0.15.0 the saved data is packed (see History).
 - Addon window tabs: Übersicht, Chronik (screenshots shown with their entries), Karte, Berufe, Einstellungen,

@@ -13,8 +13,11 @@ Your character's personal adventure history: a chronicle of every milestone, aut
 Everything is stored locally in your SavedVariables. The addon never sends anything to other players or the internet, and it has no ads.
 
 ### Chronicle
-- Records level-ups, completed quests, deaths, achievements, newly discovered zones, rare enemies killed, professions learned, profession ranks trained and recipes learned.
-- Every entry shows when it happened and where you were.
+- Records level-ups, completed quests, deaths, achievements, newly discovered zones, rare enemies killed, dungeon bosses defeated, completed dungeons, professions learned, profession ranks trained and recipes learned.
+- Every entry shows when it happened and where you were, grouped by day. Milestones stand out with a gold accent.
+- Deaths name their cause from the game's death recap ("Killed by Hogger", "Drowned"); hover for the killing blow.
+- Search by text or place, and filter by kind of entry (Shift-click to show only one kind).
+- Two looks: a parchment "Book" page or the classic list.
 - Click an entry to jump to that moment on the map.
 - Entries that got a screenshot are marked; hover to see whether it was saved and its file name. Tick "Only with screenshot" to list just those.
 
@@ -28,18 +31,20 @@ Everything is stored locally in your SavedVariables. The addon never sends anyth
 ### Map and route replay
 - Your route is drawn on the game's own zone and continent maps (position every 2 seconds by default; standing still adds no points).
 - You can zoom with the mouse wheel and drag to pan.
-- The time slider has play and pause and several speeds, a filter per play session, and a live view.
-- Markers show where things happened.
+- The timeline under the map shows the zones you passed through and marks for level-ups, deaths, rare kills, achievements and new zones; click a mark to jump to it.
+- Replay with play and pause and several speeds: the route is painted as you go and the marker glides along it. A filter per play session and a live view that follows you.
+- Colour the route by character level, by session, or in one colour. "Last 15 minutes" shows only your latest steps.
+- Pins show where things happened; milestones are gold, deaths show a skull.
 - Inside dungeons the game provides no position, so those moments are shown at the dungeon entrance.
 
 ### Overview
-- Your character's full name, level, experience bar with rested XP, and gold.
+- Your character's full name, level, the game's experience bar with rested XP, and gold.
 - Statistics:
   - total played time;
   - number of sessions;
   - enemies killed and experience earned;
-  - rare enemies, quests, deaths, achievements, discovered zones and known recipes.
-- A 3D model of your character with all equipped gear (item tooltips included).
+  - rare enemies, quests, deaths, achievements, discovered zones, bosses defeated, dungeons completed and known recipes.
+- A 3D model of your character with all equipped gear in the game's item buttons (tooltips, Shift-click to link, Ctrl-click to try on).
 - A graph of the last two hours of play: experience, kills, quests or gold, with values on hover.
 
 ### Professions
@@ -77,8 +82,11 @@ Everything is stored locally in your SavedVariables. The addon never sends anyth
 Alles wird lokal in deinen SavedVariables gespeichert. Das Addon sendet nichts an andere Spieler oder ins Internet und zeigt keine Werbung.
 
 ### Chronik
-- Hält Stufenaufstiege, abgeschlossene Quests, Tode, Erfolge, neu entdeckte Gebiete, besiegte seltene Gegner, erlernte Berufe, Berufsränge und gelernte Rezepte fest.
-- Jeder Eintrag zeigt, wann und wo es passiert ist.
+- Hält Stufenaufstiege, abgeschlossene Quests, Tode, Erfolge, neu entdeckte Gebiete, besiegte seltene Gegner, besiegte Dungeon-Bosse, abgeschlossene Dungeons, erlernte Berufe, Berufsränge und gelernte Rezepte fest.
+- Jeder Eintrag zeigt, wann und wo es passiert ist, nach Tagen gruppiert. Meilensteine heben sich golden ab.
+- Tode nennen ihre Ursache aus dem Todesbericht des Spiels („Getötet von Hogger“, „Ertrunken“); mit der Maus darüber siehst du den tödlichen Treffer.
+- Suche nach Text oder Ort und Filter nach Art des Eintrags (Shift-Klick zeigt nur eine Art).
+- Zwei Ansichten: eine Pergamentseite im „Buch“-Stil oder die klassische Liste.
 - Ein Klick auf einen Eintrag springt zu diesem Moment auf der Karte.
 - Einträge mit Screenshot sind markiert; mit der Maus darüber siehst du, ob er gespeichert wurde, und den Dateinamen. „Nur mit Screenshot“ zeigt nur diese Einträge.
 
@@ -92,18 +100,20 @@ Alles wird lokal in deinen SavedVariables gespeichert. Das Addon sendet nichts a
 ### Karte und Routen-Wiedergabe
 - Deine Route erscheint auf den Gebiets- und Kontinentkarten des Spiels (Position standardmäßig alle 2 Sekunden; Stillstehen erzeugt keine Punkte).
 - Mit dem Mausrad zoomen, ziehen zum Verschieben.
-- Der Zeitregler hat Abspielen und Pause, mehrere Geschwindigkeiten, einen Filter pro Spielsitzung und eine Live-Ansicht.
-- Markierungen zeigen, wo etwas passiert ist.
+- Die Zeitleiste unter der Karte zeigt die durchquerten Gebiete und Marken für Stufenaufstiege, Tode, seltene Gegner, Erfolge und neue Gebiete; ein Klick auf eine Marke springt dorthin.
+- Wiedergabe mit Abspielen, Pause und mehreren Geschwindigkeiten: Die Route wird beim Abspielen gezeichnet, die Markierung gleitet an ihr entlang. Dazu ein Filter pro Spielsitzung und eine Live-Ansicht, die dir folgt.
+- Die Route lässt sich nach Charakterstufe, nach Sitzung oder einfarbig einfärben. „Letzte 15 Minuten“ zeigt nur deine letzten Wege.
+- Stecknadeln zeigen, wo etwas passiert ist; Meilensteine sind golden, Tode zeigen einen Totenkopf.
 - In Dungeons liefert das Spiel keine Position, daher werden diese Momente am Dungeon-Eingang gezeigt.
 
 ### Übersicht
-- Voller Name deines Charakters, Stufe, Erfahrungsleiste mit Erholungsbonus und Gold.
+- Voller Name deines Charakters, Stufe, die Erfahrungsleiste des Spiels mit Erholungsbonus und Gold.
 - Statistiken:
   - gesamte Spielzeit;
   - Anzahl der Sitzungen;
   - getötete Gegner und gesammelte Erfahrung;
-  - seltene Gegner, Quests, Tode, Erfolge, entdeckte Gebiete und bekannte Rezepte.
-- 3D-Modell deines Charakters mit der gesamten angelegten Ausrüstung (mit Gegenstands-Tooltips).
+  - seltene Gegner, Quests, Tode, Erfolge, entdeckte Gebiete, besiegte Bosse, abgeschlossene Dungeons und bekannte Rezepte.
+- 3D-Modell deines Charakters mit der gesamten angelegten Ausrüstung in den Gegenstandsfeldern des Spiels (Tooltips, Shift-Klick zum Verlinken, Strg-Klick zum Anprobieren).
 - Ein Verlauf der letzten zwei Spielstunden: Erfahrung, Gegner, Quests oder Gold, mit Werten beim Überfahren.
 
 ### Berufe
