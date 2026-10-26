@@ -1162,7 +1162,9 @@ class CinematicWindow(QWidget):
         scene.setSceneRect(QRectF(0, 0, W, H))
         pixmap = self._pixmap(view)
         if pixmap is not None:
-            scene.addPixmap(pixmap)
+            # Smooth: a pixmap item draws nearest-neighbour by default (the view's render hint does not reach
+            # it), which looked pixelated at the replay's zoom.
+            scene.addPixmap(pixmap).setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         else:
             scene.addRect(QRectF(0, 0, W, H), QPen(QColor(theme.BORDER)), QBrush(QColor(theme.PANEL)))
         self._fill_scene(view, fade)
