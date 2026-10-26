@@ -9,12 +9,14 @@ from conftest import event as E
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QPointF  # noqa: E402
 from PySide6.QtGui import QColor, QImage, QPainter  # noqa: E402
 
 from forever_chronicle.domain.cinematic import Levels, banner, build_cues  # noqa: E402
 from forever_chronicle.i18n import tr  # noqa: E402
 from forever_chronicle.domain.route import Route  # noqa: E402
 from forever_chronicle.storage.repository import PositionPoint  # noqa: E402
+from forever_chronicle.ui import cinematic as cine  # noqa: E402
 from forever_chronicle.ui.cinematic import CinematicWindow  # noqa: E402
 
 
@@ -95,6 +97,11 @@ def test_cinematic_window_plays_with_screenshots(app, ctx, imported, tmp_path, m
         assert not window.toasts, "no toast when the event's screenshot follows with the same banner"
         window._show_cue(dataclasses.replace(event, has_screenshot=False))
         assert window.toasts and window.pins.bursts, "an event slides in as a toast and flashes on the map"
+        first = window.toasts[0]
+        for _ in range(cine.MAX_TOASTS):
+            window._show_cue(dataclasses.replace(event, has_screenshot=False))
+        assert first not in window.toasts and first.isHidden(), \
+            "pushed out: hidden at once (the video export never gets to deleteLater)"
     level = next((c for c in window.cues if c.kind == "level"), None)
     if level:
         ctx.sound.played.clear()
@@ -224,7 +231,6 @@ def test_voyage_camera_and_crossing():
 
 def test_short_zone_visits_slow_the_replay_down():
     from types import SimpleNamespace
-    from forever_chronicle.ui import cinematic as cine
 
     def zone(a, b, map_id):
         return [P(t, 0.5, 0.5, map_id) for t in range(a, b, 5)]
@@ -286,7 +292,7 @@ def test_deaths_from_the_route():
 def test_standstills():
     from forever_chronicle.domain.cinematic import STILL_EDGE, still_spans
 
-    afk = [P(t, 0.5 + (0.0005 if t % 20 else 0)) for t in range(0, 302, 2)]       # 5 minutes on one spot
+    afk = [P(t, 0.5) for t in range(0, 302, 2)]                                     # 5 minutes on one spot
     walk = [P(310 + t, 0.6 + t * 0.002) for t in range(0, 60, 2)]
     short = [P(400 + t, 0.9) for t in range(0, 60, 2)]                                # a minute only
     spans = still_spans(Route(afk + walk + short), 0, 1000)
@@ -294,6 +300,11 @@ def test_standstills():
     assert still_spans(Route(afk), 100, 200) == [(100 + STILL_EDGE, 200 - STILL_EDGE)], "cut to the range"
     long_point = [PositionPoint(0, 500, 1413, 0.5, 0.5, None, False), P(510, 0.6)]
     assert still_spans(Route(long_point), 0, 600) == [(STILL_EDGE, 500 - STILL_EDGE)], "one point standing long"
+    hunt = [P(t, 0.5 + (0.004 if t % 4 else 0)) for t in range(0, 302, 2)]        # 5 minutes running round a camp
+    assert still_spans(Route(hunt), 0, 400) == [], "fighting round one camp: always moving"
+    step = [P(t, 0.5 + (0.0001 if t >= 150 else 0)) for t in range(0, 302, 2)]     # one step after 2.5 minutes
+    assert still_spans(Route(step), 0, 400) == [(STILL_EDGE, 148 - STILL_EDGE), (150 + STILL_EDGE, 300 - STILL_EDGE)], \
+        "a single step ends a standstill"
 
 
 def test_ghost_route_and_grey_view(app):
@@ -349,7 +360,6 @@ def test_zone_music_table_and_cache(tmp_path, monkeypatch):
 
 def test_cinematic_deaths_standstills_and_music(app, ctx, imported, tmp_path, monkeypatch):
     from forever_chronicle.domain.cinematic import Cue, Death
-    from forever_chronicle.ui import cinematic as cine
     from forever_chronicle.wow import zone_music
 
     cid = ctx.repo.list_characters()[0].character_id
@@ -404,6 +414,25 @@ def test_cinematic_deaths_standstills_and_music(app, ctx, imported, tmp_path, mo
     assert window.t >= span[1] and window.still_note > 0, "skipped, and named"
     window.cycle_still()
     assert window.still_mode == "normal" and ctx.config.extra["cine_still"] == "normal"
+
+    # City maps on the seamless map: the destination's fades in during a flight's dive; a cut shows it at once.
+    class World:
+        def update(self, visible, scale, zone, dt):
+            self.zone, self.dt = zone, dt
+    saved = window.world, window.view_map, window.zone_now, window.voyage
+    window.world, window.view_map, window.zone_now = World(), cine.maps.WORLD, 1413
+    window.frame_dt = 0.05
+    a, b = QPointF(0, 0), QPointF(100, 0)
+    window.voyage = cine._Voyage(1454, a, a, b, 1, 0.5, 1, a, b, kind="teleport")
+    window._update_world(1.0)
+    assert window.world.zone == 1413, "pulling back and across: still the old place"
+    window.voyage.age = window.voyage.out + window.voyage.across
+    window._update_world(1.0)
+    assert (window.world.zone, window.world.dt) == (1454, 0.05), "diving in: the destination city fades in"
+    window.voyage, window.world_cut = None, True
+    window._update_world(1.0)
+    assert window.world.dt == 0.0 and not window.world_cut, "after a cut: at once"
+    window.world, window.view_map, window.zone_now, window.voyage = saved
     assert window.still_button.text() == tr("cine.still.normal")
 
     # The camera zooms gently, never beyond its limits.

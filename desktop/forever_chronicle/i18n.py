@@ -340,12 +340,12 @@ STRINGS: dict[str, dict[str, str]] = {
                          "←: 5 Minuten zurück\nS: Stillstand normal / schneller / überspringen\nM: Musik an/aus\n"
                          "Esc: beenden",
         "cine.still.normal": "Stillstand: normal",
-        "cine.still.fast": "Stillstand: ⏩ schneller",
-        "cine.still.skip": "Stillstand: ⏭ überspringen",
+        "cine.still.fast": "Stillstand: ▶▶ schneller",
+        "cine.still.skip": "Stillstand: ▶▶| überspringen",
         "cine.still_tip": "Stellen, an denen du länger auf einem Fleck standest (AFK, Warten): normal abspielen, "
                           "8× schneller oder überspringen. Momente darin werden immer gezeigt. (S)",
-        "cine.still_fast": "⏩  Stillstand  ·  {factor}× schneller  ·  {time}",
-        "cine.still_skipped": "⏭  Stillstand übersprungen  ·  {time}",
+        "cine.still_fast": "▶▶  Stillstand  ·  {factor}× schneller  ·  {time}",
+        "cine.still_skipped": "▶▶|  Stillstand übersprungen  ·  {time}",
         "cine.export": "⤓  Video",
         "cine.export_tip": "Diesen Zeitraum als Video speichern (MP4), so wie ihn der Kino-Modus zeigt",
         "cine.level": "Stufe {level}",
@@ -859,12 +859,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "cine.keys_tip": "Space: pause/continue\n1–4: speed 1×, 2×, 4×, 10×\n→: next moment\n"
                          "←: 5 minutes back\nS: standstills normal / faster / skipped\nM: music on/off\nEsc: close",
         "cine.still.normal": "Standstills: normal",
-        "cine.still.fast": "Standstills: ⏩ faster",
-        "cine.still.skip": "Standstills: ⏭ skip",
+        "cine.still.fast": "Standstills: ▶▶ faster",
+        "cine.still.skip": "Standstills: ▶▶| skip",
         "cine.still_tip": "Stretches where you stayed in one spot (AFK, waiting): play them normally, 8× faster "
                           "or skip them. Moments inside them are always shown. (S)",
-        "cine.still_fast": "⏩  Standstill  ·  {factor}× faster  ·  {time}",
-        "cine.still_skipped": "⏭  Standstill skipped  ·  {time}",
+        "cine.still_fast": "▶▶  Standstill  ·  {factor}× faster  ·  {time}",
+        "cine.still_skipped": "▶▶|  Standstill skipped  ·  {time}",
         "cine.export": "⤓  Video",
         "cine.export_tip": "Save this time range as a video (MP4), as the cinematic mode shows it",
         "cine.level": "Level {level}",

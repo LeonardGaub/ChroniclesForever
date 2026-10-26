@@ -878,12 +878,14 @@ class CinemaFrame(_Overlay):
 
 class CloudCover(_Overlay):
     """Clouds over the whole picture, for trips to and from an island in the sky (maps.SKY_ISLANDS): amount 1
-    hides the map completely (the trip changes maps under it). Lower amounts part the clouds: banks of puffs,
-    lit from the upper left with grey-blue undersides, rush outward from the middle and grow, as when the camera
-    drops through them (and come together again on the way up). Lit by the time of day like the map
-    (set_light)."""
+    hides the map completely (the trip changes maps under it). The clouds close in from the edges of the picture
+    towards the middle, and part from the middle outward, showing the middle first: a front of puffs, lit from
+    the upper left with grey-blue undersides, with misty cloud behind it. Its inner edge is an ellipse the shape
+    of the picture, so it reaches the corners last. Lit by the time of day like the map (set_light)."""
 
-    BANKS, PUFFS = 18, 9           # cloud banks, puffs per bank
+    PUFFS = 90
+    FAR = 1.5                      # the front's inner edge at amount 0, in half picture sizes (corners: 1.41)
+    SOFT = 0.2                     # depth of the mist's soft edge behind the front, in half picture sizes
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -891,16 +893,10 @@ class CloudCover(_Overlay):
         self.clock = 0.0
         self.light = (1.0, 1.0, 1.0)
         rng = random.Random(7)
-        self.banks = []
-        for k in range(self.BANKS):
-            # Spread around the middle on a sunflower spiral, so every part of the picture is covered.
-            reach = 0.62 * math.sqrt((k + 0.5) / self.BANKS)
-            angle = k * 2.39996 + rng.uniform(-0.3, 0.3)
-            x, y = 0.5 + reach * math.cos(angle) * 1.15, 0.5 + reach * math.sin(angle)
-            away = math.atan2(y - 0.5, x - 0.5) if reach > 0.08 else rng.uniform(-math.pi, math.pi)
-            puffs = [(rng.gauss(0, 0.075), rng.gauss(0, 0.035), rng.uniform(0.07, 0.13), rng.uniform(0.9, 1.0))
-                     for _ in range(self.PUFFS)]
-            self.banks.append((x, y, math.cos(away), math.sin(away), rng.uniform(0.8, 1.25), puffs))
+        # (angle, depth behind the front, radius, shade, drift): a sunflower spiral spreads them evenly all round.
+        self.puffs = [(k * 2.39996 + rng.uniform(-0.15, 0.15), (k + 0.5) / self.PUFFS * 1.6,
+                       rng.uniform(0.15, 0.27), rng.uniform(0.9, 1.0), rng.uniform(-1, 1))
+                      for k in range(self.PUFFS)]
         self.hide()
 
     def set_amount(self, amount: float) -> None:
@@ -930,35 +926,52 @@ class CloudCover(_Overlay):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
-        size = max(w, h)
-        part = 1 - a
-        # Deep inside the clouds: a misty fill, lighter in the middle; at 1 nothing of the map shows.
-        veil = ease_in(clamp((a - 0.8) / 0.2))
-        if veil > 0:
-            mist = QRadialGradient(QPointF(w / 2, h / 2), size * 0.75)
-            mist.setColorAt(0, self._color(1.0, veil))
-            mist.setColorAt(1, self._color(0.86, veil))
-            painter.fillRect(self.rect(), mist)
+        # Distances in half picture sizes from the middle: 1 is the edge of the picture, the corners lie at 1.41.
+        # The front's inner edge (below 0 at a = 1): slow out at the edges, quick across the middle, so the
+        # middle is covered late on the way in and shows early on the way out.
+        edge = (1 - a) ** 0.6 * (self.FAR + self.SOFT) - self.SOFT
+        painter.save()
+        painter.translate(w / 2, h / 2)
+        painter.scale(w / 2, h / 2)
+        # The mist behind the front: clear inside the edge, thickening over SOFT, solid beyond.
+        reach = 2.0
+        mist = QRadialGradient(QPointF(0, 0), reach)
+        stops = [(0.0, clamp(-edge / self.SOFT))]
+        if edge > 0:
+            stops.append((edge, 0.0))
+        if edge + self.SOFT > 0:
+            stops.append((edge + self.SOFT, 1.0))
+        for rho, alpha in stops + [(reach, 1.0)]:
+            at = min(1.0, rho / reach)
+            mist.setColorAt(at, self._color(0.98 - 0.12 * at, alpha))
+        painter.fillRect(QRectF(-1, -1, 2, 2), mist)
+        painter.restore()
+
         painter.setPen(Qt.PenStyle.NoPen)
-        alpha = clamp(a * 2.2)
-        for x, y, dx, dy, speed, puffs in self.banks:
-            reach = part * 1.25 * speed
-            grow = 1 + 1.4 * part
-            bx = (x + self.clock * 0.01 * speed + dx * reach) * w
-            by = (y + dy * reach) * h
-            for px, py, radius, shade in puffs:
-                cx, cy, r = bx + px * size * grow, by + py * size * grow, radius * size * grow
-                shadow = QRadialGradient(QPointF(cx + 0.12 * r, cy + 0.2 * r), r)
-                shadow.setColorAt(0, self._color(0.72 * shade, alpha * 0.35))
-                shadow.setColorAt(1, self._color(0.72 * shade, 0))
-                painter.setBrush(shadow)
-                painter.drawEllipse(QPointF(cx + 0.12 * r, cy + 0.2 * r), r, r)
-                puff = QRadialGradient(QPointF(cx, cy), r, QPointF(cx - 0.3 * r, cy - 0.35 * r))
-                puff.setColorAt(0, self._color(1.04 * shade, alpha))
-                puff.setColorAt(0.5, self._color(0.95 * shade, alpha * 0.85))
-                puff.setColorAt(1, self._color(0.86 * shade, 0))
-                painter.setBrush(puff)
-                painter.drawEllipse(QPointF(cx, cy), r, r)
+        size = (w + h) / 4
+        turn = self.clock * 0.012
+        for angle, depth, radius, shade, drift in self.puffs:
+            # The front is puffy; further back the puffs grow and fade into the mist.
+            back = clamp((depth - 0.3) / 0.7)
+            alpha = 1 - 0.8 * back
+            r = radius * size * (1 + 0.8 * back)
+            # Set back by half their size: the front puffs reach only a little past the mist's edge.
+            rho = edge + 0.5 * r / (h / 2) + depth + 0.02 * math.sin(self.clock * 0.7 + drift * 3)
+            if rho - r / (h / 2) > 1.45:
+                continue                                       # beyond the corners
+            angle += turn * drift
+            cx, cy = w / 2 * (1 + rho * math.cos(angle)), h / 2 * (1 + rho * math.sin(angle))
+            shadow = QRadialGradient(QPointF(cx + 0.12 * r, cy + 0.2 * r), r)
+            shadow.setColorAt(0, self._color(0.72 * shade, 0.35 * alpha))
+            shadow.setColorAt(1, self._color(0.72 * shade, 0))
+            painter.setBrush(shadow)
+            painter.drawEllipse(QPointF(cx + 0.12 * r, cy + 0.2 * r), r, r)
+            puff = QRadialGradient(QPointF(cx, cy), r, QPointF(cx - 0.3 * r, cy - 0.35 * r))
+            puff.setColorAt(0, self._color(1.04 * shade, alpha))
+            puff.setColorAt(0.5, self._color(0.95 * shade, 0.85 * alpha))
+            puff.setColorAt(1, self._color(0.86 * shade, 0))
+            painter.setBrush(puff)
+            painter.drawEllipse(QPointF(cx, cy), r, r)
         painter.end()
 
 

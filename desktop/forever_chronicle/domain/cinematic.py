@@ -7,8 +7,8 @@
   was found are used.
 - Deaths (death_spans): when the character lay dead, ran back as a ghost and came back to life, found in the
   route because the addon records only the death itself.
-- Standstills (still_spans): stretches in which the character stayed in one spot (AFK, waiting, trading), which
-  the replay can run through faster or skip.
+- Standstills (still_spans): stretches in which the character did not move at all (AFK, waiting), which the
+  replay can run through faster or skip.
 - Teleports (teleports): hearthstone, portals and the ghost's release to the graveyard, which the replay shows as a
   flight across the world map. A jump to the other continent counts only after the player stood still before it
   (casting); otherwise it was a boat or zeppelin, which the replay shows as a crossing of the sea.
@@ -234,14 +234,15 @@ def _moved_on(route: Route, body: PositionPoint, p: PositionPoint) -> bool:
 
 # -- standstills ----------------------------------------------------------------------------------------------
 
-STILL_SECONDS = 90         # staying in one spot at least this long is a standstill
-STILL_REACH = 0.0015       # continent widths (~25 yards) the player may move and still be standing
+STILL_SECONDS = 90         # not moving a single step at least this long is a standstill
 STILL_EDGE = 6             # seconds at both ends that play normally (stopping and setting off)
 
 
 def still_spans(route: Route, start: float, end: float) -> list[tuple[float, float]]:
-    """(from, to) of the standstills within [start, end], in time order. Inside dungeons there are no positions,
-    so nothing there counts."""
+    """(from, to) of the standstills within [start, end], in time order: stretches in which the player did not
+    move at all (AFK, waiting). The addon keeps them as one sample whose end time it extends, and any step starts
+    a new one, so a fight round one camp is never a standstill. Inside dungeons there are no positions, so nothing
+    there counts."""
     spans: list[tuple[float, float]] = []
     anchor: PositionPoint | None = None
     prev: PositionPoint | None = None
@@ -253,9 +254,9 @@ def still_spans(route: Route, start: float, end: float) -> list[tuple[float, flo
             spans.append((a, b))
 
     for p in route.points_in(start, end):
-        d = route.distance(anchor, p) if anchor is not None and prev is not None and route.connected(prev, p) else None
-        if d is not None and d <= STILL_REACH:
-            until = p.end
+        if (anchor is not None and prev is not None and route.connected(prev, p)
+                and (p.map_id, p.x, p.y) == (anchor.map_id, anchor.x, anchor.y)):
+            until = p.end           # the same spot again (a new sample after a reload or a loading screen)
         else:
             close()
             anchor = p if p.x is not None and not p.taxi else None
@@ -270,6 +271,7 @@ def still_spans(route: Route, start: float, end: float) -> list[tuple[float, flo
 TELEPORT_GAP = 120         # seconds between vanishing and arriving at most (a loading screen); longer: a logout
 TELEPORT_MIN = 0.03        # continent widths (~450 yards): shorter jumps are not flown
 CAST_SECONDS = 5           # standing this long before a jump to the other continent: a hearthstone or a portal
+CAST_REACH = 0.0015        # continent widths (~25 yards) the player may shift while casting
 
 
 @dataclass(frozen=True)
@@ -328,7 +330,7 @@ def _cast(route: Route, k: int) -> bool:
     for j in range(k - 1, -1, -1):
         p = route.points[j]
         d = route.distance(p, last)
-        if d is None or d > STILL_REACH or last.end - p.end > CAST_SECONDS * 4:
+        if d is None or d > CAST_REACH or last.end - p.end > CAST_SECONDS * 4:
             break
         began = p.time
     return last.end - began >= CAST_SECONDS

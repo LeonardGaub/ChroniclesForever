@@ -179,7 +179,7 @@ def test_trips_to_and_from_a_sky_island_go_through_the_clouds(app, ctx, imported
     window.show()
     window.timer.stop()
     window.paused = False
-    trips, cloudy, black = [], 0.0, 0.0
+    trips, cloudy, black, held = [], 0.0, 0.0, 1.0
     for _ in range(2000):
         window.advance(0.05)
         trip = window.sky_trip
@@ -188,10 +188,13 @@ def test_trips_to_and_from_a_sky_island_go_through_the_clouds(app, ctx, imported
                 trips.append(trip)
             cloudy = max(cloudy, window.clouds.amount)
             black = max(black, window.cover_effect.opacity())
+            if trip.target is not None and trip.age <= cinematic.SKY_RISE + cinematic.SKY_HOLD:
+                held = min(held, window.clouds.amount)
         if window.ended:
             break
     assert [(t.portal, t.to_view) for t in trips] == [(True, island), (False, 1413)], "up by portal, down by flight"
     assert cloudy > 0.99 and black == 0.0, "the clouds close (almost) completely; no fade from black"
+    assert held == 1.0, "the new map comes in under closed clouds, which stay closed a moment before parting"
     assert window.sky_trip is None and not window.clouds.isVisible() and window.marker.scale() == 1.0
     assert window.view_map == (maps.WORLD if window.seamless else 1413), "down on the Barrens"
     assert trips[0].target is not None and trips[1].end_scale > 0

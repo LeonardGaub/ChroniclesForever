@@ -4,6 +4,42 @@ The session notes that used to be the "History" section of `NEXT_STEPS.md`, newe
 at the time: older entries may describe things that changed or were removed later. The current state is in
 `NEXT_STEPS.md`.
 
+### Cinematic: alerts in videos, city landings, standstill symbols, cloud trips (2026-10-26)
+- Found by rendering Zitter's replay frame by frame (the export's loop, a copy of the data) and looking at the
+  frames. Desktop only; the brainstorm's other ideas are not built.
+- Standstill symbols: ⏩ and ⏭ are emoji by default, so Qt drew them as blue Segoe UI Emoji tiles (Friz Quadrata
+  has neither). Now "▶▶" (faster) and "▶▶|" (skip), plain text symbols in the label's colour like the ▶ button.
+  The offscreen platform has no font fallback and shows boxes for all such symbols; judge glyphs on Windows.
+- Alerts in videos: a fourth alert pushes the oldest out with `deleteLater()`, which never runs during the video
+  export (it runs inside a button's slot, and `processEvents` does not delete). The pushed-out alert stood in the
+  video until the end (Oggleflint from Ragefire still shown in Tirisfal hours later). Alerts are hidden first now
+  (`CinematicWindow._drop_toast`).
+- Arriving in a city by teleport: the city's own map faded in only after landing (0.8 s), so the dive ended close
+  up on the coarse world tiles (a huge blurred "ORGRIMMAR" banner). The destination city now fades in during the
+  dive (`_update_world`), and a camera cut shows or hides city maps at once (`world_cut`).
+- Standstill note: naming only standstills of 5 minutes or more was tried and reverted at the user's request (a
+  skipped mob hunt then went by without a word, which felt weird). Every skipped standstill is named again. Most
+  last 1-3 minutes (Zitter: 45, median 108 s).
+- Standstills are AFK only now (user: early on Zitter's replay 8 minutes of questing were skipped; "it should only
+  skip afk periods, where the player has not moved a single yard"). That span (14.10 15:17-15:26, Zephras Isle,
+  quest "Al'Aketh Assassins") was a mob hunt: 46 points every 2-10 s, always within the old ~25-yard reach of one
+  spot. A walking limit per minute was tried first and replaced. Now a standstill is the same spot (map, x, y)
+  for `STILL_SECONDS`: the addon keeps not moving as one sample whose end time it extends (`samePlace` in
+  Positions.lua), and any step starts a new one. Zitter: 17 standstills (was 45), Dorgar 15 (was 33); the end
+  credits' standing time counts only these. The hearthstone check keeps its own ~25 yards (`CAST_REACH`).
+- Cloud trips (user: the clouds must come and go only with the new map under them): the map changed on the first
+  frame after the clouds closed and they began to part in the same frame, steepest at the start; live, loading
+  the new map makes the next step long (up to 0.1 s), so the new map could show through at once. Now the trip's
+  clock restarts after the change (loading time does not count), the clouds stay closed `SKY_HOLD` (0.25 s) and
+  part gently (1 - x^1.6). About 0.7 s of closed clouds in all. Old and new code rendered the trips identically
+  before this, so the cleanup commits and the city fix had not changed them.
+- Clouds redrawn (user: in from the sides to the middle, covering everything; out from the middle first): a front
+  of puffs on an ellipse the shape of the picture (`CloudCover`), solid mist behind it, closing to the middle and
+  opening outward; its pace is (1 - amount)^0.6, slow at the edges and quick across the middle. The front is
+  puffy, puffs further back grow and fade into the mist (an even field of puffs looked like bubble wrap). The
+  sky trip's parting curve became 1 - x^1.3. Fully covered: ~0.55 s per trip (measured on the rendered frames:
+  no coloured map pixels left), before ~0.66 s.
+
 ### Stat tiles, jumps and fish, Zephras Isle through the clouds (2026-10-26)
 - Desktop overview: the stats are tiles as in the addon (game icon in a dark square, gold name, white value, two
   per row, each group with its description). Every stat has an icon (`domain/stats.py`); `tools/extract_icons.py`

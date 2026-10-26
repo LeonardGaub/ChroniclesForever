@@ -22,9 +22,9 @@
   The ghost's release to the graveyard flies the same way as a pale wisp.
 - Islands in the sky (maps.SKY_ISLANDS, Zephras Isle): the game places them nowhere on the world
   map, so trips there go through the clouds instead of across it. The player rises while the camera pulls back
-  and clouds close over the picture (a portal up starts with the arcane swirl); under the closed clouds the map
-  changes, then they part over the destination while the camera and the player come down (ui/cinematic_fx.py
-  CloudCover).
+  and clouds close in from the edges to the middle (a portal up starts with the arcane swirl); under the closed
+  clouds the map changes, then they part from the middle outward over the destination while the camera and
+  the player come down (ui/cinematic_fx.py CloudCover).
 - Time of day (domain/daylight.py, option "cine_daylight"): the map is tinted by the recorded local time: a pink
   dawn, an orange dusk and a cold blue night.
 - End credits (ui/cinematic_credits.py, option "cine_credits"): at the end the camera pulls back over the whole
@@ -131,6 +131,7 @@ FLIGHTS = {"sea": (VOYAGE_OUT, VOYAGE_TRAVEL, VOYAGE_IN, 0.3), "teleport": (0.75
 FLIGHT_MARGIN = 1.5        # a teleport's flight shows both ends with this much room
 # Trips to and from an island in the sky (maps.SKY_ISLANDS), through the clouds.
 SKY_RISE, SKY_FALL = 1.1, 1.8   # real seconds: up into the clouds, down out of them over the destination
+SKY_HOLD = 0.25            # real seconds the closed clouds stay over the new map before they part
 SKY_LIFT = 0.16            # share of the picture's height the player rises and comes down through
 SKY_HIGH = 0.4             # the camera comes down from this share of its scale over the destination
 SKY_MARKER = 1.8           # the marker's size high up (it shrinks as the player comes down)
@@ -400,6 +401,7 @@ class CinematicWindow(QWidget):
         self.world: WorldArt | None = None
         self.zone_now: int | None = None
         self.frame_size: tuple[float, float] | None = None
+        self.world_cut = False              # the camera jumped: city maps show or go at once, without fading
         self.route_item: RouteItem | None = None
         self.pins: PinsItem | None = None
         self.camera: QPointF | None = None
@@ -679,7 +681,7 @@ class CinematicWindow(QWidget):
         self.marker.setScale(1.0)
         self.snapshot.hide()
         for toast in self.toasts:            # they belong to another moment
-            toast.deleteLater()
+            self._drop_toast(toast)
         self.toasts.clear()
         if self.pins:
             self.pins.clear_bursts()
@@ -1126,6 +1128,7 @@ class CinematicWindow(QWidget):
             target = 1.0
         if jump or self.camera is None:
             self.camera = QPointF(head)
+            self.world_cut = True
         else:
             self.zoom += (target - self.zoom) * smooth(dt, ZOOM_SECONDS)
             self.camera = lerp_point(self.camera, head, smooth(dt, FOLLOW_SECONDS))
@@ -1310,11 +1313,13 @@ class CinematicWindow(QWidget):
             return
         if trip.target is None:
             self._sky_arrive(trip)
-        f = clamp((trip.age - SKY_RISE) / SKY_FALL)
+            trip.age = SKY_RISE             # the time spent loading the new map is not part of the parting
+        f = clamp((trip.age - SKY_RISE - SKY_HOLD) / SKY_FALL)
         if f >= 1:
             self._sky_land(trip)
             return
-        self.clouds.set_amount(1 - clamp(f / 0.85) ** 0.8)
+        # Closed over the new map for a moment, then parting slowly at first: the change is never seen.
+        self.clouds.set_amount(1 - clamp(f / 0.85) ** 1.3)
         e = ease_out(f)
         high = trip.end_scale * SKY_HIGH
         center = trip.end
@@ -1571,10 +1576,15 @@ class CinematicWindow(QWidget):
         self._update_world(scale)
 
     def _update_world(self, scale: float) -> None:
-        """The seamless map's detail for the view as it is now."""
+        """The seamless map's detail for the view as it is now. A flight's destination city fades in while the
+        camera dives in (not after landing, close up on the coarse tiles), and a cut shows it at once."""
         if self.world is not None and self.view_map == maps.WORLD:
+            zone, voyage = self.zone_now, self.voyage
+            if voyage is not None and voyage.age >= voyage.out + voyage.across:
+                zone = voyage.to_view
             self.world.update(self.view.mapToScene(self.view.viewport().rect()).boundingRect(), scale,
-                              self.zone_now, self.frame_dt)
+                              zone, 0.0 if self.world_cut else self.frame_dt)
+        self.world_cut = False
 
     def _zone_name(self, map_id: int | None, instance_id: int | None) -> str | None:
         if instance_id is not None:
@@ -1631,7 +1641,7 @@ class CinematicWindow(QWidget):
         toast = AchievementToast(self, cue, TOAST_SECONDS)
         self.toasts.append(toast)
         while len(self.toasts) > MAX_TOASTS:
-            self.toasts.pop(0).deleteLater()
+            self._drop_toast(self.toasts.pop(0))
         self._layout_toasts()
         toast.show()
         for widget in (self.title, self.photo, self.controls):
@@ -1675,12 +1685,19 @@ class CinematicWindow(QWidget):
         self.photo_on = False
         self.photo.hide()
 
+    @staticmethod
+    def _drop_toast(toast: AchievementToast) -> None:
+        # Hidden first: the video export never returns to the event loop, so deleteLater alone would leave
+        # the alert standing in the picture for the rest of the video.
+        toast.hide()
+        toast.deleteLater()
+
     def _age_overlays(self, dt: float) -> None:
         self.clouds.advance(dt)
         for toast in list(self.toasts):
             if not toast.advance(dt):
                 self.toasts.remove(toast)
-                toast.deleteLater()
+                self._drop_toast(toast)
                 self._layout_toasts()
         self.title.advance(dt)
         self.xp_bar.advance(dt)
