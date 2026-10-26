@@ -10,7 +10,10 @@
   sound.
 - ffmpeg comes from the pip package imageio-ffmpeg (the program is inside), else from the PATH. Where it is
   missing (friends' setups from "Journey Forever starten.bat"), the dialog offers to install it.
-- Takes about as long as the video plays, or longer at 1080p; the progress dialog can cancel it.
+- The window is laid out at the size of the screen (cut to 16:9), as the cinematic mode is full screen, so titles,
+  photos and the HUD keep their proportions. Each frame is drawn at the video's resolution, or at the layout's
+  own when that is bigger (ffmpeg then scales it down): never drawn small and blown up.
+- Takes about as long as the video plays, or longer at 1440p and 4K; the progress dialog can cancel it.
 """
 
 from __future__ import annotations
@@ -40,7 +43,7 @@ from .widgets import busy
 FPS = 30
 RATE = 48000
 SAMPLES = RATE // FPS          # audio samples per frame
-SIZES = {"720p": (1280, 720), "1080p": (1920, 1080)}
+SIZES = {"720p": (1280, 720), "1080p": (1920, 1080), "1440p": (2560, 1440), "4K": (3840, 2160)}
 TAIL = 4.0                     # seconds after the replay at least (the end title; the credits take longer)
 NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
@@ -188,6 +191,15 @@ def mix(recorder: Recorder, ffmpeg: str, out: Path) -> None:
 
 # -- export ---------------------------------------------------------------------------------------------------
 
+def layout_size() -> tuple[int, int]:
+    """The export window's size (logical pixels): the primary screen's, cut to 16:9, as the cinematic mode
+    looks full screen here."""
+    screen = QGuiApplication.primaryScreen()
+    sw, sh = (screen.size().width(), screen.size().height()) if screen else (1920, 1080)
+    height = min(sh, sw * 9 // 16)
+    return height * 16 // 9, height
+
+
 def export_video(ctx, character_id: str, start: int, end: int, path: Path, size: str | tuple = "1080p", speed: int = 4,
                  colors: str = "level", still: str | None = None, with_sound: bool = True,
                  progress: Callable[[float], bool] | None = None) -> Path:
@@ -206,17 +218,23 @@ def export_video(ctx, character_id: str, start: int, end: int, path: Path, size:
     window = CinematicWindow(ctx, character_id, start, end, speed, colors, sound=recorder, exporting=True,
                              still=still)
     window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
-    screen = QGuiApplication.primaryScreen()
-    ratio = screen.devicePixelRatio() if screen else 1.0
-    window.resize(round(width / ratio), round(height / ratio))
+    lw, lh = layout_size()
+    window.resize(lw, lh)
     window.show()
+    # Drawn at the video's size, or at the layout's own if that is bigger; not at the screen's pixel ratio.
+    ratio = max(1.0, height / lh)
+    image = QImage(round(lw * ratio), round(lh * ratio), QImage.Format.Format_ARGB32_Premultiplied)
+    image.setDevicePixelRatio(ratio)
+    scale = [] if (image.width(), image.height()) == (width, height) else \
+        ["-vf", f"scale={width}:{height}:flags=lanczos"]
 
     path = Path(path)
     video = path.with_name(path.stem + ".video.mp4")
     audio = path.with_name(path.stem + ".audio.wav")
-    command = [ffmpeg, "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{width}x{height}",
-               "-r", str(FPS), "-i", "-", "-an", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-               "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(video)]
+    command = [ffmpeg, "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "bgra",
+               "-s", f"{image.width()}x{image.height()}", "-r", str(FPS), "-i", "-", "-an", *scale,
+               "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+               str(video)]
     encoder = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=NO_WINDOW)
     total = window.bar.timeline.total
     tail = 0.0
@@ -224,10 +242,8 @@ def export_video(ctx, character_id: str, start: int, end: int, path: Path, size:
         while tail < max(TAIL, window.credits_seconds()):
             window.advance(1 / FPS)
             recorder.step(1 / FPS)
-            image = window.grab().toImage().convertToFormat(QImage.Format.Format_ARGB32)
-            if image.width() != width or image.height() != height:
-                image = image.scaled(width, height, Qt.AspectRatioMode.IgnoreAspectRatio,
-                                     Qt.TransformationMode.SmoothTransformation)
+            image.fill(Qt.GlobalColor.black)
+            window.render(image)
             try:
                 encoder.stdin.write(image.constBits().tobytes())
             except OSError:

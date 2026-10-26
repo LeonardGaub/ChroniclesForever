@@ -410,7 +410,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "export.start": "Video erstellen",
         "export.cancel": "Abbrechen",
         "export.hint": "Das Video zeigt die Wiedergabe wie der Kino-Modus, Bild für Bild. Das dauert etwa so lange "
-                       "wie das Video selbst, in 1080p etwas länger.",
+                       "wie das Video selbst, in 1440p und 4K länger.",
         "export.progress": "Video wird erstellt …",
         "export.done": "Video gespeichert:\n{path}",
         "export.open_folder": "Ordner öffnen",
@@ -937,7 +937,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "export.start": "Create video",
         "export.cancel": "Cancel",
         "export.hint": "The video shows the replay as the cinematic mode does, frame by frame. It takes about as "
-                       "long as the video itself, a little longer at 1080p.",
+                       "long as the video itself, longer at 1440p and 4K.",
         "export.progress": "Creating the video …",
         "export.done": "Video saved:\n{path}",
         "export.open_folder": "Open folder",

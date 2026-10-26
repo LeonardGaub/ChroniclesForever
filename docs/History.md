@@ -4,6 +4,18 @@ The session notes that used to be the "History" section of `NEXT_STEPS.md`, newe
 at the time: older entries may describe things that changed or were removed later. The current state is in
 `NEXT_STEPS.md`.
 
+### Video export as sharp as the cinematic mode (2026-10-26)
+- User compared a frame of the cinematic mode with the same moment of an exported video: photos, chat text and
+  titles were much softer in the video. Cause: their screen is 4K at 150 % (2560×1440 logical), so the cinematic
+  mode draws at 3840×2160, while the export laid the window out at 1280×720 logical (output size / screen pixel
+  ratio) and drew 1920×1080. The HUD and titles were also bigger in proportion than full screen.
+- Now the export window takes the screen's logical size cut to 16:9 (`layout_size`) and is drawn with
+  `QWidget.render` into an image of its own pixel ratio: the video's size, or the layout's own when that is bigger
+  (ffmpeg scales it down with lanczos). Independent of the screen's pixel ratio. 1440p and 4K added, CRF 20 → 18.
+- Checked with a real 1080p export of Dorgar's replay: the photo's chat text is as sharp as in the live
+  screenshot. ~40 ms per frame at 1080p here (was ~25–30). The map art itself stays soft when close (1002×668
+  zone art, zoom 2.4); sharper map art would need upscaled tiles (not done).
+
 ### Cinematic: adventure music by level instead of zone music (2026-10-26)
 - The zone music switched too often when crossing zones. A plan by stays in one place (switch only for stays of
   10 s real time, flights and day/night kept) was built and rejected by the user the same day, not committed.
