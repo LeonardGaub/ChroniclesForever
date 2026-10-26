@@ -125,8 +125,13 @@ def test_music_switches_with_a_fade(app, tmp_path):
     assert music.fade == 1.0 and not music.switched
     music.play([b])
     assert music.pending is None, "the same music again changes nothing"
-    music.play(None)
+    music.play(None, (4.0, 3.0))
     assert music.pending == [BUILTIN_MUSIC], "None: the music chosen in the settings"
+    music.step(SWITCH_OUT)
+    assert music.pending == [BUILTIN_MUSIC] and music.fade > 0, "a slower switch (the credits) fades out longer"
+    music.step(4.0)
+    music.step(3.0)
+    assert music.tracks == [BUILTIN_MUSIC] and music.fade == 1.0 and music.switching is None
 
     quiet = MusicPlayer(AppConfig(), audible=False)
     quiet.start(tracks=[a])

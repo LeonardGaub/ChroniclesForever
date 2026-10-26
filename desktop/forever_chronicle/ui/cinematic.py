@@ -97,10 +97,11 @@ SPEEDS = (1, 2, 4, 10)
 ZOOM = 2.4                 # camera zoom relative to the whole map
 FOLLOW_SECONDS = 0.45      # time constant of the camera following the marker
 KEEP_INSIDE = 0.3          # the marker stays within this share of the picture's width/height from its centre
-ZOOM_OUT_TAXI = 0.86       # dynamic zoom (share of ZOOM): on flight paths ...
-ZOOM_OUT_FAST = 0.9        # ... at most this far out while the marker races across the picture ...
+ZOOM_OUT_TAXI = 0.78       # dynamic zoom (share of ZOOM): on flight paths ...
+ZOOM_OUT_FAST = 0.87       # ... at most this far out while the marker races across the picture ...
 ZOOM_IN_CLOSE = 1.07       # ... and a little in when a moment is close, or while standing still or dead
-ZOOM_SECONDS = 2.6         # time constant of zoom changes: slow, so the picture stays calm
+ZOOM_SECONDS = 2.6         # time constant of zoom changes: slow, so the picture stays calm ...
+ZOOM_OUT_SECONDS = 1.8     # ... a little quicker zooming out, so a flight is soon seen from higher up
 FAST_FROM, FAST_TO = 0.12, 0.45   # marker speed (picture widths per second) where zooming out begins / is full
 CLOSE_SECONDS = 2.5        # real seconds before a moment in which the camera moves in
 STILL_MODES = ("normal", "fast", "skip")
@@ -146,7 +147,8 @@ SKY_LIFT = 0.16            # share of the picture's height the player rises and 
 SKY_HIGH = 0.4             # the camera comes down from this share of its scale over the destination
 SKY_MARKER = 1.8           # the marker's size high up (it shrinks as the player comes down)
 LIGHT_SECONDS = 1.2        # time constant of the light following the time of day
-OUTRO_SECONDS = 4.0        # the camera pulling back over the whole route at the end
+OUTRO_SECONDS = 5.0        # the camera pulling back over the whole route at the end
+CREDITS_MUSIC = (4.0, 3.5)   # seconds the adventure music fades out and the credits' theme in
 OUTRO_MARGIN = 1.3
 INTRO_HOLD = 1.2           # real seconds the opening shows the whole map under the character's title ...
 INTRO_DIVE = 2.4           # ... and the camera then takes to dive to where the replay starts
@@ -1239,7 +1241,7 @@ class CinematicWindow(QWidget):
             self.camera = QPointF(head)
             self.world_cut = True
         else:
-            self.zoom += (target - self.zoom) * smooth(dt, ZOOM_SECONDS)
+            self.zoom += (target - self.zoom) * smooth(dt, ZOOM_OUT_SECONDS if target < self.zoom else ZOOM_SECONDS)
             self.camera = lerp_point(self.camera, head, smooth(dt, FOLLOW_SECONDS))
             # Never let the marker drift out of the middle of the picture.
             scale = self._scale()
@@ -1533,7 +1535,7 @@ class CinematicWindow(QWidget):
         self._start_outro()
         if self.adventure_music and self.sound.music.active:
             self.music_now = None
-            self.sound.music.play(None)             # the music chosen in the settings (the built-in theme)
+            self.sound.music.play(None, CREDITS_MUSIC)   # the music chosen in the settings (the built-in theme)
         self._update_ambience(0.0, now=True)        # the ambience fades out under the credits
         return True
 

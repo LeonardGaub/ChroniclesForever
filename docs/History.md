@@ -4,6 +4,14 @@ The session notes that used to be the "History" section of `NEXT_STEPS.md`, newe
 at the time: older entries may describe things that changed or were removed later. The current state is in
 `NEXT_STEPS.md`.
 
+### Cinematic: wider flights, softer way into the credits (2026-10-26)
+- User: the flight Thunder Bluff → Orgrimmar stayed too close, and the credits came too abruptly with the music
+  cut off. Zooming out now has its own quicker time constant (`ZOOM_OUT_SECONDS` 1.8 s, in stays 2.6 s); flights
+  go out to 0.78 (was 0.86), fast stretches to 0.87 (was 0.9).
+- Credits: `MusicPlayer.play` takes optional (out, in) fades; the adventure music fades out over 4 s and the theme
+  in over 3.5 s. The camera pulls back over 5 s (was 4), the map dims over 4 s (was 2.5) and the first line comes
+  up after 3.5 s (was 1.2), about when the old music has gone.
+
 ### Map tab on the seamless world map (2026-10-26)
 - User request: the Karte tab shows the same seamless (OpenMap) world map as the cinematic mode. Every zone,
   continent and Azeroth (new entry in the map list) is a place on it: picking a map or following the player only

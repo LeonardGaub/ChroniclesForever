@@ -330,6 +330,7 @@ class MusicPlayer(QObject):
         self.duck_level = 1.0
         self.duck_left = 0.0      # seconds the music stays ducked
         self.fade_in, self.fade_out, self.switch_out, self.switch_in = FADE_IN, FADE_OUT, SWITCH_OUT, SWITCH_IN
+        self.switching: tuple[float, float] | None = None   # (out, in) of the switch under way, if not the usual
         self._player = None
         self._output = None
         self.timer = QTimer(self)
@@ -357,14 +358,16 @@ class MusicPlayer(QObject):
                 self._player.play()
         self.timer.start()
 
-    def play(self, tracks: list[Path] | None) -> None:
+    def play(self, tracks: list[Path] | None, fades: tuple[float, float] | None = None) -> None:
         """Switches to other music (None: the music chosen in the settings). While music plays, the current one
-        fades out and the new one fades in; otherwise the new one is only loaded for the next start."""
+        fades out and the new one fades in (fades: seconds out and in, else SWITCH_OUT and SWITCH_IN); otherwise
+        the new one is only loaded for the next start."""
         new = self._playlist(tracks)
         if sorted(new) == sorted(self.pending if self.pending is not None else self.tracks):
             return
         if self.active and self.fade > 0:
             self.pending = new
+            self.switching = fades
             self.timer.start()
         else:
             self.pending = None
@@ -396,18 +399,21 @@ class MusicPlayer(QObject):
         duck_target = DUCK if self.duck_left > 0 else 1.0
         self.duck_level = _approach(self.duck_level, duck_target,
                                     dt * (1 - DUCK) / (DUCK_IN if duck_target < self.duck_level else DUCK_OUT))
+        switch_out, switch_in = self.switching or (self.switch_out, self.switch_in)
         if self.pending is not None:
-            self.fade = _approach(self.fade, 0.0, dt / self.switch_out)
+            self.fade = _approach(self.fade, 0.0, dt / switch_out)
             if self.fade == 0:
                 new, self.pending = self.pending, None
                 self.switched = True
                 self._use(new)
         elif self.target > self.fade:
-            self.fade = _approach(self.fade, self.target, dt / (self.switch_in if self.switched else self.fade_in))
+            self.fade = _approach(self.fade, self.target, dt / (switch_in if self.switched else self.fade_in))
         else:
             self.fade = _approach(self.fade, self.target, dt / self.fade_out)
         if self.fade >= self.target:
             self.switched = False
+            if self.pending is None:
+                self.switching = None
         self._apply()
         if (self.pending is None and self.fade == self.target and self.duck_level == duck_target
                 and self.duck_left == 0):

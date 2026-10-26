@@ -17,9 +17,9 @@ from .cinematic_fx import (BANNER_HEADING, GOLD_LETTERS, TRIM, _TimedOverlay, cl
 from .screenshots import load_thumbnail
 
 SPEED = 0.07               # scrolling, in window heights per second
-DIM_SECONDS = 2.5          # the map dims behind the credits
+DIM_SECONDS = 4.0          # the map dims behind the credits (slowly, while the camera pulls back)
 DIM = 185                  # how dark it gets (alpha)
-START_DELAY = 1.2          # seconds before the first line comes up
+START_DELAY = 3.5          # seconds before the first line comes up (as the adventure music has faded out)
 HOLD = 4.0                 # seconds the last card stands before the credits count as finished
 MAX_PHOTOS = 12
 PARALLAX = 0.8             # the polaroids move slower than the text
