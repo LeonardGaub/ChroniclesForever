@@ -29,7 +29,7 @@ from .route import WORLD_PER_CONTINENT, Route, too_fast
 
 # Event types the replay announces. Quests are left out: there are too many for a replay at speed.
 CUE_EVENT_TYPES = ("level_up", "player_died", "zone_discovered", "achievement_earned", "rare_killed",
-                   "boss_killed", "dungeon_completed")
+                   "boss_killed", "dungeon_completed", "profession_learned", "profession_rank")
 GAP_SKIP = 30              # breaks without points longer than this are skipped by the replay: no playing time
 
 
@@ -66,6 +66,8 @@ BANNER_TITLES: dict[str, Callable[[EventRow], Any]] = {
     "zone_discovered": lambda e: e.payload.get("zone") or e.zone_name,
     "quest_completed": lambda e: e.payload.get("title"),
     "player_died": lambda e: e.subzone_name or e.zone_name,
+    "profession_learned": lambda e: e.payload.get("name"),
+    "profession_rank": lambda e: event_types.describe(e),
 }
 
 

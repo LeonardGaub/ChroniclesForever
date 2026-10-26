@@ -482,3 +482,14 @@ def test_death_cause_from_the_recap():
     assert event_types.describe(plain) == tr("evt.player_died.text") and event_types.detail(plain) == ""
     cues = build_cues([hogger, plain], [], 0, 1000)
     assert [c.cause for c in cues] == [killed_by, ""], "the death title names the killer"
+
+
+def test_profession_progress_comes_as_a_toast():
+    learned = E(100, "profession_learned", name="Tailoring", icon=136249)
+    rank = E(200, "profession_rank", name="Tailoring", maxRank=150)
+    cues = build_cues([learned, rank], [], 0, 1000)
+    assert [(c.kind, c.event_type) for c in cues] == [("event", "profession_learned"), ("event", "profession_rank")]
+    assert (cues[0].heading, cues[0].title, cues[0].icon) == (tr("cine.banner.profession_learned"), "Tailoring", 136249)
+    assert (cues[1].heading, cues[1].title) == (tr("cine.banner.profession_rank"),
+                                                f"Tailoring: {tr('rank.journeyman')}")
+
