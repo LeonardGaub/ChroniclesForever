@@ -1,7 +1,7 @@
 """Map artwork: ``forever_chronicle/maps/<uiMapID>.jpg``, the one place the app takes map images from.
 
 The images come from the game client itself (tools/extract_maps.py draws each map fully explored, as the game
-does) and ship with the code: in the private repo and in the friend package (tools/package_for_friend.py).
+does) and ship with the code in the private repo.
 Rerun the tool after a client patch. Forever reworked several Classic zones, so Classic images do not fit.
 
 The seamless world map (tools/build_world_map.py, from OpenMap's stitched zone art) lies in ``maps/world/``:

@@ -19,8 +19,8 @@
   run a pale dotted line. Back at the body the colour returns with rising light.
 - Teleports (hearthstone, portals; domain/cinematic.teleports) fly: an arcane swirl where the player vanishes, the
   camera pulls back, a comet crosses the world map on a dotted arc and the camera dives in at the destination.
-  The ghost's release to the graveyard flies the same way as a pale wisp. (Seamless world map only.)
-- Islands in the sky (maps.SKY_ISLANDS, Zephras Isle; both map styles): the game places them nowhere on the world
+  The ghost's release to the graveyard flies the same way as a pale wisp.
+- Islands in the sky (maps.SKY_ISLANDS, Zephras Isle): the game places them nowhere on the world
   map, so trips there go through the clouds instead of across it. The player rises while the camera pulls back
   and clouds close over the picture (a portal up starts with the arcane swirl); under the closed clouds the map
   changes, then they part over the destination while the camera and the player come down (ui/cinematic_fx.py
@@ -51,18 +51,18 @@ from __future__ import annotations
 import bisect
 import math
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QElapsedTimer, QEvent, QPointF, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
-from PySide6.QtWidgets import (QGraphicsOpacityEffect, QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsScene,
-                               QGraphicsView, QHBoxLayout, QLabel, QPushButton, QToolTip, QWidget)
+from PySide6.QtWidgets import (QGraphicsOpacityEffect, QGraphicsPathItem, QGraphicsScene, QGraphicsView, QHBoxLayout,
+                               QLabel, QPushButton, QToolTip, QWidget)
 
 from ..domain import credits as journey_credits
 from ..domain import daylight, maps
-from ..domain.cinematic import (Cue, Death, Levels, Teleport, build_cues, CUE_EVENT_TYPES, death_spans, still_spans,
-                                teleports)
+from ..domain.cinematic import (GAP_SKIP, Cue, Death, Levels, Teleport, build_cues, CUE_EVENT_TYPES, death_spans,
+                                played_time, still_spans, teleports)
 from ..domain.experience import Experience
 from ..domain.route import Route, Timeline
 from ..domain.route_colors import RouteColors, zone_colors
@@ -75,7 +75,7 @@ from .cinematic_credits import CreditsOverlay
 from .cinematic_hud import XpBar
 from .cinematic_fx import (ARCANE_COLOR, FADE_SECONDS, GHOST_COLOR, AchievementToast, CinemaFrame, CinemaView,
                            CloudCover, MarkerItem, PhotoOverlay, Pin, PinsItem, RouteItem, SkyItem, TitleCard, clamp,
-                           ease_in, ease_in_out, ease_out, with_alpha)
+                           ease_in, ease_in_out, ease_out, geo_mix, lerp_point, scatter, smooth, with_alpha)
 from .screenshots import load_thumbnail
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
@@ -91,7 +91,6 @@ ZOOM_IN_CLOSE = 1.07       # ... and a little in when a moment is close, or whil
 ZOOM_SECONDS = 2.6         # time constant of zoom changes: slow, so the picture stays calm
 FAST_FROM, FAST_TO = 0.12, 0.45   # marker speed (picture widths per second) where zooming out begins / is full
 CLOSE_SECONDS = 2.5        # real seconds before a moment in which the camera moves in
-GAP_SKIP = 30              # breaks without points longer than this are skipped
 STILL_MODES = ("normal", "fast", "skip")
 STILL_FASTER = 8           # standstills run this many times faster in "fast" mode
 STILL_NOTE = 2.4           # seconds a skipped standstill is named
@@ -119,11 +118,11 @@ DEATH_COLOR = QColor("#ff3333")
 # Trips to the other continent (boat, zeppelin, portal), shown on the world map.
 VOYAGE_OUT, VOYAGE_TRAVEL, VOYAGE_IN = 1.0, 1.8, 1.0   # out to the world map, across the sea, into the zone
 VOYAGE_GAP = 10 * 60       # a continent change after a longer break fades in from black instead
-SHARP, BLURRY = 1.2, 2.2   # a finer map fades in while the one beneath is enlarged from SHARP to BLURRY times
-SOFT_EDGE = 0.09           # share of a placed map's width and height that fades out (hides its parchment frame)
-CROSS_SECONDS = 0.4        # crossfade from the trip's last picture to the new zone
+SOFT_EDGE = 0.09           # share of a city map's width and height that fades out (hides its parchment frame)
+CROSS_SECONDS = 0.4        # crossfade from the last picture to the new place (a cut)
 VOYAGE_LINE = QColor(232, 226, 208, 220)
-# The seamless world map (option "cine_map": "world", ui/world_art.py): one picture of every zone.
+# The seamless world map (ui/world_art.py): one picture of every zone. Places it does not show (Forever's islands
+# in the sky) keep their own map; so does every place if the world art is missing.
 FRAME_SECONDS = 3.0        # time constant of the view following the size of the zone the player is in
 CUT_JUMP = 0.5             # a step longer than this share of the picture's width cuts (crossfade): a break
 # Flights on the seamless map: (out, across, in) seconds and the arc's bulge (share of the distance) per kind.
@@ -142,20 +141,17 @@ OUTRO_MARGIN = 1.3
 
 @dataclass
 class _Voyage:
-    """A trip to the other continent, shown on the world map: out from the old zone until the world is in view,
-    the player crossing the sea on an arc, into the new zone. The continent and zone maps lie on the world map
-    where they belong, each shown only while the coarser map beneath would look blurry, so every zoom stays
-    sharp and the pictures blend into each other."""
+    """A flight on the seamless world map (a trip to the other continent, a teleport, the ghost's release): out
+    from the old zone until both ends are in view, the player crossing on an arc, into the new zone."""
     to_view: int
     start: QPointF              # camera centre: where the old zone's view is ...
-    over_center: QPointF        # ... both continents ...
+    over_center: QPointF        # ... both ends ...
     end: QPointF                # ... where the new zone's view will be
     start_scale: float
     over_scale: float
     end_scale: float
     origin: QPointF             # the player before the trip ...
     target: QPointF             # ... and after
-    details: list = field(default_factory=list)   # (finer map, scale of the map beneath it: share of the world)
     line: QGraphicsPathItem | None = None
     age: float = 0.0
     kind: str = "sea"           # a key of FLIGHTS: the sea crossing, a teleport, the ghost's release
@@ -174,23 +170,17 @@ class _Voyage:
 
     def camera(self) -> tuple[float, QPointF]:
         """(scale, centre) at the current age; scales change geometrically so the zoom feels even."""
-        def blend(a: float, b: float, e: float) -> float:
-            return math.exp(math.log(a) + (math.log(b) - math.log(a)) * e)
-
-        def between(a: QPointF, b: QPointF, e: float) -> QPointF:
-            return QPointF(a.x() + (b.x() - a.x()) * e, a.y() + (b.y() - a.y()) * e)
-
         # Close to a zone the camera stays on its view (it leaves late and arrives early), so the coarse maps
         # around the zone are only seen from afar.
         if self.age < self.out:
             f = self.age / self.out
-            return (blend(self.start_scale, self.over_scale, ease_in_out(f)),
-                    between(self.start, self.over_center, ease_in_out((f - 0.35) / 0.65)))
+            return (geo_mix(self.start_scale, self.over_scale, ease_in_out(f)),
+                    lerp_point(self.start, self.over_center, ease_in_out((f - 0.35) / 0.65)))
         if self.age < self.out + self.across:
             return self.over_scale, self.over_center
         f = (self.age - self.out - self.across) / (self.life - self.out - self.across)
-        return (blend(self.over_scale, self.end_scale, ease_in_out(f)),
-                between(self.over_center, self.end, ease_in_out(f / 0.65)))
+        return (geo_mix(self.over_scale, self.end_scale, ease_in_out(f)),
+                lerp_point(self.over_center, self.end, ease_in_out(f / 0.65)))
 
     def travelled(self) -> float:
         return ease_in_out((self.age - self.out) / self.across)
@@ -207,11 +197,8 @@ class _Voyage:
     def marker(self) -> QPointF:
         return self.arc(self.travelled())
 
-    def update_items(self, scale: float) -> None:
-        """Fades the finer maps for the view's scale and draws the crossing so far."""
-        for item, beneath in self.details:
-            enlarged = scale * beneath                      # screen pixels per pixel of the map beneath
-            item.setOpacity(clamp(math.log(max(enlarged, 1e-6) / SHARP) / math.log(BLURRY / SHARP)))
+    def update_line(self) -> None:
+        """Draws the crossing so far."""
         if self.line is not None:
             f = self.travelled()
             path = QPainterPath(self.origin)
@@ -373,7 +360,7 @@ class CinematicWindow(QWidget):
         self.exporting = exporting
         repo = ctx.repo
         self.sound = sound or ctx.sound
-        self.route = Route(repo.positions(character_id), repo.map_infos(), repo.instance_names(), repo.entrances())
+        self.route = Route.load(repo, character_id)
         # Quests are no cues, but a quest screenshot names its quest.
         events = repo.events(character_id, types=CUE_EVENT_TYPES + ("quest_completed",), limit=1_000_000)
         self.cues: list[Cue] = build_cues(events, repo.screenshots(character_id, only_files=True), start, end)
@@ -382,12 +369,12 @@ class CinematicWindow(QWidget):
         self.ghost_spans = [(d.released, d.revived) for d in self.deaths if d.released is not None]
         self.teleports: list[Teleport] = teleports(self.route, self.deaths, start, end)
         self.teleport_departs = [tp.depart for tp in self.teleports]
-        char = next((c for c in repo.list_characters() if c.character_id == character_id), None)
+        char = repo.character(character_id)
         self.char_name = char.name if char else ""
         self.char_color = theme.class_color(char.class_file if char else None)
         self.levels = Levels(events, char.level if char else None)
         self.experience = Experience(self.levels, repo.metrics(character_id),
-                                     lambda a, b: self.route.timeline(a, b, GAP_SKIP).total, char.xp if char else None)
+                                     lambda a, b: played_time(self.route, a, b), char.xp if char else None)
         self.color_mode = colors
         self.colors = RouteColors(colors, self.levels, [s["started_at"] for s in repo.sessions(character_id)])
         self.start, self.end = start, max(end, start + 1)
@@ -409,7 +396,7 @@ class CinematicWindow(QWidget):
         # Seamless: the whole world is one scene (view_map WORLD); the zone the player is in only sets the
         # caption, the music and how much the view shows (frame_size: the zone's size in world units, followed
         # slowly so crossing into a bigger or smaller zone zooms calmly).
-        self.seamless = ctx.config.extra.get("cine_map", "world") == "world" and world_art.available()
+        self.seamless = world_art.available()
         self.world: WorldArt | None = None
         self.zone_now: int | None = None
         self.frame_size: tuple[float, float] | None = None
@@ -421,9 +408,8 @@ class CinematicWindow(QWidget):
         self.screen_speed = 0.0             # how fast the marker crosses the picture (widths per second, smoothed)
         self.frame_dt = 0.0                 # real time of the current step (camera smoothing)
         self.hold = 0.0                     # real seconds the replay waits (at a death)
-        extra = ctx.config.extra
-        self.daylight = extra.get("cine_daylight", True) is not False
-        self.credits_on = extra.get("cine_credits", True) is not False
+        self.daylight = ctx.config.flag("cine_daylight")
+        self.credits_on = ctx.config.flag("cine_credits")
         self.sky: SkyItem | None = None
         self.light = daylight.light_at(self.t) if self.daylight else daylight.DAY   # the time of day (smoothed)
         self.credits: CreditsOverlay | None = None
@@ -685,7 +671,7 @@ class CinematicWindow(QWidget):
         self._stop_credits()
         self._hide_photo()
         self.pending_photo = None
-        if self.voyage is not None and self.view_map == maps.WORLD and self.voyage.line is not None:
+        if self.voyage is not None and self.voyage.line is not None:
             self.view.scene().removeItem(self.voyage.line)
         self.voyage = None
         self.sky_trip = None
@@ -882,11 +868,7 @@ class CinematicWindow(QWidget):
         continents = {info["continent_id"] for info in route.map_infos.values()}
         entrance_views: dict[int, int | None] = {}
         visits: list[list] = []             # [place, start, end]
-        for p in route.points[max(0, bisect.bisect_right(route.times, self.start) - 1):]:
-            if p.time > self.end:
-                break
-            if p.end < self.start:
-                continue
+        for p in route.points_in(self.start, self.end):
             if p.instance_id is not None:
                 if p.instance_id not in entrance_views:
                     entrance_views[p.instance_id] = route.view_for(p)
@@ -934,7 +916,7 @@ class CinematicWindow(QWidget):
             self.zone_share = target
             return
         tau = ZONE_EASE_IN if target < self.zone_share else ZONE_EASE_OUT
-        self.zone_share += (target - self.zone_share) * (1 - math.exp(-dt / tau))
+        self.zone_share += (target - self.zone_share) * smooth(dt, tau)
 
     # -- standstills -------------------------------------------------------------------------
 
@@ -1061,8 +1043,6 @@ class CinematicWindow(QWidget):
             spot = self.route.glide(self.t, maps.WORLD)
         else:
             if zone is not None and zone != self.view_map:
-                if not jump and self.view_map is not None and self._start_voyage(self.view_map, zone, point):
-                    return
                 self._switch_map(zone)
                 jump = True
             spot = self.route.glide(self.t)
@@ -1098,13 +1078,14 @@ class CinematicWindow(QWidget):
 
     # -- camera ------------------------------------------------------------------------------
 
-    def _scale(self) -> float:
-        """View scale (screen pixels per map pixel) at the current zoom."""
+    def _scale(self, frame: tuple[float, float] | None = None) -> float:
+        """View scale (screen pixels per map pixel) at the current zoom, for a frame of this size (default: the
+        seamless view's frame, else the whole map)."""
         vw, vh = self.view.viewport().width(), self.view.viewport().height()
-        if self.view_map == maps.WORLD and self.frame_size is not None:
-            fw, fh = self.frame_size
-            return min(vw / fw, vh / fh) * ZOOM * self.zoom
-        return min(vw / W, vh / H) * ZOOM * self.zoom
+        if frame is None and self.view_map == maps.WORLD:
+            frame = self.frame_size
+        fw, fh = frame or (W, H)
+        return min(vw / fw, vh / fh) * ZOOM * self.zoom
 
     def _zone_frame(self, zone: int | None) -> tuple[float, float] | None:
         """A zone's size on the seamless world map (world units)."""
@@ -1120,9 +1101,8 @@ class CinematicWindow(QWidget):
         if jump or self.frame_size is None:
             self.frame_size = target
             return
-        k = 1 - math.exp(-self.frame_dt / FRAME_SECONDS)
-        self.frame_size = tuple(math.exp(math.log(a) + (math.log(b) - math.log(a)) * k)
-                                for a, b in zip(self.frame_size, target))
+        k = smooth(self.frame_dt, FRAME_SECONDS)
+        self.frame_size = tuple(geo_mix(a, b, k) for a, b in zip(self.frame_size, target))
 
     def _follow(self, head: QPointF, moved: float, taxi: bool, dead: bool, jump: bool) -> None:
         """Moves the camera calmly after the marker, keeping it near the middle, and lets the zoom drift towards
@@ -1135,7 +1115,7 @@ class CinematicWindow(QWidget):
         if dt > 0 and not jump:
             width = max(1, self.view.viewport().width())
             speed = moved * scale / width / dt            # picture widths per second
-            self.screen_speed += (speed - self.screen_speed) * (1 - math.exp(-dt / 1.0))
+            self.screen_speed += (speed - self.screen_speed) * smooth(dt, 1.0)
         if taxi:
             target = ZOOM_OUT_TAXI
         elif self.screen_speed > FAST_FROM:
@@ -1147,10 +1127,8 @@ class CinematicWindow(QWidget):
         if jump or self.camera is None:
             self.camera = QPointF(head)
         else:
-            self.zoom += (target - self.zoom) * (1 - math.exp(-dt / ZOOM_SECONDS))
-            follow = 1 - math.exp(-dt / FOLLOW_SECONDS)
-            self.camera = QPointF(self.camera.x() + (head.x() - self.camera.x()) * follow,
-                                  self.camera.y() + (head.y() - self.camera.y()) * follow)
+            self.zoom += (target - self.zoom) * smooth(dt, ZOOM_SECONDS)
+            self.camera = lerp_point(self.camera, head, smooth(dt, FOLLOW_SECONDS))
             # Never let the marker drift out of the middle of the picture.
             scale = self._scale()
             area = self.picture_area()
@@ -1165,14 +1143,9 @@ class CinematicWindow(QWidget):
             return False
         return self.cues[self.cue_index].time - self.t < self.speed * BASE_SPEED * CLOSE_SECONDS
 
-    def _switch_map(self, view: int, fade: str | None = "black") -> None:
-        """Shows another map. fade: "black" (from black), "cross" (over the old picture) or None."""
-        if fade == "cross":
-            self._take_snapshot()
-        scene = self.view.scene()
-        if self.marker.scene() is scene:
-            scene.removeItem(self.marker)   # kept across maps; clear() would delete it
-        scene.clear()
+    def _switch_map(self, view: int, fade: bool = True) -> None:
+        """Shows a map of its own, for a place the seamless world map does not show (fade: in from black)."""
+        scene = self._reset_scene()
         self.view_map = view
         scene.setSceneRect(QRectF(0, 0, W, H))
         pixmap = self._pixmap(view)
@@ -1180,6 +1153,19 @@ class CinematicWindow(QWidget):
             scene.addPixmap(pixmap)
         else:
             scene.addRect(QRectF(0, 0, W, H), QPen(QColor(theme.BORDER)), QBrush(QColor(theme.PANEL)))
+        self._fill_scene(view, fade)
+
+    def _reset_scene(self) -> QGraphicsScene:
+        """The view's scene, emptied (the marker is kept across maps; clear() would delete it)."""
+        scene = self.view.scene()
+        if self.marker.scene() is scene:
+            scene.removeItem(self.marker)
+        scene.clear()
+        return scene
+
+    def _fill_scene(self, view: int, fade: bool) -> None:
+        """The route, pins, marker and light on the new map art; the camera starts over (fade: in from black)."""
+        scene = self.view.scene()
         self.route_item = RouteItem(self.route.segments(view, self.start, self.end), self.colors, self.ghost_spans)
         scene.addItem(self.route_item)
         self.pins = PinsItem(self._pins_for(view))
@@ -1189,17 +1175,14 @@ class CinematicWindow(QWidget):
         self.camera = None
         self.last_head = None
         self._apply_zoom()
-        if fade == "black":
+        if fade:
             self.cover_age = 0.0
             self.cover_effect.setOpacity(1.0)
 
     def _show_world(self, fade: bool = True) -> None:
         """Shows the seamless world map: every zone at once, the route and pins of the whole range on it
         (fade: in from black)."""
-        scene = self.view.scene()
-        if self.marker.scene() is scene:
-            scene.removeItem(self.marker)
-        scene.clear()
+        scene = self._reset_scene()
         self.view_map = maps.WORLD
         self.zone_now = None
         self.frame_size = None
@@ -1212,28 +1195,30 @@ class CinematicWindow(QWidget):
             if rect is not None and pixmap is not None:
                 self.world.add_city(city, pixmap, QRectF(rect[0] * W, rect[1] * H, (rect[2] - rect[0]) * W,
                                                    (rect[3] - rect[1]) * H))
-        self.route_item = RouteItem(self.route.segments(maps.WORLD, self.start, self.end), self.colors,
-                                    self.ghost_spans)
-        scene.addItem(self.route_item)
-        self.pins = PinsItem(self._pins_for(maps.WORLD))
-        scene.addItem(self.pins)
-        scene.addItem(self.marker)
-        self._add_sky(scene)
-        self.camera = None
-        self.last_head = None
-        self._apply_zoom()
-        if fade:
-            self.cover_age = 0.0
-            self.cover_effect.setOpacity(1.0)
+        self._fill_scene(maps.WORLD, fade)
+
+    def _after_break(self, point) -> bool:
+        """True when point follows a break longer than VOYAGE_GAP (or nothing): no trip is shown then."""
+        j = bisect.bisect_right(self.route.times, point.time) - 1
+        return j <= 0 or point.time - self.route.points[j - 1].end > VOYAGE_GAP
+
+    def _flight_line(self, color: QColor, width: float, style: Qt.PenStyle) -> QGraphicsPathItem:
+        """An empty line on the map for a flight's course, at screen width."""
+        pen = QPen(color, width)
+        pen.setCosmetic(True)
+        pen.setStyle(style)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        line = self.view.scene().addPath(QPainterPath(), pen)
+        line.setZValue(3)
+        return line
 
     def _start_world_voyage(self, old: int, new: int, point) -> bool:
         """A trip to the other continent on the seamless map: the camera pulls back until the world is in view,
         the player crosses the sea on an arc, and the camera dives in again. False if it is none."""
-        ca, cb = self._continent(old), self._continent(new)
+        ca, cb = self.route.continent_or_self(old), self.route.continent_or_self(new)
         if ca == cb or ca not in maps.CONTINENT_IN_WORLD or cb not in maps.CONTINENT_IN_WORLD:
             return False
-        j = bisect.bisect_right(self.route.times, point.time) - 1
-        if j <= 0 or point.time - self.route.points[j - 1].end > VOYAGE_GAP:
+        if self._after_break(point):
             return False
         spot = self.route.glide(self.t, maps.WORLD)
         xy = self.route.project(*spot, maps.WORLD) if spot else None
@@ -1241,20 +1226,12 @@ class CinematicWindow(QWidget):
         if xy is None or frame is None or self.last_head is None or self.camera is None:
             return False
         target = QPointF(xy[0] * W, xy[1] * H)
-        vw, vh = self.view.viewport().width(), self.view.viewport().height()
-        area = self.picture_area()
-        start = self._scale()
-        end = min(vw / frame[0], vh / frame[1]) * ZOOM * self.zoom
-        over = min(area.width() / (W * 0.96), area.height() / (H * 0.96), start, end)
-        pen = QPen(VOYAGE_LINE, 3)
-        pen.setCosmetic(True)
-        pen.setStyle(Qt.PenStyle.DashLine)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        line = self.view.scene().addPath(QPainterPath(), pen)
-        line.setZValue(3)
+        start, end = self._scale(), self._scale(frame)
+        over = min(self._map_fit(), start, end)
+        line = self._flight_line(VOYAGE_LINE, 3, Qt.PenStyle.DashLine)
         self.marker.set_mode("walk")
         self.voyage = _Voyage(new, QPointF(self.camera), QRectF(0, 0, W, H).center(), target, start, over, end,
-                              QPointF(self.last_head), target, [], line)
+                              QPointF(self.last_head), target, line)
         self._travel(0.0)
         return True
 
@@ -1271,24 +1248,16 @@ class CinematicWindow(QWidget):
         if frame is None or self.camera is None or self.last_head is None:
             return False
         origin, target = QPointF(self.last_head), QPointF(tp.target[0] * W, tp.target[1] * H)
-        vw, vh = self.view.viewport().width(), self.view.viewport().height()
         area = self.picture_area()
-        start = self._scale()
-        end = min(vw / frame[0], vh / frame[1]) * ZOOM * self.zoom
+        start, end = self._scale(), self._scale(frame)
         dx, dy = abs(target.x() - origin.x()), abs(target.y() - origin.y())
         fit = min(area.width() / max(1e-6, dx * FLIGHT_MARGIN), area.height() / max(1e-6, dy * FLIGHT_MARGIN))
         over = min(start * 0.8, end * 0.8, fit)
         kind = "spirit" if tp.spirit else "teleport"
         color = GHOST_COLOR if tp.spirit else ARCANE_COLOR
-        pen = QPen(with_alpha(color, 210), 2.6)
-        pen.setCosmetic(True)
-        pen.setStyle(Qt.PenStyle.DotLine)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        line = self.view.scene().addPath(QPainterPath(), pen)
-        line.setZValue(3)
-        middle = QPointF((origin.x() + target.x()) / 2, (origin.y() + target.y()) / 2)
-        self.voyage = _Voyage(zone, QPointF(self.camera), middle, target, start, over, end, origin, target, [], line,
-                              kind=kind)
+        line = self._flight_line(with_alpha(color, 210), 2.6, Qt.PenStyle.DotLine)
+        self.voyage = _Voyage(zone, QPointF(self.camera), lerp_point(origin, target, 0.5), target, start, over, end,
+                              origin, target, line, kind=kind)
         self.t = self.rendered_t = float(tp.arrive)
         self.marker.set_mode("ghost" if tp.spirit else "flight")
         if self.pins:
@@ -1306,10 +1275,7 @@ class CinematicWindow(QWidget):
         here = self.zone_now if self.view_map == maps.WORLD else self.view_map
         if zone is None or here is None or zone == here or (zone in maps.SKY_ISLANDS) == (here in maps.SKY_ISLANDS):
             return False
-        j = bisect.bisect_right(self.route.times, point.time) - 1
-        if j <= 0 or point.time - self.route.points[j - 1].end > VOYAGE_GAP:
-            return False
-        if self.camera is None or self.last_head is None:
+        if self._after_break(point) or self.camera is None or self.last_head is None:
             return False
         portal = zone in maps.SKY_ISLANDS
         self.sky_trip = _SkyTrip(zone, portal, QPointF(self.last_head), QPointF(self.camera), self._scale())
@@ -1322,7 +1288,7 @@ class CinematicWindow(QWidget):
         self._sky_travel(0.0)
         return True
 
-    def _sky_fit(self) -> float:
+    def _map_fit(self) -> float:
         """The scale at which a whole map fills the picture (a zone map is never seen past its edges)."""
         area = self.picture_area()
         return min(area.width() / (W * 0.96), area.height() / (H * 0.96))
@@ -1337,8 +1303,8 @@ class CinematicWindow(QWidget):
             scale = trip.start_scale * math.exp(math.log(SKY_HIGH) * 0.5 * ease_in_out(f))
             center = trip.start
             if self.view_map != maps.WORLD:
-                scale = max(scale, min(trip.start_scale, self._sky_fit()))
-                center = self._toward(trip.start, QPointF(W / 2, H / 2), ease_in_out(f) * 0.5)
+                scale = max(scale, min(trip.start_scale, self._map_fit()))
+                center = lerp_point(trip.start, QPointF(W / 2, H / 2), ease_in_out(f) * 0.5)
             head = QPointF(trip.origin.x(), trip.origin.y() - lift / scale * ease_in(f))
             self._sky_frame(scale, center, head, 1 + (SKY_MARKER - 1) * ease_in(f))
             return
@@ -1353,15 +1319,11 @@ class CinematicWindow(QWidget):
         high = trip.end_scale * SKY_HIGH
         center = trip.end
         if self.view_map != maps.WORLD:
-            high = max(high, min(trip.end_scale, self._sky_fit()))
-            center = self._toward(QPointF(W / 2, H / 2), trip.end, clamp(e / 0.7))
-        scale = math.exp(math.log(high) + (math.log(trip.end_scale) - math.log(high)) * e)
+            high = max(high, min(trip.end_scale, self._map_fit()))
+            center = lerp_point(QPointF(W / 2, H / 2), trip.end, clamp(e / 0.7))
+        scale = geo_mix(high, trip.end_scale, e)
         head = QPointF(trip.target.x(), trip.target.y() - lift / scale * (1 - e))
         self._sky_frame(scale, center, head, SKY_MARKER - (SKY_MARKER - 1) * e)
-
-    @staticmethod
-    def _toward(a: QPointF, b: QPointF, f: float) -> QPointF:
-        return QPointF(a.x() + (b.x() - a.x()) * f, a.y() + (b.y() - a.y()) * f)
 
     def _sky_frame(self, scale: float, center: QPointF, head: QPointF, size: float) -> None:
         before = self.marker.pos()
@@ -1369,10 +1331,7 @@ class CinematicWindow(QWidget):
         self.marker.setScale(size)
         self.marker.aim(head.x() - before.x(), head.y() - before.y())
         self.marker.show()
-        self.view.resetTransform()
-        self.view.scale(scale, scale)
-        self.view.centerOn(center)
-        self._update_world(scale)
+        self._set_view(scale, center)
 
     def _sky_arrive(self, trip: _SkyTrip) -> None:
         """Under the closed clouds: the destination's map, the player's place and the camera's view there."""
@@ -1385,7 +1344,7 @@ class CinematicWindow(QWidget):
             self.frame_size = self._zone_frame(to)
             spot = self.route.glide(self.t, maps.WORLD)
         else:
-            self._switch_map(to, fade=None)
+            self._switch_map(to, fade=False)
             spot = self.route.glide(self.t)
         xy = self.route.project(*spot, self.view_map) if spot else None
         trip.target = QPointF(xy[0] * W, xy[1] * H) if xy else QPointF(W / 2, H / 2)
@@ -1420,7 +1379,7 @@ class CinematicWindow(QWidget):
         if now or self.light is None:
             self.light = target
         else:
-            k = 1 - math.exp(-dt / LIGHT_SECONDS)
+            k = smooth(dt, LIGHT_SECONDS)
             self.light = tuple(a + (b - a) * k for a, b in zip(self.light, target))
         if self.sky is not None:
             self.sky.set_light(self.light)
@@ -1434,8 +1393,8 @@ class CinematicWindow(QWidget):
         if self.credits_on and self._start_credits():
             return
         # Playing time in the range, breaks left out (as the level-up title's time since the level before).
-        played = self.route.timeline(self.start, self.end, GAP_SKIP).total
-        self._show_title(tr("cine.end"), life=10**9, subtitle=tr("cine.end_played", time=format_duration(played)))
+        played = played_time(self.route, self.start, self.end)
+        self.title.show_text(tr("cine.end"), life=10**9, subtitle=tr("cine.end_played", time=format_duration(played)))
 
     def _start_credits(self) -> bool:
         events = self.ctx.repo.events(self.character_id, limit=1_000_000)
@@ -1472,14 +1431,12 @@ class CinematicWindow(QWidget):
         area = self.picture_area()
         bw, bh = max(1.0, max(xs) - min(xs)), max(1.0, max(ys) - min(ys))
         start = self._scale()
-        whole = min(area.width() / (W * 0.96), area.height() / (H * 0.96))     # never past the map's edges
+        whole = self._map_fit()                     # never past the map's edges
         end = min(start, max(whole, min(area.width() / (bw * OUTRO_MARGIN), area.height() / (bh * OUTRO_MARGIN))))
         here = self.view.mapToScene(self.view.viewport().rect().center())
         center = QPointF((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
         if self.view_map == maps.WORLD:             # the view stays on the world map
-            half_w, half_h = area.width() / end / 2, area.height() / end / 2
-            center = QPointF(min(max(center.x(), half_w), W - half_w) if W > 2 * half_w else W / 2,
-                             min(max(center.y(), half_h), H - half_h) if H > 2 * half_h else H / 2)
+            center = self._clamp_to_map(center, end, area)
         self.outro = [start, QPointF(here), end, center, 0.0]
 
     def _advance_credits(self, dt: float) -> None:
@@ -1489,11 +1446,7 @@ class CinematicWindow(QWidget):
             self.outro[4] += dt
             a, ca, b, cb, age = self.outro
             f = ease_in_out(age / OUTRO_SECONDS)
-            scale = math.exp(math.log(a) + (math.log(b) - math.log(a)) * f)
-            self.view.resetTransform()
-            self.view.scale(scale, scale)
-            self.view.centerOn(QPointF(ca.x() + (cb.x() - ca.x()) * f, ca.y() + (cb.y() - ca.y()) * f))
-            self._update_world(scale)
+            self._set_view(geo_mix(a, b, f), lerp_point(ca, cb, f))
 
     def _stop_credits(self) -> None:
         if self.credits is not None:
@@ -1515,156 +1468,39 @@ class CinematicWindow(QWidget):
         self.snapshot_effect.setOpacity(1.0)
         self.snapshot.show()
 
-    def _continent(self, view: int | None) -> int | None:
-        if view in (maps.KALIMDOR, maps.EASTERN_KINGDOMS):
-            return view
-        return maps.continent_of(view, self.route.map_infos) if view is not None else None
-
-    def _zone_rect(self, view: int) -> QRectF | None:
-        """Where a zone lies on its continent's map (in scene units of the continent map); a continent covers
-        its whole map."""
-        if view in (maps.KALIMDOR, maps.EASTERN_KINGDOMS):
-            return QRectF(0, 0, W, H)
-        info = self.route.map_infos.get(view)
-        if info is None or info["min_x"] is None or info["max_x"] <= info["min_x"] or info["max_y"] <= info["min_y"]:
-            return None
-        return QRectF(info["min_x"] * W, info["min_y"] * H, (info["max_x"] - info["min_x"]) * W,
-                      (info["max_y"] - info["min_y"]) * H)
-
     def _zone_camera(self, head: QPointF) -> QPointF:
         """Where a zone view centred on head really centres: the view stops at the map's edges."""
-        scale = self._scale()
-        half_w, half_h = self.view.viewport().width() / scale / 2, self.view.viewport().height() / scale / 2
-        x = min(max(head.x(), half_w), W - half_w) if W > 2 * half_w else W / 2
-        y = min(max(head.y(), half_h), H - half_h) if H > 2 * half_h else H / 2
+        return self._clamp_to_map(head, self._scale(), self.view.viewport().rect())
+
+    @staticmethod
+    def _clamp_to_map(center: QPointF, scale: float, screen) -> QPointF:
+        """center moved so a view of screen's size (pixels) at scale shows nothing past the map's edges (centred
+        where the map is smaller than the view)."""
+        half_w, half_h = screen.width() / scale / 2, screen.height() / scale / 2
+        x = min(max(center.x(), half_w), W - half_w) if W > 2 * half_w else W / 2
+        y = min(max(center.y(), half_h), H - half_h) if H > 2 * half_h else H / 2
         return QPointF(x, y)
-
-    @staticmethod
-    def _on_continent(rect: QRectF, p: QPointF) -> QPointF:
-        """A point of a zone map on its continent's map (rect: the zone on the continent)."""
-        return QPointF(rect.left() + p.x() / W * rect.width(), rect.top() + p.y() / H * rect.height())
-
-    def _start_voyage(self, old: int, new: int, point) -> bool:
-        """Shows a trip to the other continent on the world map; False if it is none or cannot be shown (no maps,
-        no geometry, a long break before it)."""
-        ca, cb = self._continent(old), self._continent(new)
-        if ca == cb or ca not in maps.CONTINENT_ON_WORLD or cb not in maps.CONTINENT_ON_WORLD:
-            return False
-        j = bisect.bisect_right(self.route.times, point.time) - 1
-        if j <= 0 or point.time - self.route.points[j - 1].end > VOYAGE_GAP:
-            return False
-        a, b = self._zone_rect(old), self._zone_rect(new)
-        spot = self.route.glide(self.t)
-        new_xy = self.route.project(*spot, new) if spot else None
-        if (a is None or b is None or new_xy is None or self.last_head is None
-                or any(self._pixmap(m) is None for m in (maps.WORLD, ca, cb))):
-            return False
-        on_world = {c: self._world_rect(c) for c in (ca, cb)}
-        a, b = self._inside(on_world[ca], a), self._inside(on_world[cb], b)    # the zones on the world map
-        viewport = self.view.viewport().rect()
-        old_center = self.view.mapToScene(viewport.center())          # the old zone's view as it is now
-        new_head = QPointF(new_xy[0] * W, new_xy[1] * H)
-        world = QRectF(0, 0, W, H)
-        area = self.picture_area()
-        base = self._scale()
-        start, end = base * W / a.width(), base * W / b.width()
-        over = min(area.width() / (world.width() * 0.96), area.height() / (world.height() * 0.96), start, end)
-
-        scene = self.view.scene()
-        if self.marker.scene() is scene:
-            scene.removeItem(self.marker)
-        scene.clear()
-        self.sky = None
-        scene.setSceneRect(world.adjusted(-W, -H, W, H))     # room to centre anywhere
-        scene.addPixmap(self._pixmap(maps.WORLD))
-        details = []
-        for continent in (ca, cb):
-            rect = on_world[continent]
-            details.append((self._placed_art(continent, rect, 0.5), 1.0))
-            zone, zone_rect = (old, a) if continent == ca else (new, b)
-            if zone != continent:
-                details.append((self._placed_art(zone, zone_rect, 1), rect.width() / W))
-            route = RouteItem(self.route.segments(continent, self.start, self.end), self.colors, self.ghost_spans)
-            pins = PinsItem(self._pins_for(continent))
-            for item in (route, pins):
-                item.setPos(rect.topLeft())
-                item.setScale(rect.width() / W)
-                scene.addItem(item)
-            route.setZValue(2)
-            route.set_time(self.t, None)
-            pins.set_time(self.t, animate=False)
-            if continent == ca:
-                self.route_item, self.pins = route, pins
-        pen = QPen(VOYAGE_LINE, 3)
-        pen.setCosmetic(True)
-        pen.setStyle(Qt.PenStyle.DashLine)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        line = scene.addPath(QPainterPath(), pen)
-        line.setZValue(3)
-        origin = self._on_continent(a, self.last_head)
-        scene.addItem(self.marker)
-        self.marker.set_mode("walk")
-        self.marker.setPos(origin)
-        self.marker.show()
-        self.view_map = None                      # no single map until the new zone is shown
-        self.camera = self.last_head = None
-        self.voyage = _Voyage(new, self._on_continent(a, old_center), world.center(),
-                              self._on_continent(b, self._zone_camera(new_head)), start, over, end, origin,
-                              self._on_continent(b, new_head), [d for d in details if d[0] is not None], line)
-        self._travel(0.0)
-        return True
-
-    @staticmethod
-    def _world_rect(continent: int) -> QRectF:
-        x0, x1, y0, y1 = maps.CONTINENT_ON_WORLD[continent]
-        return QRectF(x0 * W, y0 * H, (x1 - x0) * W, (y1 - y0) * H)
-
-    @staticmethod
-    def _inside(outer: QRectF, inner: QRectF) -> QRectF:
-        """inner (in the scene units of a map) placed on that map lying at outer."""
-        k = outer.width() / W
-        return QRectF(outer.left() + inner.left() * k, outer.top() + inner.top() * k, inner.width() * k,
-                      inner.height() * k)
-
-    def _placed_art(self, view: int, rect: QRectF, z: float) -> QGraphicsPixmapItem | None:
-        """A map's art lying at rect of the current scene."""
-        pixmap = self._soft_pixmap(view)
-        if pixmap is None:
-            return None
-        item = self.view.scene().addPixmap(pixmap)
-        item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-        item.setPos(rect.topLeft())
-        item.setScale(rect.width() / W)
-        item.setZValue(z)
-        return item
 
     def _travel(self, dt: float) -> None:
         voyage = self.voyage
         voyage.age += dt
         if voyage.age >= voyage.life:
             self.voyage = None
-            if self.view_map == maps.WORLD:         # seamless: already there, on the same map
-                if voyage.line is not None:
-                    self.view.scene().removeItem(voyage.line)
-                if voyage.kind != "sea" and self.pins:
-                    self.pins.burst(voyage.target, GHOST_COLOR if voyage.kind == "spirit" else ARCANE_COLOR,
-                                    "arrive")
-                self.zone_now = voyage.to_view
-                self.frame_size = None
-                self.camera = None
-            else:
-                self._switch_map(voyage.to_view, "cross")
+            if voyage.line is not None:
+                self.view.scene().removeItem(voyage.line)
+            if voyage.kind != "sea" and self.pins:
+                self.pins.burst(voyage.target, GHOST_COLOR if voyage.kind == "spirit" else ARCANE_COLOR, "arrive")
+            self.zone_now = voyage.to_view       # already there, on the same map
+            self.frame_size = None
+            self.camera = None
             self._render(jump=True)
             return
         scale, center = voyage.camera()
-        voyage.update_items(scale)
+        voyage.update_line()
         before = self.marker.pos()
         self.marker.setPos(voyage.marker())
         self.marker.aim(self.marker.x() - before.x(), self.marker.y() - before.y())
-        self.view.resetTransform()
-        self.view.scale(scale, scale)
-        self.view.centerOn(center)
-        self._update_world(scale)
+        self._set_view(scale, center)
 
     def _pins_for(self, view: int) -> list[Pin]:
         """A pin for each cue that happened on this map (inside a dungeon: at its entrance)."""
@@ -1677,7 +1513,7 @@ class CinematicWindow(QWidget):
             thumb = self._thumb(cue.path) if cue.kind == "screenshot" else None
             if cue.kind == "screenshot" and thumb is None:
                 continue
-            tilt = ((cue.time * 2654435761) & 0xFF) / 255 * 16 - 8
+            tilt = (scatter(cue.time) & 0xFF) / 255 * 16 - 8
             pins.append(Pin(cue.time, QPointF(xy[0] * W, xy[1] * H), cue.glyph or "•", QColor(cue.color), thumb,
                             tilt, icons.of_event(cue.icon, cue.event_type) if thumb is None else None))
         return pins
@@ -1724,11 +1560,14 @@ class CinematicWindow(QWidget):
         vw, vh = self.view.viewport().width(), self.view.viewport().height()
         if vw <= 0 or vh <= 0 or self.voyage is not None or self.sky_trip is not None:
             return
-        scale = self._scale()
+        self._set_view(self._scale(), self.camera)
+
+    def _set_view(self, scale: float, center: QPointF | None) -> None:
+        """Shows the map at scale (screen pixels per map pixel) around center (None: where it is)."""
         self.view.resetTransform()
         self.view.scale(scale, scale)
-        if self.camera is not None:
-            self.view.centerOn(self.camera)
+        if center is not None:
+            self.view.centerOn(center)
         self._update_world(scale)
 
     def _update_world(self, scale: float) -> None:
@@ -1739,11 +1578,10 @@ class CinematicWindow(QWidget):
 
     def _zone_name(self, map_id: int | None, instance_id: int | None) -> str | None:
         if instance_id is not None:
-            return self.route.instance_names.get(instance_id) or f"#{instance_id}"
+            return self.route.instance_name(instance_id)
         if map_id is None:
             return None
-        info = self.route.map_infos.get(map_id)
-        return maps.display_name(map_id, info["name"] if info is not None else None)
+        return maps.zone_name(map_id, self.route.map_infos)
 
     def _set_caption(self, zone: int | None, dungeon: str | None) -> None:
         zone_name = self._zone_name(zone, None) or ""
@@ -1771,16 +1609,16 @@ class CinematicWindow(QWidget):
             color = QColor(theme.GOLD) if kind == "level" else DEATH_COLOR if kind == "death" else QColor(cue.color)
             self.pins.burst(self.marker.pos(), color, kind)
         if cue.kind == "level" and cue.level is not None:
-            self._show_title(tr("cine.level", level=cue.level), LEVEL_SECONDS, heading=tr("cine.banner.level_up"),
-                             subtitle=self._level_subtitle(cue))
+            self.title.show_text(tr("cine.level", level=cue.level), LEVEL_SECONDS, heading=tr("cine.banner.level_up"),
+                                 subtitle=self._level_subtitle(cue))
             if self.sound.play("level_up"):
                 self.sound.music.duck(LEVEL_DUCK)
             return
         if cue.event_type == "player_died":
             # A moment of silence: the replay holds on a dark red title while the colour drains away.
-            self._show_title(self.char_name or tr("cine.banner.player_died"), DEATH_SECONDS,
-                             heading=tr("cine.banner.player_died"),
-                             subtitle="  ·  ".join(p for p in (cue.cause, cue.place) if p), tone="death")
+            self.title.show_text(self.char_name or tr("cine.banner.player_died"), DEATH_SECONDS,
+                                 heading=tr("cine.banner.player_died"),
+                                 subtitle="  ·  ".join(p for p in (cue.cause, cue.place) if p), tone="death")
             self.hold = DEATH_HOLD
             self.ramp = 0.0
             if self.sound.play("death"):
@@ -1805,13 +1643,10 @@ class CinematicWindow(QWidget):
         parts = [cue.place] if cue.place else []
         i = bisect.bisect_left(self.levels.times, cue.time)
         if i > 0:
-            took = self.route.timeline(self.levels.times[i - 1], cue.time, GAP_SKIP).total
+            took = played_time(self.route, self.levels.times[i - 1], cue.time)
             if took >= 60:
                 parts.append(tr("cine.level_took", time=format_duration(took), level=self.levels.levels[i - 1]))
         return "  ·  ".join(parts)
-
-    def _show_title(self, text: str, life: float, heading: str = "", subtitle: str = "", tone: str = "gold") -> None:
-        self.title.show_text(text, life, heading, subtitle, tone)
 
     def _title_busy(self) -> bool:
         """True while a level-up or death title has not been shown for LEVEL_HOLD seconds yet."""
@@ -1881,7 +1716,6 @@ def keep_open(window: QWidget) -> QWidget:
 
 def open_cinematic(ctx, character_id: str, start: int, end: int, speed: int = 4) -> CinematicWindow:
     """The cinematic mode for [start, end] in full screen, coloured as chosen on the map page."""
-    colors = ctx.config.extra.get("map_colors") or "level"
-    window = keep_open(CinematicWindow(ctx, character_id, start, end, speed, colors))
+    window = keep_open(CinematicWindow(ctx, character_id, start, end, speed, ctx.map_colors))
     window.showFullScreen()
     return window

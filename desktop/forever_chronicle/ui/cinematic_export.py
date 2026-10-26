@@ -20,20 +20,20 @@ import shutil
 import subprocess
 import sys
 import wave
-from collections import deque
 from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Callable
 
 import numpy as np
-from PySide6.QtCore import QObject, QStandardPaths, Qt, QUrl
+from PySide6.QtCore import QStandardPaths, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QImage
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
-                               QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressDialog, QPushButton, QVBoxLayout)
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout,
+                               QLabel, QLineEdit, QMessageBox, QProgressDialog, QPushButton, QVBoxLayout)
 
 from ..i18n import format_datetime, tr
-from .sound import DEFAULT_GAP, MIN_GAP, TRIM, MusicPlayer, effect_path, gain, game_sounds_on
+from .sound import TRIM, EffectGate, MusicPlayer, effect_path, gain, game_sounds_on
+from .widgets import busy
 
 FPS = 30
 RATE = 48000
@@ -71,30 +71,23 @@ def install_ffmpeg() -> bool:
     return result.returncode == 0 and ffmpeg_exe() is not None
 
 
-class Recorder(QObject):
+class Recorder(EffectGate):
     """Stands in for ui.sound.Sound during an export: effects are noted with their moment (clock, in seconds of
     video), the music's state is kept by a silent MusicPlayer and logged per frame by step()."""
 
     def __init__(self, config):
-        super().__init__()
-        self.config = config
+        super().__init__(config)
         self.clock = 0.0
-        self.played: deque[str] = deque(maxlen=50)
         self.effects: list[tuple[float, str]] = []
         self.music = MusicPlayer(config, self, audible=False)
         self.music_log: list[tuple[tuple[Path, ...], float]] = []   # per frame: playlist, volume at its end
-        self._last: dict[str, float] = {}
 
-    def enabled(self, name: str) -> bool:
-        return self.config.click_sounds if name == "click" else self.config.event_sounds
+    def now(self) -> float:
+        return self.clock
 
     def play(self, name: str, force: bool = False) -> bool:
-        if not (force or self.enabled(name)) or self.config.effects_volume <= 0:
+        if not self.admit(name, force):
             return False
-        if self.clock - self._last.get(name, -1e9) < MIN_GAP.get(name, DEFAULT_GAP):
-            return False
-        self._last[name] = self.clock
-        self.played.append(name)
         self.effects.append((self.clock, name))
         return True
 
@@ -301,7 +294,7 @@ class ExportDialog(QDialog):
     def _default_path(self) -> Path:
         folder = self.ctx.config.extra.get("video_dir") or QStandardPaths.writableLocation(
             QStandardPaths.StandardLocation.MoviesLocation) or str(Path.home())
-        char = next((c for c in self.ctx.repo.list_characters() if c.character_id == self.character_id), None)
+        char = self.ctx.repo.character(self.character_id)
         stamp = format_datetime(self.start).replace(":", "-").replace(".", "-").replace(" ", "_")
         name = f"Journey Forever - {char.name if char else 'Replay'} - {stamp}.mp4"
         return Path(folder) / "".join(c for c in name if c not in '<>:"/\\|?*')
@@ -318,11 +311,8 @@ class ExportDialog(QDialog):
         answer = QMessageBox.question(self, tr("export.title"), tr("export.no_ffmpeg"))
         if answer != QMessageBox.StandardButton.Yes:
             return False
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
+        with busy():
             ok = install_ffmpeg()
-        finally:
-            QApplication.restoreOverrideCursor()
         if not ok:
             QMessageBox.warning(self, tr("export.title"),
                                 tr("export.install_failed", command=f'pip install "{FFMPEG_PACKAGE}"'))

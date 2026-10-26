@@ -5,36 +5,21 @@ import math
 import os
 
 import pytest
+from conftest import event as E
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtGui import QColor, QImage, QPainter  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from forever_chronicle.app_context import AppContext  # noqa: E402
-from forever_chronicle.config import AppConfig  # noqa: E402
 from forever_chronicle.domain.cinematic import Levels, banner, build_cues  # noqa: E402
 from forever_chronicle.i18n import tr  # noqa: E402
 from forever_chronicle.domain.route import Route  # noqa: E402
-from forever_chronicle.storage.repository import EventRow, PositionPoint  # noqa: E402
-from forever_chronicle.ui import theme  # noqa: E402
+from forever_chronicle.storage.repository import PositionPoint  # noqa: E402
 from forever_chronicle.ui.cinematic import CinematicWindow  # noqa: E402
-from forever_chronicle.wow.lua_parser import parse_saved_variables  # noqa: E402
-
-
-@pytest.fixture(scope="module")
-def app():
-    application = QApplication.instance() or QApplication([])
-    theme.apply(application)
-    return application
 
 
 def P(t, x=0.5, y=0.5, map_id=1413):
     return PositionPoint(t, None, map_id, x, y, None, False)
-
-
-def E(t, kind, **payload):
-    return EventRow("c", f"e{t}", kind, t, None, None, None, None, None, payload)
 
 
 def test_route_breaks_at_teleports_and_glides():
@@ -66,11 +51,7 @@ def test_cues_and_levels(tmp_path):
     assert Levels([], current=9).at(50) == 9
 
 
-def test_cinematic_window_plays_with_screenshots(app, db, tmp_path, monkeypatch, addon_fixture):
-    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
-    ctx = AppContext(AppConfig(client_dir=str(tmp_path / "missing")), db)
-    ctx._client_searched = True
-    ctx.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
+def test_cinematic_window_plays_with_screenshots(app, ctx, imported, tmp_path, monkeypatch):
     cid = ctx.repo.list_characters()[0].character_id
     points = ctx.repo.positions(cid)
     start, end = points[0].time, max(p.end for p in points)
@@ -117,7 +98,7 @@ def test_cinematic_window_plays_with_screenshots(app, db, tmp_path, monkeypatch,
     level = next((c for c in window.cues if c.kind == "level"), None)
     if level:
         ctx.sound.played.clear()
-        ctx.sound._clocks.clear()
+        ctx.sound._last.clear()
         window._show_cue(level)
         assert list(ctx.sound.played) == ["level_up"] and ctx.sound.music.duck_left > 0,             "a level-up plays the fanfare and lowers the music under it"
     death = next((c for c in window.cues if c.event_type == "player_died"), None)
@@ -366,15 +347,11 @@ def test_zone_music_table_and_cache(tmp_path, monkeypatch):
     assert zone_music.extract_missing(None, files) == 0, "without the game nothing is taken"
 
 
-def test_cinematic_deaths_standstills_and_music(app, db, tmp_path, monkeypatch, addon_fixture):
+def test_cinematic_deaths_standstills_and_music(app, ctx, imported, tmp_path, monkeypatch):
     from forever_chronicle.domain.cinematic import Cue, Death
     from forever_chronicle.ui import cinematic as cine
     from forever_chronicle.wow import zone_music
 
-    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
-    ctx = AppContext(AppConfig(client_dir=str(tmp_path / "missing")), db)
-    ctx._client_searched = True
-    ctx.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
     cid = ctx.repo.list_characters()[0].character_id
     points = ctx.repo.positions(cid)
     start, end = points[0].time, max(p.end for p in points)

@@ -55,14 +55,11 @@ def extract_missing(client: ClientInstall | None) -> list[str]:
     ready = [name for name in missing() if ogg_path(name).is_file()]
     if not todo or client is None:
         return ready
-    try:
-        from . import casc
-        storage = casc.Casc(client.path.parent, client.flavor)
-    except Exception:  # no numpy, or the game files cannot be read: the built-in sounds play
+    from . import casc
+    storage = casc.open_client(client)
+    if storage is None:  # no numpy, or the game files cannot be read: the built-in sounds play
         _failed.update(todo)
         return ready
-    folder = cache_dir()
-    folder.mkdir(parents=True, exist_ok=True)
     for name in todo:
         try:
             data = storage.read_fdid(SOUNDS[name])
@@ -72,9 +69,7 @@ def extract_missing(client: ClientInstall | None) -> list[str]:
         if data[:4] != b"OggS":
             _failed.add(name)
             continue
-        part = folder / f"{name}.ogg.part"
-        part.write_bytes(data)
-        part.replace(ogg_path(name))
+        casc.write_atomic(ogg_path(name), data)
         ready.append(name)
     return ready
 

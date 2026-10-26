@@ -33,22 +33,17 @@ def extract_missing(client: ClientInstall | None) -> int:
     todo = missing()
     if not todo or client is None:
         return 0
-    try:
-        from . import casc
-        storage = casc.Casc(client.path.parent, client.flavor)
-    except Exception:  # no numpy, or the game files cannot be read: the app keeps its fallback fonts
+    from . import casc
+    storage = casc.open_client(client)
+    if storage is None:  # no numpy, or the game files cannot be read: the app keeps its fallback fonts
         return 0
-    folder = cache_dir()
-    folder.mkdir(parents=True, exist_ok=True)
     written = 0
     for name in todo:
         try:
             data = storage.read_name(FILES[name])
         except Exception:
             continue
-        part = folder / f"{name}.part"
-        part.write_bytes(data)
-        part.replace(folder / name)
+        casc.write_atomic(cache_dir() / name, data)
         written += 1
     return written
 

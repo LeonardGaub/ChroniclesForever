@@ -6,14 +6,14 @@ polaroids on both sides. A last card ("Journey Forever") stops in the middle and
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPen, QPixmap
+from PySide6.QtCore import QPointF, QRectF, QSize
+from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPen, QPixmap
 
 from ..domain.credits import Section
 from ..i18n import tr
 from . import theme
-from .cinematic_fx import (BANNER_HEADING, PAPER, PAPER_EDGE, TRIM, _Overlay, clamp, cropped, ease_out, pixel_font,
-                           with_alpha)
+from .cinematic_fx import (BANNER_HEADING, GOLD_LETTERS, TRIM, _TimedOverlay, clamp, draw_flourish_heading,
+                           draw_polaroid, draw_shadowed_text, ease_out, pixel_font)
 from .screenshots import load_thumbnail
 
 SPEED = 0.07               # scrolling, in window heights per second
@@ -26,26 +26,21 @@ PARALLAX = 0.8             # the polaroids move slower than the text
 TEXT = QColor(theme.TEXT)
 
 
-class CreditsOverlay(_Overlay):
+class CreditsOverlay(_TimedOverlay):
     def __init__(self, parent, title: list[str], sections: list[Section], photos: list[str] = ()):
         super().__init__(parent)
         self.title, self.sections = title, sections
         self.photos: list[QPixmap] = [p for p in (load_thumbnail(path, QSize(360, 240), fill=True)
                                                   for path in list(photos)[:MAX_PHOTOS]) if p is not None]
-        self.age = 0.0
-        self.area = QRectF()            # the picture between the letterbox bars
         self.hide()
 
     def start(self, area: QRectF) -> None:
         self.area = area
-        self.age = 0.0
-        self.show()
-        self.raise_()
+        self.restart()
 
     def advance(self, dt: float) -> None:
         if self.isVisible():
-            self.age += dt
-            self.update()
+            super().advance(dt)
 
     # -- layout -----------------------------------------------------------------------------------------------
 
@@ -70,7 +65,7 @@ class CreditsOverlay(_Overlay):
         """(how far the credits have moved up, how far they move before the last card stands in the middle)."""
         rows = self._rows(h)
         end_center = sum(r[0] for r in rows[:-2]) + rows[-2][0] / 2
-        area = self.area if not self.area.isEmpty() else QRectF(self.rect())
+        area = self.picture()
         stop = area.bottom() + end_center - area.center().y()
         return min(stop, max(0.0, self.age - START_DELAY) * SPEED * h), stop
 
@@ -92,7 +87,7 @@ class CreditsOverlay(_Overlay):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         w, h = self.width(), self.height()
         painter.fillRect(self.rect(), QColor(0, 0, 0, int(DIM * ease_out(self.age / DIM_SECONDS))))
-        area = self.area if not self.area.isEmpty() else QRectF(self.rect())
+        area = self.picture()
         painter.setClipRect(area)                  # nothing over the letterbox bars
         offset, _ = self._scroll(h)
         top = area.bottom() - offset
@@ -110,43 +105,18 @@ class CreditsOverlay(_Overlay):
 
     def _row(self, painter: QPainter, row: QRectF, kind: str, text: str, size: float) -> None:
         if kind in ("name", "end"):
-            font = pixel_font(size, families=theme.TITLE_FONTS)
-            painter.setFont(font)
-            painter.setPen(QColor(0, 0, 0, 220))
-            painter.drawText(row.translated(3, 3), Qt.AlignmentFlag.AlignCenter, text)
+            painter.setFont(pixel_font(size, families=theme.TITLE_FONTS))
             fill = QLinearGradient(0, row.top(), 0, row.bottom())
-            for at, color in zip((0.2, 0.55, 0.9), ("#fff6c8", theme.GOLD, "#b07a10")):
+            for at, color in zip((0.2, 0.55, 0.9), GOLD_LETTERS):
                 fill.setColorAt(at, QColor(color))
-            painter.setPen(QPen(QBrush(fill), 1))
-            painter.drawText(row, Qt.AlignmentFlag.AlignCenter, text)
+            draw_shadowed_text(painter, row, text, QPen(QBrush(fill), 1), alpha=220, offset=3)
         elif kind == "heading":
-            font = pixel_font(size)
-            font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 135)
-            painter.setFont(font)
-            painter.setPen(BANNER_HEADING)
-            label = text.upper()
-            painter.drawText(row, Qt.AlignmentFlag.AlignCenter, label)
-            tw = QFontMetrics(font).horizontalAdvance(label)
-            cx, cy = row.center().x(), row.center().y()
-            for sign in (-1, 1):
-                x0, x1 = cx + sign * (tw / 2 + 18), cx + sign * (tw / 2 + 140)
-                line = QLinearGradient(x0, 0, x1, 0)
-                line.setColorAt(0, TRIM)
-                line.setColorAt(1, with_alpha(TRIM, 0))
-                painter.fillRect(QRectF(min(x0, x1), cy - 0.75, abs(x1 - x0), 1.5), line)
-                painter.save()
-                painter.translate(x0, cy)
-                painter.rotate(45)
-                painter.fillRect(QRectF(-3, -3, 6, 6), TRIM)
-                painter.restore()
+            draw_flourish_heading(painter, row.center(), text, size, BANNER_HEADING, TRIM)
         else:
             color = {"sub": BANNER_HEADING, "role": QColor(theme.GOLD), "line": TEXT,
                      "thanks": QColor(theme.MUTED)}[kind]
             painter.setFont(pixel_font(size, bold=kind == "line"))
-            painter.setPen(QColor(0, 0, 0, 200))
-            painter.drawText(row.translated(2, 2), Qt.AlignmentFlag.AlignCenter, text)
-            painter.setPen(color)
-            painter.drawText(row, Qt.AlignmentFlag.AlignCenter, text)
+            draw_shadowed_text(painter, row, text, color)
 
     def _photos(self, painter: QPainter, area: QRectF, top: float, total: float, offset: float) -> None:
         """The screenshots as polaroids drifting up on both sides, a little slower than the text."""
@@ -167,13 +137,6 @@ class CreditsOverlay(_Overlay):
             painter.rotate((-1 if i % 2 == 0 else 1) * (3 + (i * 7) % 5))
             ph = pw * 0.62
             m = pw * 0.04
-            paper = QRectF(-pw / 2 - m, -ph / 2 - m, pw + 2 * m, ph + 4 * m)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(0, 0, 0, 110))
-            painter.drawRect(paper.translated(5, 7))
-            painter.setPen(QPen(PAPER_EDGE, 1))
-            painter.setBrush(PAPER)
-            painter.drawRect(paper)
-            photo = QRectF(-pw / 2, -ph / 2, pw, ph)
-            painter.drawPixmap(photo, pixmap, cropped(pixmap, pw / ph))
+            draw_polaroid(painter, QRectF(-pw / 2 - m, -ph / 2 - m, pw + 2 * m, ph + 4 * m),
+                          QRectF(-pw / 2, -ph / 2, pw, ph), pixmap, QPointF(5, 7))
             painter.restore()

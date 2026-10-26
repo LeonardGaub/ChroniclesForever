@@ -11,9 +11,10 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QPushButton,
                                QSlider, QVBoxLayout)
 
+from ... import i18n
 from ...i18n import tr
 from ..audio_setup import AudioInstallDialog
-from ..sound import ALL_EFFECTS, AUDIO, MUSIC_SUFFIXES, game_sounds_on, music_tracks, user_sounds_dir
+from ..sound import ALL_EFFECTS, AUDIO, MUSIC_SUFFIXES, music_tracks, user_sounds_dir
 from ..widgets import Page, muted, value_label
 
 
@@ -36,6 +37,7 @@ class SettingsPage(Page):
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(10)
+        self.options: list[tuple[str, QCheckBox]] = []    # switches in extra, on by default (AppConfig.flag)
         no_audio = QHBoxLayout()            # QtMultimedia missing (PySide6-Essentials only)
         self.no_audio = muted()
         self.install_audio = QPushButton()
@@ -53,8 +55,7 @@ class SettingsPage(Page):
         self.clicks.toggled.connect(lambda on: self._set("click_sounds", on))
         self.events = QCheckBox()
         self.events.toggled.connect(lambda on: self._set("event_sounds", on))
-        self.game_sounds = QCheckBox()      # the game's own sounds (wow/game_sounds.py)
-        self.game_sounds.toggled.connect(lambda on: self._set_extra("game_sounds", on))
+        self.game_sounds = self._option("game_sounds")     # the game's own sounds (wow/game_sounds.py)
         self.effects_label = QLabel()
         self.effects_volume = slider()
         self.effects_volume.valueChanged.connect(self._set_effects_volume)
@@ -82,7 +83,7 @@ class SettingsPage(Page):
         self.music_box = QGroupBox()
         ml = QGridLayout(self.music_box)
         self.music = QCheckBox()
-        self.music.toggled.connect(self._set_music)
+        self.music.toggled.connect(lambda on: self._set("music", on))
         self.zone_music = QCheckBox()       # the game's zone music in the cinematic mode (wow/zone_music.py)
         self.zone_music.toggled.connect(self._set_zone_music)
         self.music_label = QLabel()
@@ -125,20 +126,14 @@ class SettingsPage(Page):
         # Cinematic mode: time of day, end credits (ui/cinematic.py; on by default)
         self.cine_box = QGroupBox()
         cl = QVBoxLayout(self.cine_box)
-        self.cine_options: list[tuple[str, QCheckBox]] = []
         for key in ("cine_daylight", "cine_credits"):
-            box = QCheckBox()
-            box.toggled.connect(lambda on, k=key: self._set_extra(k, on))
-            cl.addWidget(box, 0, Qt.AlignmentFlag.AlignLeft)
-            self.cine_options.append((key, box))
+            cl.addWidget(self._option(key), 0, Qt.AlignmentFlag.AlignLeft)
         root.addWidget(self.cine_box)
 
         # The app itself: motion (ui/motion.py)
         self.ui_box = QGroupBox()
         ul = QVBoxLayout(self.ui_box)
-        self.motion = QCheckBox()
-        self.motion.toggled.connect(lambda on: self._set_extra("ui_motion", on))
-        ul.addWidget(self.motion, 0, Qt.AlignmentFlag.AlignLeft)
+        ul.addWidget(self._option("ui_motion"), 0, Qt.AlignmentFlag.AlignLeft)
         root.addWidget(self.ui_box)
 
         # Own sound files
@@ -154,6 +149,12 @@ class SettingsPage(Page):
         for box in (self.effects_box, self.music_box, self.own_box):
             box.setEnabled(AUDIO)
 
+    def _option(self, key: str) -> QCheckBox:
+        box = QCheckBox()
+        box.toggled.connect(lambda on: self._set(key, on))
+        self.options.append((key, box))
+        return box
+
     def refresh(self) -> None:
         config = self.ctx.config
         self.no_audio.setText(tr("settings.no_audio"))
@@ -161,20 +162,14 @@ class SettingsPage(Page):
         self.effects_box.setTitle(tr("settings.effects"))
         self.clicks.setText(tr("settings.clicks"))
         self.events.setText(tr("settings.events"))
-        self.game_sounds.setText(tr("settings.game_sounds"))
-        self.game_sounds.setToolTip(tr("settings.game_sounds_tip"))
         self.cine_box.setTitle(tr("settings.cine_box"))
-        for key, box in self.cine_options:
-            box.setText(tr(f"settings.{key}"))
-            box.setToolTip(tr(f"settings.{key}_tip"))
-            with QSignalBlocker(box):
-                box.setChecked(config.extra.get(key, True) is not False)
         self.ui_box.setTitle(tr("settings.ui_box"))
-        self.motion.setText(tr("settings.ui_motion"))
-        with QSignalBlocker(self.motion):
-            self.motion.setChecked(config.extra.get("ui_motion", True) is not False)
-        with QSignalBlocker(self.game_sounds):
-            self.game_sounds.setChecked(game_sounds_on(config))
+        for key, box in self.options:
+            box.setText(tr(f"settings.{key}"))
+            tip = f"settings.{key}_tip"
+            box.setToolTip(tr(tip) if tip in i18n.STRINGS["en"] else "")
+            with QSignalBlocker(box):
+                box.setChecked(config.flag(key))
         self.effects_label.setText(tr("settings.volume"))
         for name, button in self.test_buttons:
             button.setText(tr(f"settings.test.{name}"))
@@ -229,12 +224,7 @@ class SettingsPage(Page):
     # -- changes --------------------------------------------------------------------------
 
     def _set(self, key: str, value) -> None:
-        setattr(self.ctx.config, key, value)
-        self.ctx.config.save()
-
-    def _set_extra(self, key: str, value) -> None:
-        self.ctx.config.extra[key] = value
-        self.ctx.config.save()
+        self.ctx.config.set(key, value)
 
     def _set_effects_volume(self, value: int) -> None:
         self._set("effects_volume", value)
@@ -245,12 +235,8 @@ class SettingsPage(Page):
         self.music_value.setText(f"{value} %")
         self.sound.music.volume_changed()
 
-    def _set_music(self, on: bool) -> None:
-        self._set("music", on)
-
     def _set_zone_music(self, on: bool) -> None:
-        self.ctx.config.extra["cine_music"] = "zone" if on else "chosen"
-        self.ctx.config.save()
+        self._set("cine_music", "zone" if on else "chosen")
 
     def _set_music_path(self, path: str | None) -> None:
         self._set("music_path", path)

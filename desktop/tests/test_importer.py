@@ -5,14 +5,13 @@ from conftest import unpack_all
 
 from forever_chronicle.importing.sv_importer import SavedVariablesImporter, check_gap
 from forever_chronicle.storage.repository import Repository
-from forever_chronicle.wow.lua_parser import parse_saved_variables
 
 GUID = "Player-4619-0112A417"
 
 
 @pytest.fixture
-def data(addon_fixture):
-    return unpack_all(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")))
+def data(sv_data):
+    return unpack_all(sv_data)
 
 
 def character_id(db):

@@ -9,13 +9,11 @@ share; where nothing is known (the level still going, without samples) the frame
 
 from __future__ import annotations
 
-import math
-
-from PySide6.QtCore import QRectF, Qt
+from PySide6.QtCore import QRectF
 from PySide6.QtGui import QColor, QPainter, QPixmap
 
 from ..i18n import tr
-from .cinematic_fx import _Overlay, clamp, pixel_font, with_alpha
+from .cinematic_fx import _Overlay, clamp, draw_shadowed_text, pixel_font, smooth, with_alpha
 from .theme import SKIN
 
 FRAME_ROWS = 15                 # xp_frame.png: 1024 x 15 ...
@@ -68,7 +66,7 @@ class XpBar(_Overlay):
             self.share, self.size = None, size
         else:
             now = self.share if self.share is not None else share
-            self.share = now + (share - now) * (1 - math.exp(-dt / FILL_SECONDS))
+            self.share = now + (share - now) * smooth(dt, FILL_SECONDS)
             self.size = size
         self.update()
 
@@ -100,8 +98,5 @@ class XpBar(_Overlay):
         text = self.text()
         if text:
             painter.setFont(pixel_font(max(9.0, bar.height() * 0.95)))
-            painter.setPen(QColor(0, 0, 0, 230))
-            painter.drawText(QRectF(0, 1, w, h).translated(1, 1), Qt.AlignmentFlag.AlignCenter, text)
-            painter.setPen(QColor(255, 255, 255, 240))
-            painter.drawText(QRectF(0, 1, w, h), Qt.AlignmentFlag.AlignCenter, text)
+            draw_shadowed_text(painter, QRectF(0, 1, w, h), text, QColor(255, 255, 255, 240), alpha=230, offset=1)
         painter.end()

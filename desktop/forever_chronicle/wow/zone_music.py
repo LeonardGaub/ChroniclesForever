@@ -95,14 +95,11 @@ def extract_missing(client: ClientInstall | None, fdids: Iterable[int]) -> int:
     todo = missing(fdids)
     if not todo or client is None:
         return 0
-    try:
-        from . import casc
-        storage = casc.Casc(client.path.parent, client.flavor)
-    except Exception:  # no numpy, or the game files cannot be read: not tried again this session
+    from . import casc
+    storage = casc.open_client(client)
+    if storage is None:  # no numpy, or the game files cannot be read: not tried again this session
         _failed.update(todo)
         return 0
-    folder = cache_dir()
-    folder.mkdir(parents=True, exist_ok=True)
     written = 0
     for fdid in todo:
         try:
@@ -111,8 +108,6 @@ def extract_missing(client: ClientInstall | None, fdids: Iterable[int]) -> int:
             _failed.add(fdid)
             continue
         suffix = ".ogg" if data[:4] == b"OggS" else ".mp3"
-        part = folder / f"{fdid}{suffix}.part"
-        part.write_bytes(data)
-        part.replace(folder / f"{fdid}{suffix}")
+        casc.write_atomic(cache_dir() / f"{fdid}{suffix}", data)
         written += 1
     return written

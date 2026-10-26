@@ -1,8 +1,5 @@
-"""The friend package (tools/package_for_friend.py), bundled map images and the addon installer used by
-"Journey Forever starten.bat"."""
+"""The bundled map images and the addon installer used by "Journey Forever starten.bat"."""
 
-import importlib.util
-import zipfile
 from pathlib import Path
 
 from forever_chronicle import setup_addon
@@ -11,29 +8,6 @@ from forever_chronicle.wow import map_art, paths
 from forever_chronicle.wow.paths import ClientInstall
 
 REPO = Path(__file__).resolve().parents[2]
-
-
-def load_packager():
-    spec = importlib.util.spec_from_file_location("package_for_friend", REPO / "tools" / "package_for_friend.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_package_contents(tmp_path):
-    dest = load_packager().build(tmp_path / "friend.zip")
-    zf = zipfile.ZipFile(dest)
-    names = set(zf.namelist())
-    top = "ForeverChronicle/"
-    assert top + "Journey Forever starten.bat" in names and top + "LIES MICH.txt" in names
-    assert top + "addons/ForeverChronicle/ForeverChronicle.toc" in names
-    assert not [n for n in names if "ForeverChronicle_Share" in n or "Friends/" in n]  # friends parts: cloud only
-    assert top + "desktop/forever_chronicle/app.py" in names and top + "desktop/pyproject.toml" in names
-    assert top + "desktop/forever_chronicle/maps/1413.jpg" in names                 # map images from the repo
-    assert zf.getinfo(top + "desktop/forever_chronicle/maps/1413.jpg").compress_type == zipfile.ZIP_STORED
-    assert not [n for n in names if "/tests/" in n or ".venv" in n or "__pycache__" in n]
-    bat = zf.read(top + "Journey Forever starten.bat")
-    assert b"\r\n" in bat and b"\n" not in bat.replace(b"\r\n", b"")          # Windows line endings
 
 
 def test_map_images_live_in_git():

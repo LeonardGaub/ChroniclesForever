@@ -17,7 +17,10 @@ import struct
 import zlib
 from pathlib import Path
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # optional for the app (open_client gives None); the extract tools need it
+    np = None
 
 ENUS = 0x2
 ALL_LOCALES = 0xFFFFFFFF
@@ -262,6 +265,8 @@ class Root:
 
 class Casc:
     def __init__(self, install: Path, product: str):
+        if np is None:
+            raise CascError("numpy is not installed")
         builds = [b for b in read_build_info(install) if b.get("Product") == product]
         if not builds:
             raise CascError(f"product {product} is not installed")
@@ -290,3 +295,19 @@ class Casc:
         if fdid is None:
             raise CascError(f"{path} is not in the root")
         return self.read_fdid(fdid)
+
+
+def open_client(client) -> Casc | None:
+    """The game files of a found client (wow/paths.ClientInstall); None without numpy or when they cannot be read."""
+    try:
+        return Casc(client.path.parent, client.flavor)
+    except Exception:
+        return None
+
+
+def write_atomic(path: Path, data: bytes) -> None:
+    """Writes a file taken out of the game under a temporary name first, so nothing ever reads half a file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    part = path.with_name(path.name + ".part")
+    part.write_bytes(data)
+    part.replace(path)

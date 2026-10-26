@@ -134,8 +134,5 @@ def medallion(icon: game_icons.Icon | None, look: str = "", crop: bool = True) -
 def event_pin(event: EventRow) -> QPixmap | None:
     """The event's map pin as in the addon (the death skull is drawn whole, without a cut frame)."""
     et = event_types.get(event.event_type)
-    if et.pin_icon:
-        pin = medallion(et.pin_icon, et.highlight, crop=False)
-        if pin:
-            return pin
-    return medallion(event_types.icon_of(event), et.highlight) or medallion(et.icon, et.highlight)
+    icon = event_types.icon_of(event, pin=True)
+    return medallion(icon, et.highlight, crop=icon != et.pin_icon) or medallion(et.icon, et.highlight)

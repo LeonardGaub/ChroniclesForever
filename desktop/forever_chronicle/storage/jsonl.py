@@ -26,6 +26,7 @@ from typing import Any, Iterator
 
 from .. import __version__
 from .database import SCHEMA_VERSION, Database
+from .repository import Repository
 
 FORMAT = "forever-chronicle"
 FORMAT_VERSION = 1
@@ -105,45 +106,22 @@ def _columns(conn: sqlite3.Connection, table: str) -> dict[str, tuple[str, bool]
 # -- export --------------------------------------------------------------------------------
 
 
-@dataclass
-class ExportFilter:
-    """What to export. None everywhere = all of my own characters, all record types (the backup export).
-    characters: character_id -> record type names to include for that character.
-    types: global record types (map_info, ...) to include.
-    screenshots: (character_id, screenshot_id) pairs; only these screenshot records are exported."""
-    characters: dict[str, set[str]] | None = None
-    types: set[str] | None = None
-    screenshots: set[tuple[str, str]] | None = None
-
-
-def iter_records(db: Database, flt: ExportFilter | None = None) -> Iterator[dict[str, Any]]:
-    """The records (without header) of my own characters, filtered."""
-    flt = flt or ExportFilter()
+def iter_records(db: Database) -> Iterator[dict[str, Any]]:
+    """The records (without header) of my own characters."""
     conn = db.conn
     for rt in RECORD_TYPES:
-        if flt.types is not None and rt.name not in flt.types:
-            continue
         cols = [c for c in _columns(conn, rt.table) if c not in rt.local and c != "character_id"]
         select = ", ".join(f"t.{c}" for c in cols)
         order = ", ".join(f"t.{k}" for k in rt.key)
         if rt.per_character:
-            sql = (f"SELECT {select}, t.character_id AS __cid, c.natural_key AS __character FROM {rt.table} t "
+            sql = (f"SELECT {select}, c.natural_key AS __character FROM {rt.table} t "
                    f"JOIN characters c ON c.character_id = t.character_id WHERE c.owner_id IS NULL "
                    f"ORDER BY c.natural_key, {order}")
         elif rt.name == "character":
-            sql = f"SELECT {select}, t.character_id AS __cid FROM {rt.table} t WHERE t.owner_id IS NULL ORDER BY {order}"
+            sql = f"SELECT {select} FROM {rt.table} t WHERE t.owner_id IS NULL ORDER BY {order}"
         else:
             sql = f"SELECT {select} FROM {rt.table} t ORDER BY {order}"
         for row in conn.execute(sql):
-            if rt.per_character or rt.name == "character":
-                cid = row["__cid"]
-                if flt.characters is not None:
-                    wanted = flt.characters.get(cid)
-                    if wanted is None or (rt.per_character and rt.name not in wanted):
-                        continue
-                if flt.screenshots is not None and rt.name in ("screenshot", "screenshot_event", "screenshot_favorite") \
-                        and (cid, row["screenshot_id"]) not in flt.screenshots:
-                    continue
             rec: dict[str, Any] = {"record_type": rt.name}
             if rt.per_character:
                 rec["character"] = row["__character"]
@@ -191,16 +169,15 @@ def _valid_value(value: Any, declared: str) -> bool:
 
 
 class _Importer:
-    """Merges records. `characters` maps natural keys to the characters records may be written to
-    (default: my own characters; a friend's character is never changed by a backup import)."""
+    """Merges records. `characters` maps natural keys to the characters records may be written to: my own
+    characters (a friend's character is never changed by a backup import)."""
 
-    def __init__(self, db: Database, result: JsonlImportResult, characters: dict[str, str] | None = None):
+    def __init__(self, db: Database, result: JsonlImportResult):
         self.conn = db.conn
         self.result = result
         self.columns = {rt.name: _columns(self.conn, rt.table) for rt in RECORD_TYPES}
-        self.characters: dict[str, str] = characters if characters is not None else {
-            r[0]: r[1] for r in self.conn.execute(
-                "SELECT natural_key, character_id FROM characters WHERE owner_id IS NULL")}
+        self.characters: dict[str, str] = {r[0]: r[1] for r in self.conn.execute(
+            "SELECT natural_key, character_id FROM characters WHERE owner_id IS NULL")}
         self.foreign = {r[0] for r in self.conn.execute(
             "SELECT natural_key FROM characters WHERE owner_id IS NOT NULL")}
 
@@ -320,18 +297,12 @@ def import_jsonl(db: Database, path: Path) -> JsonlImportResult:
     header, records = read_records(lines, result)
     if header is None:
         return result
-    if header.get("kind", "backup") != "backup":
-        result.status = "rejected"
-        result.messages.append("this is not a backup export")
-        return result
 
     result.backup = db.backup("before-jsonl-import")
     st = path.stat()
+    repo = Repository(db.conn)
     with db.transaction():
-        cur = db.conn.execute("""INSERT INTO import_runs (source_path, source_type, file_mtime, file_size, started_at,
-                                 status) VALUES (?, 'jsonl', ?, ?, ?, 'running')""",
-                              (str(path), int(st.st_mtime), st.st_size, int(time.time())))
-        result.import_id = int(cur.lastrowid)
+        result.import_id = repo.start_import(str(path), "jsonl", None, int(st.st_mtime), st.st_size)
         importer = _Importer(db, result)
         for number, rec in records:
             importer.row(number, rec)
@@ -339,8 +310,7 @@ def import_jsonl(db: Database, path: Path) -> JsonlImportResult:
             result.status = "partial"
         if result.unknown:
             result.messages.append(f"{result.unknown} records of unknown types skipped (newer app version?)")
-        db.conn.execute("""UPDATE import_runs SET finished_at = ?, status = ?, rows_imported = ?, rows_duplicate = ?,
-                           rows_invalid = ?, message = ? WHERE import_id = ?""",
-                        (int(time.time()), result.status, result.inserted + result.updated, result.unchanged,
-                         result.invalid, "; ".join(result.messages) or None, result.import_id))
+        repo.finish_import(result.import_id, status=result.status, rows_imported=result.inserted + result.updated,
+                           rows_duplicate=result.unchanged, rows_invalid=result.invalid,
+                           message="; ".join(result.messages) or None)
     return result

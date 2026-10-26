@@ -226,14 +226,9 @@ class MainWindow(QMainWindow):
         for code, name in i18n.LANGUAGES.items():
             action = QAction(name, self, checkable=True)
             action.setChecked(code == i18n.language())
-            action.triggered.connect(lambda _=False, c=code: self._set_language(c))
+            action.triggered.connect(lambda _=False, c=code: self.ctx.set_language(c))
             group.addAction(action)
             self.lang_menu.addAction(action)
-
-    def _set_language(self, code: str) -> None:
-        self.ctx.config.language = code
-        self.ctx.config.save()
-        i18n.set_language(code)
 
     def open_setup(self) -> None:
         """The first-start wizard (ui/setup_wizard.py); the window shows what it brought afterwards."""

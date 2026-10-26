@@ -15,13 +15,12 @@ from typing import Iterable
 from ..i18n import format_date, format_duration, tr
 from ..storage.repository import EventRow
 from . import event_types, maps
-from .cinematic import Death, Levels, Teleport
+from .cinematic import Death, Levels, Teleport, played_time
 from .route import Route
 
 # Width of each continent's map in yards (the height follows from the map's 1002 x 668 shape).
 CONTINENT_YARDS = {maps.KALIMDOR: 36800.0, maps.EASTERN_KINGDOMS: 40741.0}
 METRES_PER_YARD = 0.9144
-GAP = 30                   # breaks without points longer than this are not playing time (as the replay)
 
 
 @dataclass
@@ -61,7 +60,7 @@ def journey(route: Route, events: Iterable[EventRow], levels: Levels, start: flo
     instances too (Undercity's Ruins of Lordaeron), and nothing else tells them apart."""
     events = list(events)
     j = Journey()
-    j.played = route.timeline(start, end, GAP).total
+    j.played = played_time(route, start, end)          # breaks left out, as the replay skips them
     j.level_from, j.level_to = levels.at(start), levels.at(end)
     _distances(route, start, end, j)
     time_in: Counter = Counter()
@@ -97,11 +96,7 @@ def journey(route: Route, events: Iterable[EventRow], levels: Levels, start: flo
 def _distances(route: Route, start: float, end: float, j: Journey) -> None:
     """Walked (and ridden) and flown distance in yards, and the number of flights, over connected route lines."""
     prev = None
-    for p in route.points:
-        if p.end < start:
-            continue
-        if p.time > end:
-            break
+    for p in route.points_in(start, end):
         if prev is not None and route.connected(prev, p, maps.WORLD):
             d = _yards(route, prev, p)
             if d is not None:

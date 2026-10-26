@@ -6,6 +6,7 @@ import json
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 def app_home() -> Path:
@@ -50,6 +51,19 @@ class AppConfig:
             return cls()
         known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
         return cls(**known)
+
+    def flag(self, key: str, default: bool = True) -> bool:
+        """An on/off option kept in `extra`: missing (or not a bool) means the default."""
+        value = self.extra.get(key)
+        return value if isinstance(value, bool) else default
+
+    def set(self, key: str, value: Any) -> None:
+        """Changes a setting and saves the file. Keys that are not fields of this class live in `extra`."""
+        if key in self.__dataclass_fields__:
+            setattr(self, key, value)
+        else:
+            self.extra[key] = value
+        self.save()
 
     def save(self) -> None:
         home = app_home()

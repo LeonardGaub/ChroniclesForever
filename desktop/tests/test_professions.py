@@ -1,18 +1,10 @@
 import copy
 
-import pytest
-
 from forever_chronicle.domain import event_types, stats
 from forever_chronicle.importing.sv_importer import SavedVariablesImporter
 from forever_chronicle.storage.repository import Recipe, RecipeCategory, Repository
-from forever_chronicle.wow.lua_parser import parse_saved_variables
 
 GUID = "Player-4619-0112A417"
-
-
-@pytest.fixture
-def data(addon_fixture):
-    return parse_saved_variables(addon_fixture.read_text(encoding="utf-8"))
 
 
 def professions_of(data):
@@ -24,20 +16,18 @@ def leatherworking(data):
 
 
 def test_recipe_parsing():
-    # format 1 (addon v0.10.0, no quality)
-    assert Recipe.parse("2881,2550,134252,Light Leather") == Recipe(2881, 2550, 134252, "Light Leather")
-    assert Recipe.parse("100,,,Pattern: Hide, Cured") == Recipe(100, None, None, "Pattern: Hide, Cured")
-    assert Recipe.parse("abc,1,2,x") is None and Recipe.parse("1,2,3") is None and Recipe.parse("1,2,3,") is None
-    # format 2: quality before the name
-    assert Recipe.parse("9058,2552,133150,2,Handstitched Leather Cloak", 2) ==         Recipe(9058, 2552, 133150, "Handstitched Leather Cloak", 2)
-    assert Recipe.parse("100,,,,Enchant Bracer, Minor", 2) == Recipe(100, None, None, "Enchant Bracer, Minor", None)
-    assert Recipe.parse("100,1,2,x,Name", 2) is None and Recipe.parse("100,1,2,Name", 2) is None
+    # recipeID,categoryID,icon,quality,name (recipe list format 2; the name may contain commas)
+    assert Recipe.parse("9058,2552,133150,2,Handstitched Leather Cloak") == \
+        Recipe(9058, 2552, 133150, "Handstitched Leather Cloak", 2)
+    assert Recipe.parse("100,,,,Enchant Bracer, Minor") == Recipe(100, None, None, "Enchant Bracer, Minor", None)
+    assert Recipe.parse("100,1,2,x,Name") is None and Recipe.parse("100,1,2,Name") is None
+    assert Recipe.parse("abc,1,2,3,x") is None and Recipe.parse("1,2,3,4,") is None
     assert RecipeCategory.parse("2549,,Leatherworking") == RecipeCategory(2549, None, "Leatherworking")
     assert RecipeCategory.parse("2550,2549,Materials") == RecipeCategory(2550, 2549, "Materials")
 
 
-def test_import_professions(db, data):
-    result = SavedVariablesImporter(db).import_data(data, "fixture")
+def test_import_professions(db, sv_data):
+    result = SavedVariablesImporter(db).import_data(sv_data, "fixture")
     assert result.status == "ok" and result.invalid == 0 and result.recipes == 4
     repo = Repository(db.conn)
     cid = repo.list_characters()[0].character_id
@@ -59,17 +49,17 @@ def test_import_professions(db, data):
     assert dict((s.key, v) for s, v in stats.compute_all(repo, cid))["recipes"] == 4
 
     # Importing the same file again changes nothing.
-    SavedVariablesImporter(db).import_data(copy.deepcopy(data), "fixture")
+    SavedVariablesImporter(db).import_data(copy.deepcopy(sv_data), "fixture")
     assert len(repo.recipes(cid)) == 4 and len(repo.professions(cid)) == 4
 
 
-def test_partial_snapshot_never_removes_recipes(db, data):
+def test_partial_snapshot_never_removes_recipes(db, sv_data):
     importer = SavedVariablesImporter(db)
-    importer.import_data(copy.deepcopy(data), "fixture")
+    importer.import_data(copy.deepcopy(sv_data), "fixture")
     repo = Repository(db.conn)
     cid = repo.list_characters()[0].character_id
 
-    partial = copy.deepcopy(data)
+    partial = copy.deepcopy(sv_data)
     lw = leatherworking(partial)
     lw["recipes"]["status"] = "partial"
     lw["recipes"]["list"] = ["2149,2553,132539,2,Handstitched Leather Boots"]
@@ -77,14 +67,14 @@ def test_partial_snapshot_never_removes_recipes(db, data):
     assert len(repo.recipes(cid, skill_line=165)) == 5
     assert next(p for p in repo.professions(cid) if p["skill_line"] == 165)["recipe_status"] == "partial"
 
-    complete = copy.deepcopy(data)
+    complete = copy.deepcopy(sv_data)
     leatherworking(complete)["recipes"]["list"] = ["2881,2550,134252,,Light Leather"]  # quality unknown this time
     importer.import_data(complete, "complete")
     assert [(r["name"], r["quality"]) for r in repo.recipes(cid, skill_line=165)] == [("Light Leather", 1)]  # kept
 
 
-def test_unlearned_profession_and_invalid_records(db, data):
-    changed = copy.deepcopy(data)
+def test_unlearned_profession_and_invalid_records(db, sv_data):
+    changed = copy.deepcopy(sv_data)
     leatherworking(changed)["active"] = False
     professions_of(changed).append({"skillLine": "x", "name": 5})
     professions_of(changed).append({"skillLine": 999, "name": "Broken", "recipes": {"status": "weird", "list": []}})
@@ -94,7 +84,8 @@ def test_unlearned_profession_and_invalid_records(db, data):
     repo = Repository(db.conn)
     cid = repo.list_characters()[0].character_id
     assert 165 not in [p["skill_line"] for p in repo.professions(cid)]
-    assert 165 in [p["skill_line"] for p in repo.professions(cid, include_inactive=True)]
+    assert db.conn.execute("SELECT active FROM professions WHERE skill_line = 165").fetchone()[0] == 0, \
+        "kept, but no longer active"
     assert repo.recipes(cid) == []  # recipes of unlearned professions are hidden
 
 

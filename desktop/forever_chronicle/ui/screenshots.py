@@ -47,6 +47,30 @@ def file_exists(path: str | None) -> bool:
     return bool(path) and Path(path).is_file()
 
 
+def shots_on_disk(repo, character_id: str) -> list:
+    """The character's screenshot rows (Repository.screenshots) whose picture is on this computer."""
+    return [r for r in repo.screenshots(character_id, only_files=True) if file_exists(r["file_path"])]
+
+
+class ScreenshotFolderButton(QPushButton):
+    """Opens the game's Screenshots folder; disabled while there is none (refresh() after the client changed)."""
+
+    def __init__(self, ctx):
+        super().__init__()
+        self.ctx = ctx
+        self.clicked.connect(self._open)
+
+    def refresh(self) -> None:
+        self.setText(tr("screenshot.open_folder"))
+        client = self.ctx.client()
+        self.setEnabled(bool(client and client.screenshots_dir.is_dir()))
+
+    def _open(self) -> None:
+        client = self.ctx.client()
+        if client:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(client.screenshots_dir)))
+
+
 class ThumbnailLoader:
     """Loads thumbnails on a timer and hands each one to its callback. Thumbnails are cached by path."""
 
@@ -275,3 +299,14 @@ class ScreenshotViewer(QWidget):
         self.cinematic = open_cinematic(self.ctx, shot.character_id, start, end)
         self.close()
         return self.cinematic
+
+
+def open_viewer(parent, ctx, shots: list[Shot], index: int, full_screen: bool = True) -> ScreenshotViewer:
+    """The viewer on shots[index], as a window of its own that is deleted when it closes."""
+    viewer = ScreenshotViewer(shots, index, parent, ctx)
+    viewer.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+    if full_screen:
+        viewer.showFullScreen()
+    else:
+        viewer.show()
+    return viewer

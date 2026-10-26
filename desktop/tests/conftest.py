@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 os.environ["FOREVER_CHRONICLE_SILENT"] = "1"   # tests never play sounds (ui/sound.py still records them)
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 REPO = Path(__file__).resolve().parents[2]
 ADDON_FIXTURE = REPO / "tests" / "fixtures" / "ForeverChronicle.lua"   # written by tests/addon (npm test)
@@ -34,11 +35,46 @@ def addon_fixture() -> Path:
 
 
 @pytest.fixture
+def sv_data(addon_fixture) -> dict:
+    """The addon fixture's SavedVariables, parsed (a fresh copy per test, so tests may change it)."""
+    from forever_chronicle.wow.lua_parser import parse_saved_variables
+    return parse_saved_variables(addon_fixture.read_text(encoding="utf-8"))
+
+
+@pytest.fixture
 def db(tmp_path):
     from forever_chronicle.storage.database import Database
     database = Database(tmp_path / "test.db", tmp_path / "backups")
     yield database
     database.close()
+
+
+@pytest.fixture(scope="module")
+def app():
+    """The QApplication, with the Classic theme."""
+    from PySide6.QtWidgets import QApplication
+    from forever_chronicle.ui import theme
+    application = QApplication.instance() or QApplication([])
+    theme.apply(application)
+    return application
+
+
+@pytest.fixture
+def ctx(app, db, tmp_path, monkeypatch):
+    """An empty app context: its home folder is tmp_path, and the real disk is never searched for the game."""
+    from forever_chronicle.app_context import AppContext
+    from forever_chronicle.config import AppConfig
+    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
+    context = AppContext(AppConfig(client_dir=str(tmp_path / "missing")), db)
+    context._client_searched = True
+    return context
+
+
+@pytest.fixture
+def imported(ctx, sv_data):
+    """`ctx` with the addon fixture imported (request both: `def test_x(ctx, imported)`)."""
+    ctx.importer.import_data(sv_data, "fixture")
+    return ctx
 
 
 def unpack_all(data: dict) -> dict:
@@ -47,3 +83,9 @@ def unpack_all(data: dict) -> dict:
     for char in data["ForeverChronicleDB"]["characters"].values():
         char["streams"] = {name: unpack_stream(s) for name, s in char.get("streams", {}).items()}
     return data
+
+
+def event(t: int, kind: str, **payload):
+    """An event of the test character "c" at time t."""
+    from forever_chronicle.storage.repository import EventRow
+    return EventRow("c", f"e{t}", kind, t, None, None, None, None, None, payload)

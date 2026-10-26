@@ -25,11 +25,17 @@ from typing import Any, Callable, Iterable
 from ..i18n import tr
 from ..storage.repository import EventRow, PositionPoint
 from . import event_types, maps
-from .route import TELEPORT_DISTANCE, TELEPORT_SPEED, WORLD_PER_CONTINENT, Route
+from .route import WORLD_PER_CONTINENT, Route, too_fast
 
 # Event types the replay announces. Quests are left out: there are too many for a replay at speed.
 CUE_EVENT_TYPES = ("level_up", "player_died", "zone_discovered", "achievement_earned", "rare_killed",
                    "boss_killed", "dungeon_completed")
+GAP_SKIP = 30              # breaks without points longer than this are skipped by the replay: no playing time
+
+
+def played_time(route: Route, start: float, end: float) -> float:
+    """Playing time in [start, end], breaks longer than GAP_SKIP left out (as the replay skips them)."""
+    return route.timeline(start, end, GAP_SKIP).total
 
 
 @dataclass(frozen=True)
@@ -205,7 +211,7 @@ def _release(route: Route, body: PositionPoint, later: list[PositionPoint], t: i
             # A step faster than any mount (as Route.is_jump, across maps too), or onto a map that cannot be
             # measured against the body's.
             d = route.distance(prev, p)
-            fast = d is not None and d >= TELEPORT_DISTANCE and d / max(1, p.time - prev.end) > TELEPORT_SPEED
+            fast = d is not None and too_fast(d, p.time - prev.end)
             if fast or (d is None and p.map_id != prev.map_id):
                 return p.time, later[k + 1:]
         prev = p
@@ -246,11 +252,7 @@ def still_spans(route: Route, start: float, end: float) -> list[tuple[float, flo
         if anchor is not None and until - began >= STILL_SECONDS and b > a:
             spans.append((a, b))
 
-    for p in route.points[max(0, bisect.bisect_right(route.times, start) - 1):]:
-        if p.time > end:
-            break
-        if p.end < start:
-            continue
+    for p in route.points_in(start, end):
         d = route.distance(anchor, p) if anchor is not None and prev is not None and route.connected(prev, p) else None
         if d is not None and d <= STILL_REACH:
             until = p.end
@@ -297,7 +299,7 @@ def teleports(route: Route, deaths: Iterable[Death], start: float, end: float) -
         if wa is None or wb is None:
             continue
         d = math.hypot(wb[0] - wa[0], wb[1] - wa[1]) / WORLD_PER_CONTINENT      # continent widths
-        if d < TELEPORT_MIN or d / max(1, gap) <= TELEPORT_SPEED:
+        if not too_fast(d, gap, TELEPORT_MIN):
             continue
         if _continent(route, a) != _continent(route, b) and not _cast(route, k - 1):
             continue                                                         # a boat or a zeppelin
@@ -316,9 +318,7 @@ def _world(route: Route, p: PositionPoint) -> tuple[float, float] | None:
 
 def _continent(route: Route, p: PositionPoint) -> int | None:
     spot = _spot(route, p)
-    if spot is None:
-        return None
-    return spot[0] if spot[0] in maps.CONTINENT_IN_WORLD else route.continent(spot[0])
+    return route.continent_or_self(spot[0]) if spot else None
 
 
 def _cast(route: Route, k: int) -> bool:

@@ -6,7 +6,6 @@ from conftest import unpack_all
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtGui import QColor, QImage  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
@@ -14,14 +13,13 @@ from forever_chronicle.importing.screenshot_matcher import STAMP_FORMAT, match_s
 from forever_chronicle.importing.sv_importer import SavedVariablesImporter  # noqa: E402
 from forever_chronicle.storage.repository import Repository  # noqa: E402
 from forever_chronicle.ui.cards import THUMB, TITLE  # noqa: E402
-from forever_chronicle.wow.lua_parser import parse_saved_variables  # noqa: E402
 
 GUID = "Player-4619-0112A417"
 
 
 @pytest.fixture
-def data(addon_fixture):
-    return unpack_all(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")))
+def data(sv_data):
+    return unpack_all(sv_data)
 
 
 def shot_stamp(data):

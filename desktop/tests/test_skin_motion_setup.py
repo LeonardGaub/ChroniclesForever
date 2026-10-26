@@ -3,33 +3,13 @@ the first-start wizard."""
 
 import os
 
-import pytest
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QEvent  # noqa: E402
-from PySide6.QtWidgets import QApplication, QGraphicsDropShadowEffect  # noqa: E402
+from PySide6.QtWidgets import QGraphicsDropShadowEffect  # noqa: E402
 
-from forever_chronicle.app_context import AppContext  # noqa: E402
-from forever_chronicle.config import AppConfig  # noqa: E402
 from forever_chronicle.ui import theme  # noqa: E402
-from forever_chronicle.wow.lua_parser import parse_saved_variables  # noqa: E402
 from forever_chronicle.wow.paths import ADDON_NAME, ClientInstall  # noqa: E402
-
-
-@pytest.fixture(scope="module")
-def app():
-    application = QApplication.instance() or QApplication([])
-    theme.apply(application)
-    return application
-
-
-@pytest.fixture
-def ctx(db, tmp_path, monkeypatch):
-    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
-    context = AppContext(AppConfig(client_dir=str(tmp_path / "missing")), db)
-    context._client_searched = True
-    return context
 
 
 def test_skin_is_built_and_used(app):
@@ -42,7 +22,7 @@ def test_skin_is_built_and_used(app):
     assert app.styleSheet() == sheet
 
 
-def test_motion_in_the_main_window(app, ctx, addon_fixture):
+def test_motion_in_the_main_window(app, ctx, sv_data):
     from forever_chronicle.ui.main_window import MainWindow
 
     window = MainWindow(ctx)
@@ -70,7 +50,7 @@ def test_motion_in_the_main_window(app, ctx, addon_fixture):
 
     ids = []
     ctx.imported.connect(ids.extend)
-    ctx.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
+    ctx.importer.import_data(sv_data, "fixture")
     import_id = ctx.repo.import_runs(1)[0]["import_id"]
     assert ctx.repo.events_of_imports([import_id]), "the events an import added"
     window.announce([import_id])

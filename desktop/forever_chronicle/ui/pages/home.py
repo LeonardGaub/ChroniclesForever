@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt
+from PySide6.QtCore import QPointF, QSize, Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout,
                                QWidget)
@@ -26,7 +26,7 @@ from ...i18n import format_datetime, format_day, format_duration, tr
 from ...wow.map_art import find_art
 from .. import icons, theme
 from ..cards import Card
-from ..screenshots import ScreenshotViewer, file_exists, load_thumbnail, make_shot
+from ..screenshots import load_thumbnail, make_shot, open_viewer, shots_on_disk
 from ..widgets import Page, muted
 
 # Moments counted for the last session, in this order (the type's game icon and the count).
@@ -88,8 +88,7 @@ def zone_times(route: Route | None, start: int, end: int) -> list[tuple[str, int
         if instance_id is not None:
             name = route.instance_names.get(instance_id) or f"#{instance_id}"
         else:
-            info = route.map_infos.get(map_id)
-            name = maps.display_name(map_id, info["name"] if info is not None else None)
+            name = maps.zone_name(map_id, route.map_infos)
         out.append((name, n))
     return sorted(out, key=lambda z: -z[1])
 
@@ -222,7 +221,7 @@ class HomePage(Page):
 
     def refresh(self) -> None:
         repo = self.ctx.repo
-        char = next((c for c in repo.list_characters() if c.character_id == self.character_id), None)
+        char = repo.character(self.character_id)
         self.welcome.setText(tr("home.welcome", name=char.name) if char else tr("home.welcome_none"))
         self.start_card.setVisible(not repo.list_characters())
         self.start_card.title.setText(tr("home.start"))
@@ -233,8 +232,7 @@ class HomePage(Page):
         self.map_card.title.setText(tr("home.map"))
         for body in self.bodies.values():
             clear(body)
-        route = (Route(repo.positions(self.character_id), repo.map_infos(), repo.instance_names(), repo.entrances())
-                 if self.character_id else None)
+        route = Route.load(repo, self.character_id) if self.character_id else None
         sessions = repo.sessions(self.character_id) if self.character_id else []
         self._fill_session(sessions, route)
         self._fill_gallery()
@@ -318,8 +316,8 @@ class HomePage(Page):
             if len(zones) > MAX_ZONES:
                 body.addWidget(muted(tr("home.more_zones", n=len(zones) - MAX_ZONES)))
 
-        shots =[r for r in self.ctx.repo.screenshots(self.character_id, only_files=True)
-                 if file_exists(r["file_path"]) and start <= (r["captured_at"] or r["requested_at"] or 0) <= end]
+        shots = [r for r in shots_on_disk(self.ctx.repo, self.character_id)
+                 if start <= (r["captured_at"] or r["requested_at"] or 0) <= end]
         if shots:
             row = QHBoxLayout()
             row.setSpacing(8)
@@ -328,7 +326,7 @@ class HomePage(Page):
                                                                                            r["first_event_id"] or ""))
                          for r in reversed(shots)]
             for i, shot in enumerate(all_shots[:4]):
-                row.addWidget(Thumb(shot.path, lambda i=i, s=all_shots: self._view(s, i)))
+                row.addWidget(Thumb(shot.path, lambda i=i, s=all_shots: open_viewer(self, self.ctx, s, i)))
             row.addStretch(1)
             body.addLayout(row)
         buttons = QHBoxLayout()
@@ -348,8 +346,7 @@ class HomePage(Page):
 
     def _fill_gallery(self) -> None:
         body = self.bodies["gallery"]
-        rows = ([r for r in self.ctx.repo.screenshots(self.character_id, only_files=True) if file_exists(r["file_path"])]
-                if self.character_id else [])
+        rows = shots_on_disk(self.ctx.repo, self.character_id) if self.character_id else []
         if not rows:
             body.addWidget(muted(tr("gallery.empty")))
             return
@@ -390,9 +387,8 @@ class HomePage(Page):
             preview.setCursor(Qt.CursorShape.PointingHandCursor)
             preview.mouseReleaseEvent = lambda _e: self.ctx.navigate.emit("tab.map")
             body.addWidget(preview)
-            info = route.map_infos.get(view)
             zones = {p.map_id for p in route.points if p.map_id is not None}
-            text = QLabel(tr("home.map_last", zone=maps.display_name(view, info["name"] if info is not None else None)))
+            text = QLabel(tr("home.map_last", zone=maps.zone_name(view, route.map_infos)))
             text.setObjectName("CardBig")
             body.addWidget(text)
             body.addWidget(muted(tr("home.map_stats", zones=len(zones), since=format_datetime(route.start))))
@@ -423,10 +419,4 @@ class HomePage(Page):
 
     def _export(self, start: int, end: int) -> None:
         from ..cinematic_export import ExportDialog
-        colors = self.ctx.config.extra.get("map_colors") or "level"
-        ExportDialog(self, self.ctx, self.character_id, start, end, 4, colors).exec()
-
-    def _view(self, shots, index: int) -> None:
-        viewer = ScreenshotViewer(shots, index, self, self.ctx)
-        viewer.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        viewer.showFullScreen()
+        ExportDialog(self, self.ctx, self.character_id, start, end, 4, self.ctx.map_colors).exec()

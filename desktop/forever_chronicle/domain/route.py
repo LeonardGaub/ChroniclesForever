@@ -12,6 +12,7 @@ from __future__ import annotations
 import bisect
 import math
 from dataclasses import dataclass, field
+from typing import Iterator
 
 from ..storage.repository import PositionPoint
 from . import maps
@@ -25,6 +26,12 @@ TELEPORT_DISTANCE = 0.01    # shorter steps never count as a teleport
 UNKNOWN_ZONE_SCALE = 0.1    # assumed size of a zone without continent geometry
 CONTINENT_TYPE = 2          # Enum.UIMapType.Continent
 WORLD_PER_CONTINENT = 0.78  # a continent map's width as a share of the world map's (maps.CONTINENT_IN_WORLD)
+
+
+def too_fast(d: float, seconds: float, least: float = TELEPORT_DISTANCE) -> bool:
+    """True when a step of d continent widths in seconds is a teleport: at least `least` long and faster than
+    any mount or flight path."""
+    return d >= least and d / max(1, seconds) > TELEPORT_SPEED
 
 
 @dataclass
@@ -78,6 +85,11 @@ class Route:
         self.recorded_entrances = entrances or {}
         self._derived_entrances: dict[int, tuple[int, float, float]] | None = None
 
+    @classmethod
+    def load(cls, repo, character_id: str) -> "Route":
+        """A character's whole route with the map, instance and entrance data (repo: storage.repository)."""
+        return cls(repo.positions(character_id), repo.map_infos(), repo.instance_names(), repo.entrances())
+
     def __bool__(self) -> bool:
         return bool(self.points)
 
@@ -93,6 +105,10 @@ class Route:
 
     def continent(self, map_id: int) -> int | None:
         return maps.continent_of(map_id, self.map_infos)
+
+    def continent_or_self(self, map_id: int | None) -> int | None:
+        """The continent a map lies on, or the map itself if it is one."""
+        return map_id if map_id in maps.CONTINENT_IN_WORLD else self.continent(map_id)
 
     def project(self, map_id: int | None, x: float | None, y: float | None, view: int) -> tuple[float, float] | None:
         """Normalized position of (map_id, x, y) on the view map, or None if it is not on that map.
@@ -204,7 +220,7 @@ class Route:
         if prev.taxi or p.taxi or prev.x is None or p.x is None:
             return False
         d = math.hypot(p.x - prev.x, p.y - prev.y) * self._continent_scale(p.map_id)
-        return d >= TELEPORT_DISTANCE and d / max(1, p.time - prev.end) > TELEPORT_SPEED
+        return too_fast(d, p.time - prev.end)
 
     def connected(self, prev: PositionPoint, p: PositionPoint, view: int | None = None) -> bool:
         """True when a route line joins prev and p. On the world map (the seamless one) lines also cross from
@@ -219,15 +235,14 @@ class Route:
         """True when prev and p lie on different maps of one continent, close enough to be one walk."""
         if prev.instance_id is not None or p.instance_id is not None:
             return False
-        on = lambda m: m if m in maps.CONTINENT_IN_WORLD else self.continent(m)  # noqa: E731
-        if on(prev.map_id) != on(p.map_id):
+        if self.continent_or_self(prev.map_id) != self.continent_or_self(p.map_id):
             return False
         a = maps.world_xy(prev.map_id, prev.x, prev.y, self.map_infos)
         b = maps.world_xy(p.map_id, p.x, p.y, self.map_infos)
         if a is None or b is None:
             return False
         d = math.hypot(b[0] - a[0], b[1] - a[1]) / WORLD_PER_CONTINENT    # continent widths
-        return d < TELEPORT_DISTANCE or d / max(1, p.time - prev.end) <= TELEPORT_SPEED
+        return not too_fast(d, p.time - prev.end)
 
     # -- segments ----------------------------------------------------------------------
 
@@ -280,16 +295,19 @@ class Route:
         p = self.point_at(int(t))
         return self.locate(p.map_id, p.x, p.y, p.instance_id) if p else None
 
+    def points_in(self, start: float, end: float) -> Iterator[PositionPoint]:
+        """The points overlapping [start, end], in time order (from the last one starting at or before start)."""
+        for p in self.points[max(0, bisect.bisect_right(self.times, start) - 1):]:
+            if p.time > end:
+                break
+            if p.end >= start:
+                yield p
+
     def timeline(self, start: float, end: float, gap: float = 300) -> "Timeline":
         """Active time within [start, end]: breaks without points longer than gap are collapsed (as on the
         addon's slider), so a timeline over many sessions is not mostly empty."""
         intervals: list[list[float]] = []
-        i = max(0, bisect.bisect_right(self.times, start) - 1)
-        for p in self.points[i:]:
-            if p.time > end:
-                break
-            if p.end < start:
-                continue
+        for p in self.points_in(start, end):
             a, b = max(p.time, start), min(p.end, end)
             if intervals and a - intervals[-1][1] <= gap:
                 intervals[-1][1] = max(intervals[-1][1], b)
@@ -304,11 +322,7 @@ class Route:
         Route.ZoneRuns, used for the timeline's zone bands)."""
         runs: list[ZoneRun] = []
         current: ZoneRun | None = None
-        for p in self.points[max(0, bisect.bisect_right(self.times, start) - 1):]:
-            if p.time > end:
-                break
-            if p.end < start:
-                continue
+        for p in self.points_in(start, end):
             map_id = p.map_id if p.instance_id is None else None
             if current and current.map_id == map_id and current.instance_id == p.instance_id:
                 current.to = min(p.end, end)
@@ -325,7 +339,9 @@ class Route:
         i = bisect.bisect_right(self.times, t)
         return self.points[i].time if i < len(self.points) else None
 
-    def instance_name(self, point: PositionPoint) -> str | None:
-        if point.instance_id is None:
+    def instance_name(self, point: PositionPoint | int | None) -> str | None:
+        """The name of the instance a point lies in (or of an instance ID); None outside instances."""
+        instance_id = point if point is None or isinstance(point, int) else point.instance_id
+        if instance_id is None:
             return None
-        return self.instance_names.get(point.instance_id) or f"#{point.instance_id}"
+        return self.instance_names.get(instance_id) or f"#{instance_id}"

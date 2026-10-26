@@ -13,10 +13,10 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from ..storage.database import Database
-from ..storage.repository import PositionPoint, Recipe, RecipeCategory, Repository
+from ..storage.repository import PositionPoint, Recipe, RecipeCategory, Repository, int_or_none
 from ..wow.lua_parser import LuaParseError, as_dict, as_list, parse_saved_variables_bytes, parse_value
 
 VARIABLE_NAME = "ForeverChronicleDB"
@@ -70,6 +70,17 @@ def _int(v: Any) -> int | None:
     if isinstance(v, float) and v.is_integer():
         return int(v)
     return None
+
+
+def _records(stream: Any, valid: Callable[[Any], bool], result: ImportResult) -> list[dict[str, Any]]:
+    """A stream's valid records; the invalid ones are counted."""
+    good = []
+    for rec in as_list(as_dict(stream).get("records")):
+        if valid(rec):
+            good.append(rec)
+        else:
+            result.invalid += 1
+    return good
 
 
 def valid_event(rec: Any) -> bool:
@@ -234,47 +245,30 @@ class SavedVariablesImporter:
                 self.repo.set_character_stat(character_id, stat_key, value)
         streams = {name: unpack_stream(stream) for name, stream in as_dict(char.get("streams")).items()}
 
-        events = as_list(as_dict(streams.get("events")).get("records"))
-        good_events = []
+        events = _records(streams.get("events"), valid_event, result)
         for rec in events:
-            if valid_event(rec):
-                good_events.append(rec)
-            else:
-                result.invalid += 1
-        for rec in good_events:
             rec["seq"], rec["time"] = _int(rec["seq"]), _int(rec["time"])
             if self.repo.insert_event(character_id, rec, import_id, schema):
                 result.imported += 1
             else:
                 result.duplicates += 1
-        self._track_stream(character_id, "events", good_events, import_id, result)
+        self._track_stream(character_id, "events", events, import_id, result)
 
-        sessions = as_list(as_dict(streams.get("sessions")).get("records"))
-        good_sessions = []
+        sessions = _records(streams.get("sessions"), valid_session, result)
         for rec in sessions:
-            if valid_session(rec):
-                good_sessions.append(rec)
-                self.repo.upsert_session(character_id, rec)
-                result.sessions += 1
-            else:
-                result.invalid += 1
-        for rec in good_sessions:
+            self.repo.upsert_session(character_id, rec)
             rec["time"] = rec.get("startedAt")
-        self._track_stream(character_id, "sessions", good_sessions, import_id, result)
+        result.sessions += len(sessions)
+        self._track_stream(character_id, "sessions", sessions, import_id, result)
 
-        shots = as_list(as_dict(streams.get("screenshots")).get("records"))
-        good_shots = []
+        shots = _records(streams.get("screenshots"), valid_screenshot, result)
         for rec in shots:
-            if valid_screenshot(rec):
-                rec["seq"] = _int(rec["seq"])
-                rec["events"] = as_list(rec.get("events"))
-                rec["time"] = _int(rec.get("capturedAt")) or _int(rec.get("requestedAt"))
-                self.repo.upsert_screenshot(character_id, rec)
-                good_shots.append(rec)
-                result.screenshots += 1
-            else:
-                result.invalid += 1
-        self._track_stream(character_id, "screenshots", good_shots, import_id, result)
+            rec["seq"] = _int(rec["seq"])
+            rec["events"] = as_list(rec.get("events"))
+            rec["time"] = _int(rec.get("capturedAt")) or _int(rec.get("requestedAt"))
+            self.repo.upsert_screenshot(character_id, rec)
+        result.screenshots += len(shots)
+        self._track_stream(character_id, "screenshots", shots, import_id, result)
 
         # Compact stream: one string per point, seq implicit (nextSeq - count + index).
         pos_stream = as_dict(streams.get("positions"))
@@ -354,9 +348,8 @@ class SavedVariablesImporter:
                     self.repo.upsert_recipe_category(character_id, skill_line, cat.category_id, cat.parent_id,
                                                      cat.name)
             parsed = []
-            fmt = _int(recipes.get("format"))
             for text in as_list(recipes.get("list")):
-                recipe = Recipe.parse(text, fmt) if isinstance(text, str) else None
+                recipe = Recipe.parse(text) if isinstance(text, str) else None
                 if recipe is None:
                     result.invalid += 1
                 else:
@@ -383,15 +376,15 @@ class SavedVariablesImporter:
 
     def _import_maps(self, db_root: dict[str, Any]) -> None:
         for key, info in as_dict(db_root.get("maps")).items():
-            map_id = _int(key) if not isinstance(key, str) else (int(key) if key.isdigit() else None)
+            map_id = int_or_none(key)
             if map_id is not None and isinstance(info, dict):
                 self.repo.upsert_map_info(map_id, info)
         for key, name in as_dict(db_root.get("instances")).items():
-            instance_id = _int(key) if not isinstance(key, str) else (int(key) if key.isdigit() else None)
+            instance_id = int_or_none(key)
             if instance_id is not None and isinstance(name, str):
                 self.repo.upsert_instance(instance_id, name)
         for key, e in as_dict(db_root.get("entrances")).items():
-            instance_id = _int(key) if not isinstance(key, str) else (int(key) if key.isdigit() else None)
+            instance_id = int_or_none(key)
             if instance_id is None or not isinstance(e, dict):
                 continue
             map_id, x, y = _int(e.get("mapID")), e.get("x"), e.get("y")

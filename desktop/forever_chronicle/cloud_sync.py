@@ -16,9 +16,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 
-# As in ForeverSync.ps1: <name>-<id>-<account>.lua, or <shareId>-<account>.lua from scripts before 2026-10-16.
-PLAYER_FILE = re.compile(r"^(?:(?P<name>\w{1,24})-(?P<id>[0-9a-f]{8})|(?P<long_id>[0-9a-f]{32}))"
-                         r"-(?P<account>[0-9a-f]{8})\.lua$")
+# As in ForeverSync.ps1: <name>-<id>-<account>.lua.
+PLAYER_FILE = re.compile(r"^(?P<name>\w{1,24})-(?P<id>[0-9a-f]{8})-(?P<account>[0-9a-f]{8})\.lua$")
 SHARE_NAME = re.compile(r'^[ \t]?\["name"\]\s*=\s*"((?:[^"\\\r\n]|\\.)*)"', re.MULTILINE)
 FRIEND_ENTRY = re.compile(r'^add\("', re.MULTILINE)
 MAX_PLAYER_BYTES = 8 * 1024 * 1024
@@ -122,7 +121,7 @@ def player_files(setup: SyncSetup) -> list[PlayerFile]:
         match = PLAYER_FILE.match(path.name)
         if not match or not path.is_file():
             continue
-        file_id = match.group("id") or match.group("long_id")
+        file_id = match.group("id")
         try:
             stat = path.stat()
             text = path.read_text(encoding="utf-8", errors="replace") if stat.st_size <= MAX_PLAYER_BYTES else ""

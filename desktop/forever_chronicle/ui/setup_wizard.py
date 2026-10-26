@@ -2,9 +2,9 @@
 
 1. Welcome: what the app does, and the language (German or English, switched at once).
 2. The game: WoW Forever found automatically (wow/paths.py), or chosen by hand.
-3. The addon: installed in the game, and its version against the one next to the app (the repository's or the
-   friends' package's addons\\ForeverChronicle); installs or updates it (setup_addon.install_addon, which keeps
-   the friends' data file). Then: log in once, /fj opens the addon, logging out saves its data.
+3. The addon: installed in the game, and its version against the one next to the app (addons\\ForeverChronicle
+   beside the desktop folder); installs or updates it (setup_addon.install_addon, which keeps the friends' data
+   file). Then: log in once, /fj opens the addon, logging out saves its data.
 4. The data: the addon's saved files found per WoW account; imports them now; automatic import at start.
 5. Done: what is ready, and where the cinematic mode is.
 
@@ -14,11 +14,9 @@ again from the file menu ("Einrichtung ...") and the home screen's first-steps c
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen
-from PySide6.QtWidgets import (QCheckBox, QDialog, QFileDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QStackedWidget,
+from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtWidgets import (QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QStackedWidget,
                                QVBoxLayout, QWidget)
 
 from .. import i18n
@@ -26,9 +24,11 @@ from ..i18n import format_datetime, tr
 from ..setup_addon import addon_version, bundled_addon, install_addon
 from ..wow.paths import ADDON_NAME
 from . import theme
+from .widgets import choose_client_dir, run_import
 
 STEPS = ("welcome", "game", "addon", "data", "done")
 OK, MISSING = "✔", "✘"
+GREEN = "#40c040"
 
 
 class StepDots(QWidget):
@@ -74,6 +74,11 @@ def _label(css: str, wrap: bool = True) -> QLabel:
     label.setWordWrap(wrap)
     label.setTextFormat(Qt.TextFormat.RichText)
     return label
+
+
+def _status(text: str, mark: str = MISSING, color: str = theme.RED) -> str:
+    """A status line: the coloured mark (a red cross by default), then the text."""
+    return f"<span style='color:{color}'>{mark}</span>&nbsp; {text}"
 
 
 class SetupWizard(QDialog):
@@ -145,7 +150,7 @@ class SetupWizard(QDialog):
         self.import_result = _label(theme.font_css(12, theme.GOLD))
         self.auto_import = QCheckBox()
         self.auto_import.setChecked(ctx.config.auto_import)
-        self.auto_import.toggled.connect(self._set_auto_import)
+        self.auto_import.toggled.connect(lambda on: ctx.config.set("auto_import", on))
         for widget in (self.data_status, self.import_button, self.import_result, self.auto_import):
             self.pages["data"].addWidget(widget, 0, Qt.AlignmentFlag.AlignLeft if widget is not self.data_status
                                          else Qt.AlignmentFlag.AlignTop)
@@ -157,7 +162,7 @@ class SetupWizard(QDialog):
 
         buttons = QHBoxLayout()
         self.later = QPushButton()
-        self.later.clicked.connect(self._skip)
+        self.later.clicked.connect(lambda: self.finish(accepted=False))
         self.back = QPushButton()
         self.back.clicked.connect(lambda: self.go(self.index - 1))
         self.next = QPushButton()
@@ -188,15 +193,10 @@ class SetupWizard(QDialog):
         else:
             self.go(self.index + 1)
 
-    def _skip(self) -> None:
-        self.ctx.config.extra["setup_done"] = True
-        self.ctx.config.save()
-        self.reject()
-
-    def finish(self) -> None:
-        self.ctx.config.extra["setup_done"] = True
-        self.ctx.config.save()
-        self.accept()
+    def finish(self, accepted: bool = True) -> None:
+        """Finished, or skipped with "Später": either way the wizard does not open again by itself."""
+        self.ctx.config.set("setup_done", True)
+        self.done(QDialog.DialogCode.Accepted if accepted else QDialog.DialogCode.Rejected)
 
     def refresh(self) -> None:
         """The current step's state (what was found, what can be done)."""
@@ -209,22 +209,22 @@ class SetupWizard(QDialog):
             for code, button in self.language_buttons.items():
                 button.setChecked(code == i18n.language())
         elif self.step() == "game":
-            self.game_status.setText(f"<span style='color:#40c040'>{OK}</span>&nbsp; {tr('setup.game_found')}<br>"
-                                     f"<span style='color:{theme.MUTED}'>{client.path}</span>" if client else
-                                     f"<span style='color:{theme.RED}'>{MISSING}</span>&nbsp; {tr('setup.game_missing')}")
+            self.game_status.setText(_status(f"{tr('setup.game_found')}<br><span style='color:{theme.MUTED}'>"
+                                             f"{client.path}</span>", OK, GREEN) if client else
+                                     _status(tr("setup.game_missing")))
             self.choose_game.setText(tr("setup.choose_other") if client else tr("setup.choose"))
         elif self.step() == "addon":
             installed = addon_version(client.addons_dir / ADDON_NAME) if client else None
             source = bundled_addon()
             bundled = addon_version(source) if source else None
             if not client:
-                text = f"<span style='color:{theme.RED}'>{MISSING}</span>&nbsp; {tr('setup.addon_no_game')}"
+                text = _status(tr("setup.addon_no_game"))
             elif installed is None:
-                text = f"<span style='color:{theme.RED}'>{MISSING}</span>&nbsp; {tr('setup.addon_missing')}"
+                text = _status(tr("setup.addon_missing"))
             elif bundled and bundled != installed:
-                text = f"<span style='color:{theme.GOLD}'>!</span>&nbsp; {tr('setup.addon_old', have=installed, new=bundled)}"
+                text = _status(tr("setup.addon_old", have=installed, new=bundled), "!", theme.GOLD)
             else:
-                text = f"<span style='color:#40c040'>{OK}</span>&nbsp; {tr('setup.addon_ok', version=installed)}"
+                text = _status(tr("setup.addon_ok", version=installed), OK, GREEN)
             self.addon_status.setText(text)
             self.install.setText(tr("setup.install") if installed is None else tr("setup.update"))
             self.install.setVisible(bool(client and source and (installed is None or bundled != installed)))
@@ -247,16 +247,12 @@ class SetupWizard(QDialog):
     # -- actions ----------------------------------------------------------------------
 
     def _set_language(self, code: str) -> None:
-        self.ctx.config.language = code
-        self.ctx.config.save()
-        i18n.set_language(code)
+        self.ctx.set_language(code)
         self.retranslate()
 
     def _choose_game(self) -> None:
-        start = str(self.ctx.client().path) if self.ctx.client() else "C:\\"
-        path = QFileDialog.getExistingDirectory(self, tr("setup.choose"), start)
-        if path and not self.ctx.set_client_dir(Path(path)):
-            self.game_status.setText(f"<span style='color:{theme.RED}'>{MISSING}</span>&nbsp; {tr('import.invalid_dir')}")
+        if choose_client_dir(self, self.ctx, tr("setup.choose")) is False:
+            self.game_status.setText(_status(tr("import.invalid_dir")))
             return
         self.refresh()
 
@@ -267,27 +263,15 @@ class SetupWizard(QDialog):
         try:
             result = install_addon(source, client)
         except OSError as error:
-            self.addon_status.setText(f"<span style='color:{theme.RED}'>{MISSING}</span>&nbsp; "
-                                      f"{tr('setup.install_failed', error=error)}")
+            self.addon_status.setText(_status(tr("setup.install_failed", error=error)))
             return
         self.refresh()
         self.addon_hint.setText(tr("setup.addon_installed", version=result.version or "?") + "<br>" + tr("setup.addon_hint"))
 
     def _import(self) -> None:
-        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            results = self.ctx.import_all()
-        finally:
-            QGuiApplication.restoreOverrideCursor()
+        results, failure = run_import(self.ctx)
         chars = len([c for c in self.ctx.repo.list_characters() if not c.is_friend])
-        events = sum(r.imported for r in results)
-        failed = [r for r in results if r.status in ("failed", "rejected")]
-        self.import_result.setText(tr("import.failed", message="; ".join(failed[0].messages)) if failed
-                                   else tr("setup.imported", chars=chars, events=events))
-
-    def _set_auto_import(self, on: bool) -> None:
-        self.ctx.config.auto_import = on
-        self.ctx.config.save()
+        self.import_result.setText(failure or tr("setup.imported", chars=chars, events=sum(r.imported for r in results)))
 
     def retranslate(self) -> None:
         self.setWindowTitle(tr("setup.window"))

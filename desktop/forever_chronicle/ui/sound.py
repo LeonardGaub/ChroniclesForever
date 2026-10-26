@@ -73,7 +73,7 @@ def effect_path(name: str, game: bool = True) -> Path:
 
 
 def game_sounds_on(config: AppConfig) -> bool:
-    return config.extra.get("game_sounds", True) is not False
+    return config.flag("game_sounds")
 
 
 def install_game_sounds(client) -> threading.Thread | None:
@@ -161,32 +161,55 @@ def silent() -> bool:
     return not AUDIO or bool(os.environ.get("FOREVER_CHRONICLE_SILENT"))
 
 
-class Sound(QObject):
-    """The app's sound effects and click filter. One instance lives in the AppContext (ctx.sound)."""
+class EffectGate(QObject):
+    """Decides whether an effect plays: its setting is on (or forced), the effects volume is up, and the same
+    effect did not start within its MIN_GAP. Sound and the video export's Recorder differ only in their clock."""
 
     def __init__(self, config: AppConfig):
         super().__init__()
         self.config = config
         self.played: deque[str] = deque(maxlen=50)     # most recent last; for tests and diagnostics
-        self._effects: dict = {}
-        self._clocks: dict[str, QElapsedTimer] = {}
-        self._music: MusicPlayer | None = None
+        self._last: dict[str, float] = {}               # when each effect last started (now())
 
-    # -- effects --------------------------------------------------------------------------
+    def now(self) -> float:
+        """Seconds on the clock the gaps between effects are measured with."""
+        raise NotImplementedError
 
     def enabled(self, name: str) -> bool:
         return self.config.click_sounds if name == "click" else self.config.event_sounds
 
+    def admit(self, name: str, force: bool = False) -> bool:
+        """True (and noted in played) when the effect may play now."""
+        if not (force or self.enabled(name)) or self.config.effects_volume <= 0:
+            return False
+        now = self.now()
+        if now - self._last.get(name, -1e9) < MIN_GAP.get(name, DEFAULT_GAP):
+            return False
+        self._last[name] = now
+        self.played.append(name)
+        return True
+
+
+class Sound(EffectGate):
+    """The app's sound effects and click filter. One instance lives in the AppContext (ctx.sound)."""
+
+    def __init__(self, config: AppConfig):
+        super().__init__(config)
+        self._effects: dict = {}
+        self._clock = QElapsedTimer()
+        self._clock.start()
+        self._music: MusicPlayer | None = None
+
+    # -- effects --------------------------------------------------------------------------
+
+    def now(self) -> float:
+        return self._clock.elapsed() / 1000
+
     def play(self, name: str, force: bool = False) -> bool:
         """Plays an effect if its setting is on (force: always, for the settings' test button). Returns whether
         it played."""
-        if not (force or self.enabled(name)) or self.config.effects_volume <= 0:
+        if not self.admit(name, force):
             return False
-        clock = self._clocks.setdefault(name, QElapsedTimer())
-        if clock.isValid() and clock.elapsed() < MIN_GAP.get(name, DEFAULT_GAP) * 1000:
-            return False
-        clock.start()
-        self.played.append(name)
         if silent():
             return True
         effect = self._effect(name)

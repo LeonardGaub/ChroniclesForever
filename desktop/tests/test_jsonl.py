@@ -7,17 +7,15 @@ import pytest
 from forever_chronicle.importing.sv_importer import SavedVariablesImporter
 from forever_chronicle.storage.database import KEEP_BACKUPS, Database
 from forever_chronicle.storage.jsonl import FORMAT_VERSION, RECORD_TYPES, export_jsonl, import_jsonl
-from forever_chronicle.wow.lua_parser import parse_saved_variables
 
 TABLES = sorted({rt.table for rt in RECORD_TYPES})
 
 
 @pytest.fixture
-def filled(db, addon_fixture):
+def filled(db, sv_data):
     """The addon fixture imported, plus data the fixture does not contain (entrance, gap, screenshot path)."""
-    data = parse_saved_variables(addon_fixture.read_text(encoding="utf-8"))
-    data["ForeverChronicleDB"]["entrances"] = {"389": {"mapID": 1413, "x": 0.45, "y": 0.6, "source": "walked"}}
-    SavedVariablesImporter(db).import_data(data, "fixture")
+    sv_data["ForeverChronicleDB"]["entrances"] = {"389": {"mapID": 1413, "x": 0.45, "y": 0.6, "source": "walked"}}
+    SavedVariablesImporter(db).import_data(sv_data, "fixture")
     cid = db.conn.execute("SELECT character_id FROM characters").fetchone()[0]
     with db.transaction():
         db.conn.execute("INSERT INTO data_gaps (character_id, stream, from_seq, to_seq, detected_at) "

@@ -6,8 +6,9 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
-from . import cloud_sync
+from . import cloud_sync, i18n
 from .config import AppConfig
+from .domain.route_colors import MODES
 from .importing.friend_importer import FriendImportResult, import_friends
 from .importing.friend_screenshots import FriendScreenshotsResult, sync_friend_screenshots
 from .importing.screenshot_matcher import match_screenshots
@@ -43,6 +44,18 @@ class AppContext(QObject):
         self._client_searched = False
         self.last_friend_import = FriendImportResult()
         self.last_friend_screenshots = FriendScreenshotsResult()
+
+    def set_language(self, code: str) -> None:
+        """Switches the language (i18n tells its listeners) and keeps it in the settings."""
+        self.config.set("language", code)
+        i18n.set_language(code)
+
+    @property
+    def map_colors(self) -> str:
+        """How routes are coloured (domain/route_colors.py MODES): chosen on the map page, used by the cinematic mode
+        and the video too."""
+        mode = self.config.extra.get("map_colors")
+        return mode if mode in MODES else MODES[0]
 
     def client(self) -> ClientInstall | None:
         if self._client or self._client_searched:

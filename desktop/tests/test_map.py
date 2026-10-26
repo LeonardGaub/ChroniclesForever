@@ -6,12 +6,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QBuffer, QIODevice  # noqa: E402
 from PySide6.QtGui import QColor, QImage  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from forever_chronicle.domain.route import GAP_SECONDS, Route  # noqa: E402
 from forever_chronicle.importing.sv_importer import SavedVariablesImporter  # noqa: E402
 from forever_chronicle.storage.repository import PositionPoint, Repository  # noqa: E402
-from forever_chronicle.wow.lua_parser import parse_saved_variables  # noqa: E402
 from forever_chronicle.wow.map_art import find_art  # noqa: E402
 
 
@@ -38,10 +36,9 @@ def test_parse_flags():
     assert p.taxi and p.until == 160 and p.end == 160
 
 
-def test_import_positions_and_geometry(db, addon_fixture):
-    data = parse_saved_variables(addon_fixture.read_text(encoding="utf-8"))
+def test_import_positions_and_geometry(db, sv_data):
     importer = SavedVariablesImporter(db)
-    result = importer.import_data(data, "fixture")
+    result = importer.import_data(sv_data, "fixture")
     assert result.positions >= 12 and result.invalid == 0
     repo = Repository(db.conn)
     cid = repo.list_characters()[0].character_id
@@ -50,16 +47,15 @@ def test_import_positions_and_geometry(db, addon_fixture):
     assert points[-1].until is not None, "standing still at the end extends the last point"
     info = repo.map_infos()[1413]
     assert info["continent_id"] == 1414 and info["min_x"] == 0.4
-    again = importer.import_data(data, "fixture")
+    again = importer.import_data(sv_data, "fixture")
     assert len(repo.positions(cid)) == len(points) and again.gaps == 0
 
 
-def test_import_route_archive(db, addon_fixture):
+def test_import_route_archive(db, sv_data):
     """Thinned old points from the addon's route archive fill in what was not imported in time."""
-    data = parse_saved_variables(addon_fixture.read_text(encoding="utf-8"))
-    char = next(iter(data["ForeverChronicleDB"]["characters"].values()))
+    char = next(iter(sv_data["ForeverChronicleDB"]["characters"].values()))
     char["streams"]["routeArchive"] = {"nextSeq": 2, "records": ["1000,1413,0.3000,0.5000,,,;1020,1413,0.3200,0.5000,1030,,"]}
-    result = SavedVariablesImporter(db).import_data(data, "fixture")
+    result = SavedVariablesImporter(db).import_data(sv_data, "fixture")
     repo = Repository(db.conn)
     points = repo.positions(repo.list_characters()[0].character_id)
     assert result.invalid == 0 and points[0].time == 1000 and points[1].time == 1020 and points[1].until == 1030
@@ -107,19 +103,11 @@ def test_map_images_come_from_one_folder(tmp_path):
     assert find_art(9999) is None and find_art(None) is None
 
 
-def test_map_page_replay_and_timeline_focus(db, tmp_path, monkeypatch, addon_fixture):
-    from forever_chronicle.app_context import AppContext
-    from forever_chronicle.config import AppConfig
+def test_map_page_replay_and_timeline_focus(ctx, imported, tmp_path):
     from forever_chronicle.ui.main_window import MainWindow
 
-    QApplication.instance() or QApplication([])
-    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
     (tmp_path / "maps").mkdir()
     (tmp_path / "maps" / "1413.jpg").write_bytes(_jpeg_bytes())
-
-    ctx = AppContext(AppConfig(), db)
-    ctx._client_searched = True
-    ctx.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
     window = MainWindow(ctx)
     page = next(p for p in window.pages if p.title_key == "tab.map")
     window.show_page(page)
@@ -183,30 +171,23 @@ def test_dungeon_moments_use_the_entrance():
     assert recorded.entrance(389) == (1454, 0.52, 0.49) and recorded.view_for(points[4]) == 1454
 
 
-def test_import_entrances(db, addon_fixture):
-    data = parse_saved_variables(addon_fixture.read_text(encoding="utf-8"))
-    data["ForeverChronicleDB"]["entrances"] = {
+def test_import_entrances(db, sv_data):
+    sv_data["ForeverChronicleDB"]["entrances"] = {
         "389": {"mapID": 1454, "x": 0.5195, "y": 0.4911, "source": "journal", "name": "Ragefire Chasm"},
         "2999": {"mapID": 1458, "x": 0.7256, "y": 0.113, "source": "walked"},
         "bad": {"mapID": 1, "x": 0.1, "y": 0.1}, "5": {"mapID": 1, "x": 3, "y": 0.1}}
-    SavedVariablesImporter(db).import_data(data, "fixture")
+    SavedVariablesImporter(db).import_data(sv_data, "fixture")
     assert Repository(db.conn).entrances() == {389: (1454, 0.5195, 0.4911), 2999: (1458, 0.7256, 0.113)}
 
 
-def test_map_page_shows_dungeon_death_at_entrance(db, addon_fixture, tmp_path, monkeypatch):
+def test_map_page_shows_dungeon_death_at_entrance(ctx, sv_data):
     """The fixture's death in Ragefire Chasm (instance 389) is pinned at the entrance once it is known."""
-    from forever_chronicle.app_context import AppContext
-    from forever_chronicle.config import AppConfig
     from forever_chronicle.ui.pages.map_page import MapPage
-    QApplication.instance() or QApplication([])
-    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
-    data = parse_saved_variables(addon_fixture.read_text(encoding="utf-8"))
-    data["ForeverChronicleDB"]["entrances"] = {"389": {"mapID": 1413, "x": 0.45, "y": 0.6, "source": "walked"}}
-    ctx = AppContext(AppConfig(client_dir=str(tmp_path / "missing")), db)
-    ctx._client_searched = True
-    ctx.importer.import_data(data, "fixture")
+    sv_data["ForeverChronicleDB"]["entrances"] = {"389": {"mapID": 1413, "x": 0.45, "y": 0.6, "source": "walked"}}
+    ctx.importer.import_data(sv_data, "fixture")
     page = MapPage(ctx)
-    page.set_character(Repository(db.conn).list_characters()[0].character_id)
+    page.character_id = ctx.repo.list_characters()[0].character_id
+    page.refresh()
     death = next(e for e in ctx.repo.events(page.character_id) if e.event_type == "player_died")
     assert death.instance_id == 389 and death.map_id is None
     assert page.view_map == 1413

@@ -17,7 +17,7 @@ import html
 import time
 
 from PySide6.QtCore import QPointF, QRectF, QSignalBlocker, Qt, QTimer, QUrl
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QGraphicsEllipseItem, QGraphicsItem, QGraphicsPathItem,
                                QGraphicsPixmapItem, QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel, QPushButton,
                                QSlider, QVBoxLayout)
@@ -219,10 +219,9 @@ class MapPage(Page):
             self._clear("")
             return
         repo = self.ctx.repo
-        self.route = Route(repo.positions(self.character_id), repo.map_infos(), repo.instance_names(),
-                           repo.entrances())
-        char = next((c for c in repo.list_characters() if c.character_id == self.character_id), None)
-        self.colors = RouteColors(self._color_mode(),
+        self.route = Route.load(repo, self.character_id)
+        char = repo.character(self.character_id)
+        self.colors = RouteColors(self.ctx.map_colors,
                                   Levels(repo.events(self.character_id, types=("level_up",)), char.level if char else None),
                                   [s["started_at"] for s in repo.sessions(self.character_id)])
         self._fill_sessions()
@@ -249,19 +248,14 @@ class MapPage(Page):
             self.color_select.clear()
             for mode in MODES:
                 self.color_select.addItem(tr(f"map.colors_{mode}"), mode)
-            self.color_select.setCurrentIndex(MODES.index(self._color_mode()))
+            self.color_select.setCurrentIndex(MODES.index(self.ctx.map_colors))
             self.color_select.setToolTip(tr("map.colors_tip"))
-
-    def _color_mode(self) -> str:
-        mode = self.ctx.config.extra.get("map_colors")
-        return mode if mode in MODES else MODES[0]
 
     def _colors_selected(self) -> None:
         mode = self.color_select.currentData()
-        if mode is None or mode == self._color_mode():
+        if mode is None or mode == self.ctx.map_colors:
             return
-        self.ctx.config.extra["map_colors"] = mode
-        self.ctx.config.save()
+        self.ctx.config.set("map_colors", mode)
         if self.colors:
             self.colors = RouteColors(mode, self.colors.levels, self.colors.session_starts)
             self._draw()
@@ -282,8 +276,7 @@ class MapPage(Page):
             self.map_select.clear()
             infos = self.route.map_infos if self.route else {}
             for map_id in (self.route.available_views() if self.route else []):
-                info = infos.get(map_id)
-                self.map_select.addItem(maps.display_name(map_id, info["name"] if info is not None else None), map_id)
+                self.map_select.addItem(maps.zone_name(map_id, infos), map_id)
 
     def _clear(self, notice: str) -> None:
         self.view.scene().clear()
@@ -510,7 +503,7 @@ class MapPage(Page):
         self.timer.stop()
         self._set_play_text()
         ExportDialog(self, self.ctx, self.character_id, self.range[0], self.range[1], self.speed.currentData(),
-                     self._color_mode()).exec()
+                     self.ctx.map_colors).exec()
 
     def _set_play_text(self) -> None:
         self.play.setText(tr("map.pause") if self.timer.isActive() else tr("map.play"))

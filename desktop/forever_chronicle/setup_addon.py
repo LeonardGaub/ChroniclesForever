@@ -29,7 +29,7 @@ class InstallResult:
 
 
 def bundled_addon() -> Path | None:
-    """The addon next to the app: addons\\ForeverChronicle in the repository or the friends' package."""
+    """The addon next to the app: addons\\ForeverChronicle beside the desktop folder."""
     source = Path(__file__).resolve().parents[2] / "addons" / ADDON_NAME
     return source if (source / f"{ADDON_NAME}.toc").is_file() else None
 

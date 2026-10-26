@@ -9,17 +9,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QTabBar  # noqa: E402
+from PySide6.QtWidgets import QLabel, QPushButton, QTabBar  # noqa: E402
 
 from forever_chronicle.config import AppConfig  # noqa: E402
 from forever_chronicle.ui import sound  # noqa: E402
 from forever_chronicle.ui.sound import (BUILTIN_MUSIC, DUCK, EFFECTS, FADE_IN, FADE_OUT, MusicPlayer, Sound,  # noqa: E402
                                         effect_path, gain, music_tracks)
-
-
-@pytest.fixture(scope="module")
-def app():
-    return QApplication.instance() or QApplication([])
 
 
 def test_built_in_sounds_exist():
@@ -76,7 +71,7 @@ def test_clicks_on_buttons_and_tabs(app):
             w.show()
         QTest.mouseClick(button, Qt.MouseButton.LeftButton)
         assert list(s.played) == ["click"]
-        s._clocks.clear()
+        s._last.clear()
         QTest.mouseClick(label, Qt.MouseButton.LeftButton)
         QTest.mouseClick(off, Qt.MouseButton.LeftButton)
         QTest.mouseClick(button, Qt.MouseButton.RightButton)

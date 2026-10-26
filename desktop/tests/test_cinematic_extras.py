@@ -4,37 +4,23 @@ import os
 import wave
 
 import pytest
+from conftest import event as E
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
-
-from forever_chronicle.app_context import AppContext  # noqa: E402
 from forever_chronicle.config import AppConfig  # noqa: E402
 from forever_chronicle.domain import daylight, maps  # noqa: E402
 from forever_chronicle.domain.cinematic import Death, Levels, teleports  # noqa: E402
 from forever_chronicle.domain.credits import journey, km, sections  # noqa: E402
 from forever_chronicle.domain.route import Route  # noqa: E402
-from forever_chronicle.storage.repository import EventRow, PositionPoint  # noqa: E402
-from forever_chronicle.ui import sound, theme  # noqa: E402
-from forever_chronicle.wow.lua_parser import parse_saved_variables  # noqa: E402
+from forever_chronicle.storage.repository import PositionPoint  # noqa: E402
+from forever_chronicle.ui import sound  # noqa: E402
 
 EK, KAL = maps.EASTERN_KINGDOMS, maps.KALIMDOR
 
 
-@pytest.fixture(scope="module")
-def app():
-    application = QApplication.instance() or QApplication([])
-    theme.apply(application)
-    return application
-
-
 def P(t, x, y=0.5, map_id=EK, until=None, taxi=False):
     return PositionPoint(t, until, map_id, x, y, None, taxi)
-
-
-def E(t, kind, **payload):
-    return EventRow("c", f"e{t}", kind, t, None, None, None, None, None, payload)
 
 
 def test_teleports_fly_boats_sail():
@@ -128,11 +114,7 @@ def test_game_sounds_replace_the_built_in_ones(tmp_path, monkeypatch, app):
             assert w.getframerate() == sound.WAV_RATE and w.getnchannels() == 2 and w.getnframes() > 1000
 
 
-def test_window_ends_with_credits(app, db, tmp_path, monkeypatch, addon_fixture):
-    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
-    ctx = AppContext(AppConfig(client_dir=str(tmp_path / "missing")), db)
-    ctx._client_searched = True
-    ctx.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
+def test_window_ends_with_credits(app, ctx, imported, monkeypatch):
     cid = ctx.repo.list_characters()[0].character_id
     points = ctx.repo.positions(cid)
     start, end = points[0].time, max(p.end for p in points)
@@ -173,18 +155,14 @@ def test_window_ends_with_credits(app, db, tmp_path, monkeypatch, addon_fixture)
     window.close()
 
 
-@pytest.mark.parametrize("cine_map", ["world", "zones"])
-def test_trips_to_and_from_a_sky_island_go_through_the_clouds(app, db, tmp_path, monkeypatch, addon_fixture,
-                                                               cine_map):
+@pytest.mark.parametrize("world_art", [True, False])
+def test_trips_to_and_from_a_sky_island_go_through_the_clouds(app, ctx, imported, monkeypatch, world_art):
     """Zephras Isle lies nowhere on the world map: a portal up and the flight down pass through the clouds, and the
-    maps change under them (no fade from black)."""
+    maps change under them (no fade from black). Without the seamless world map's art every place has its own map."""
+    from forever_chronicle.ui import cinematic
     from forever_chronicle.ui.cinematic import CinematicWindow
 
-    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
-    ctx = AppContext(AppConfig(client_dir=str(tmp_path / "missing")), db)
-    ctx._client_searched = True
-    ctx.config.extra["cine_map"] = cine_map
-    ctx.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
+    monkeypatch.setattr(cinematic.world_art, "available", lambda: world_art)
     cid = ctx.repo.list_characters()[0].character_id
     island = next(iter(maps.SKY_ISLANDS))
     ctx.repo.upsert_map_info(island, {"name": "Zephras Isle", "mapType": 3, "parent": maps.WORLD})

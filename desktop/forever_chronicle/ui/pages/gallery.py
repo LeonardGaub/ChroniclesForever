@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF, QRect, QRectF, QSize, Qt, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QFontMetrics, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import QPointF, QRect, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
                                QVBoxLayout, QWidget)
 
@@ -21,7 +21,8 @@ from ...domain.cinematic import Levels
 from ...domain.route import Route
 from ...i18n import format_datetime, tr
 from .. import theme
-from ..screenshots import ScreenshotViewer, Shot, ThumbnailLoader, file_exists, make_shot
+from ..screenshots import (ScreenshotFolderButton, ScreenshotViewer, Shot, ThumbnailLoader, make_shot, open_viewer,
+                           shots_on_disk)
 from ..widgets import Page, heading, muted
 
 GROUPS = ("session", "zone", "level", "type")
@@ -178,8 +179,7 @@ class GalleryPage(Page):
         self.only_favorites.toggled.connect(lambda _: self._fill())
         self.count = muted()
         self.count.setWordWrap(False)
-        self.open_folder = QPushButton()
-        self.open_folder.clicked.connect(self._open_folder)
+        self.open_folder = ScreenshotFolderButton(ctx)
         bar.addWidget(self.heading)
         bar.addSpacing(12)
         bar.addWidget(self.group_by)
@@ -209,9 +209,7 @@ class GalleryPage(Page):
     def refresh(self) -> None:
         self.heading.setText(tr("tab.gallery"))
         self.only_favorites.setText(tr("gallery.only_favorites"))
-        self.open_folder.setText(tr("screenshot.open_folder"))
-        client = self.ctx.client()
-        self.open_folder.setEnabled(bool(client and client.screenshots_dir.is_dir()))
+        self.open_folder.refresh()
         mode = self.ctx.config.extra.get("gallery_group", "session")
         self.group_by.blockSignals(True)
         self.group_by.clear()
@@ -225,11 +223,11 @@ class GalleryPage(Page):
 
     def _load(self) -> list[Entry]:
         repo, cid = self.ctx.repo, self.character_id
-        rows = [r for r in repo.screenshots(cid, only_files=True) if file_exists(r["file_path"])]
+        rows = shots_on_disk(repo, cid)
         if not rows:
             return []
         events = {e.event_id: e for e in repo.events(cid, limit=1_000_000)}
-        char = next((c for c in repo.list_characters() if c.character_id == cid), None)
+        char = repo.character(cid)
         levels = Levels(events.values(), char.level if char else None)
         route = Route(repo.positions(cid), repo.map_infos())
         sessions = sorted((s["started_at"] for s in repo.sessions(cid)), reverse=True)
@@ -242,8 +240,7 @@ class GalleryPage(Page):
             if zone is None:
                 point = route.point_at(int(t))
                 view = route.view_for(point) if point else None
-                info = route.map_infos.get(view) if view is not None else None
-                zone = maps.display_name(view, info["name"] if info is not None else None) if view else None
+                zone = maps.zone_name(view, route.map_infos) if view else None
             kind = (tr(event_types.get(event.event_type).label_key) if event is not None
                     else tr(f"trigger.{row['trigger_type']}"))
             start = next((s for s in sessions if s <= t), None)
@@ -312,10 +309,8 @@ class GalleryPage(Page):
     def open_viewer(self, index: int) -> ScreenshotViewer | None:
         if not 0 <= index < len(self.shown):
             return None
-        viewer = ScreenshotViewer(self.shown, index, self, self.ctx)
-        viewer.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        viewer = open_viewer(self, self.ctx, self.shown, index)
         viewer.favorite_changed.connect(self._favorite_changed)
-        viewer.showFullScreen()
         return viewer
 
     def _open_tile(self, tile: ShotTile) -> None:
@@ -334,8 +329,3 @@ class GalleryPage(Page):
                 tile.update()
         n_fav = sum(1 for e in self.entries if e.shot.screenshot_id in self.favorites)
         self.count.setText(tr("gallery.count", n=len(self.entries), fav=n_fav))
-
-    def _open_folder(self) -> None:
-        client = self.ctx.client()
-        if client:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(client.screenshots_dir)))

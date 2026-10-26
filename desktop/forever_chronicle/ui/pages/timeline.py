@@ -11,15 +11,15 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QIcon
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLineEdit, QVBoxLayout
 
 from ...domain import event_types
 from ...i18n import format_day, tr
 from .. import icons, theme
 from ..cards import DATA, ICON_SIZE, CardList, placeholder_pixmap
-from ..screenshots import ScreenshotViewer, Shot, ThumbnailLoader, file_exists, make_shot
+from ..screenshots import (ScreenshotFolderButton, ScreenshotViewer, Shot, ThumbnailLoader, file_exists, make_shot,
+                           open_viewer)
 from ..widgets import Page, muted
 
 SHOTS = "__screenshots__"  # type filter entry: only entries with a screenshot
@@ -42,8 +42,7 @@ class TimelinePage(Page):
         self.search.textChanged.connect(self._reload)
         self.count = muted()
         self.count.setWordWrap(False)
-        self.open_folder = QPushButton()
-        self.open_folder.clicked.connect(self._open_folder)
+        self.open_folder = ScreenshotFolderButton(ctx)
         bar.addWidget(self.type_filter)
         bar.addWidget(self.search, 1)
         bar.addWidget(self.count)
@@ -61,9 +60,7 @@ class TimelinePage(Page):
 
     def refresh(self) -> None:
         self.search.setPlaceholderText(tr("timeline.search"))
-        self.open_folder.setText(tr("screenshot.open_folder"))
-        client = self.ctx.client()
-        self.open_folder.setEnabled(bool(client and client.screenshots_dir.is_dir()))
+        self.open_folder.refresh()
         current = self.type_filter.currentData()
         self.type_filter.blockSignals(True)
         self.type_filter.clear()
@@ -171,13 +168,5 @@ class TimelinePage(Page):
         index = data[1] if data else None
         if index is None:
             return None
-        viewer = ScreenshotViewer(self.shots, index, self, self.ctx)
-        viewer.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        viewer.show()
-        return viewer
-
-    def _open_folder(self) -> None:
-        client = self.ctx.client()
-        if client:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(client.screenshots_dir)))
+        return open_viewer(self, self.ctx, self.shots, index, full_screen=False)
 

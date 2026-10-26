@@ -6,22 +6,11 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QWidget  # noqa: E402
+from PySide6.QtWidgets import QWidget  # noqa: E402
 
-from forever_chronicle.app_context import AppContext  # noqa: E402
-from forever_chronicle.config import AppConfig  # noqa: E402
 from forever_chronicle.domain.cinematic import Levels  # noqa: E402
 from forever_chronicle.domain.experience import XP_TO_NEXT, Experience  # noqa: E402
 from forever_chronicle.storage.repository import EventRow  # noqa: E402
-from forever_chronicle.ui import theme  # noqa: E402
-from forever_chronicle.wow.lua_parser import parse_saved_variables  # noqa: E402
-
-
-@pytest.fixture(scope="module")
-def app():
-    application = QApplication.instance() or QApplication([])
-    theme.apply(application)
-    return application
 
 
 def up(t, level):
@@ -92,10 +81,7 @@ def test_xp_bar_fills_up_at_a_level_up(app):
     bar.grab()                                   # paints without the share
 
 
-def test_metrics_and_bar_imported(db, tmp_path, monkeypatch, addon_fixture):
-    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
-    ctx = AppContext(AppConfig(client_dir=str(tmp_path / "missing")), db)
-    ctx.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
+def test_metrics_and_bar_imported(ctx, imported):
     char = ctx.repo.list_characters()[0]
     samples = ctx.repo.metrics(char.character_id)
     assert samples and all(a[0] <= b[0] for a, b in zip(samples, samples[1:])), "the minute samples, in order"

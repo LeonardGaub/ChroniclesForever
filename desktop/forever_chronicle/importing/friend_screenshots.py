@@ -17,12 +17,12 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..cloud_sync import SyncSetup, player_files
+from ..cloud_sync import SyncSetup
 from ..config import app_home
 from ..storage.database import Database
 from ..storage.repository import Repository
-from .friend_importer import share_id_of
-from .screenshot_matcher import EXTENSIONS, PREFIX, index_folder, link_rows
+from .friend_importer import friend_files
+from .screenshot_matcher import EXTENSIONS, PREFIX, link_rows
 
 FOLDER = "friend_screenshots"
 
@@ -101,17 +101,13 @@ def _link(db: Database, owner_id: int, folder: Path) -> int:
 
 def sync_friend_screenshots(db: Database, setup: SyncSetup, home: Path | None = None) -> FriendScreenshotsResult:
     result = FriendScreenshotsResult()
-    if not (Path(setup.cloud) / "players").is_dir():
-        return result  # cloud folder not available (OneDrive not running?): keep what we have
+    files = friend_files(setup)
+    if files is None:
+        return result
     cloud = Path(setup.cloud) / "screenshots"
     local = local_folder(home)
     kept: set[str] = set()
-    seen: set[str] = set()
-    for f in player_files(setup):
-        share_id = share_id_of(f.path)
-        if f.mine or share_id is None or share_id in seen:
-            continue
-        seen.add(share_id)
+    for f, share_id in files:
         row = db.conn.execute("SELECT owner_id FROM owners WHERE share_id = ?", (share_id,)).fetchone()
         if row is None:
             continue  # not imported (a broken file): its pictures would have no records

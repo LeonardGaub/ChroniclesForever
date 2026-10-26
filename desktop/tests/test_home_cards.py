@@ -2,17 +2,13 @@
 
 import os
 
-import pytest
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPoint, Qt  # noqa: E402
 from PySide6.QtGui import QPixmap  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication, QLabel  # noqa: E402
+from PySide6.QtWidgets import QLabel  # noqa: E402
 
-from forever_chronicle.app_context import AppContext  # noqa: E402
-from forever_chronicle.config import AppConfig  # noqa: E402
 from forever_chronicle.domain.route import Route  # noqa: E402
 from forever_chronicle.storage.repository import PositionPoint  # noqa: E402
 from forever_chronicle.ui.pages.home import session_range, session_stats, taxi_seconds, zone_times  # noqa: E402
@@ -21,23 +17,6 @@ from forever_chronicle.ui import theme  # noqa: E402
 from forever_chronicle.ui.cards import KIND, CardList  # noqa: E402
 from forever_chronicle.ui.main_window import MainWindow  # noqa: E402
 from forever_chronicle.wow import game_fonts  # noqa: E402
-from forever_chronicle.wow.lua_parser import parse_saved_variables  # noqa: E402
-
-
-@pytest.fixture(scope="module")
-def app():
-    application = QApplication.instance() or QApplication([])
-    theme.apply(application)
-    return application
-
-
-@pytest.fixture
-def ctx(app, db, tmp_path, monkeypatch, addon_fixture):
-    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
-    context = AppContext(AppConfig(client_dir=str(tmp_path / "missing")), db)
-    context._client_searched = True
-    context.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
-    return context
 
 
 def test_card_list_rows_and_thumbnail_click(app):
@@ -60,7 +39,7 @@ def test_card_list_rows_and_thumbnail_click(app):
     cards.close()
 
 
-def test_home_screen_cards(ctx):
+def test_home_screen_cards(ctx, imported):
     window = MainWindow(ctx)
     home = window.page("tab.home")
     assert window.current_page() is home
@@ -77,7 +56,7 @@ def test_home_screen_cards(ctx):
     window.close()
 
 
-def test_session_statistics(ctx):
+def test_session_statistics(ctx, imported):
     cid = ctx.repo.list_characters()[0].character_id
     sessions = ctx.repo.sessions(cid)
     session = sessions[0]
@@ -105,7 +84,7 @@ def test_taxi_and_zone_times():
     assert zones[1] == ("Die Todesminen", 300)
 
 
-def test_favorites_travel_with_the_export(ctx, tmp_path, db):
+def test_favorites_travel_with_the_export(ctx, imported, tmp_path, db):
     cid = ctx.repo.list_characters()[0].character_id
     shot = ctx.repo.screenshots(cid)[0]
     ctx.repo.set_favorite(cid, shot["screenshot_id"], True)

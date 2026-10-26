@@ -65,13 +65,14 @@ def share(name):
 
 
 def fill_cloud(setup):
-    """My upload (new naming), a stale one of mine (old naming), two friends' (both namings) and a stray file."""
+    """My uploads (two WoW accounts), two friends' (one without a name) and stray files."""
     players = Path(setup.cloud) / "players"
     players.mkdir(parents=True)
     (players / "Blind-aaaaaaaa-282b7857.lua").write_text(share("Blind"), encoding="utf-8")
-    (players / f"{'a' * 32}-00000001.lua").write_text(share("Level"), encoding="utf-8")
+    (players / "Level-aaaaaaaa-00000001.lua").write_text(share("Level"), encoding="utf-8")
     (players / "Jonas-00ba3518-a093e141.lua").write_text(share('Jonas \\"J\\" Fr\u00e4nd'), encoding="utf-8")
-    (players / f"{'b' * 32}-0000000c.lua").write_text("ForeverChronicleShareDB = {}", encoding="utf-8")
+    (players / "Spieler-bbbbbbbb-0000000c.lua").write_text("ForeverChronicleShareDB = {}", encoding="utf-8")
+    (players / f"{'b' * 32}-0000000d.lua").write_text(share("Old"), encoding="utf-8")
     (players / "readme.lua").write_text(share("Nobody"), encoding="utf-8")
 
 

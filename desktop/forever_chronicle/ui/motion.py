@@ -24,7 +24,7 @@ SLIDE_MS = 380
 
 
 def enabled(config) -> bool:
-    return config.extra.get("ui_motion", True) is not False
+    return config.flag("ui_motion")
 
 
 class PageFader(QObject):

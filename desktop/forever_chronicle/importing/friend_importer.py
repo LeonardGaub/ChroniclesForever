@@ -3,33 +3,30 @@
 characters under that friend (owners table, characters.owner_id).
 
 - One owner per friend file: share_id "<id>-<account>" (the first 8 characters of their shareId and their account
-  hash), so a renamed friend or the older file naming stays the same owner.
+  hash), so a renamed friend stays the same owner.
 - A newer file adds to what the app has of that friend (since 2026-10-16; before, it replaced it): a share file
   holds only the newest records (200 chronicle entries, 20,000 route points per character), so the app keeps the
   history beyond that, like it does for my own characters. Chronicle entries are kept by ID, route points by time,
   sessions, stats, gear and professions are updated. A character no longer in the file goes with everything.
   An unchanged file is skipped.
-- A friend whose file is gone from the cloud is removed. Friends from the old desktop share files (until
-  2026-10-14, other share IDs) stay, except for characters a friend's file now brings (drop_other_copies).
+- A friend whose file is gone from the cloud is removed.
 - Parsing never executes code (wow.lua_parser); a file of more than 8 MB is skipped, like the sync script does.
 """
 
 from __future__ import annotations
 
-import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..cloud_sync import MAX_PLAYER_BYTES, PLAYER_FILE, SyncSetup, player_files
+from ..cloud_sync import MAX_PLAYER_BYTES, PLAYER_FILE, PlayerFile, SyncSetup, player_files
 from ..storage.database import Database
 from ..storage.jsonl import RECORD_TYPES
 from ..wow.lua_parser import LuaParseError, as_dict, as_list, parse_saved_variables_bytes
 from .sv_importer import ImportResult, SavedVariablesImporter
 
 SHARE_VARIABLE = "ForeverChronicleShareDB"
-CLOUD_SHARE_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{8}$")
 
 
 @dataclass
@@ -39,32 +36,41 @@ class FriendImportResult:
     unchanged: int = 0
     removed: list[str] = field(default_factory=list)     # names of friends whose file is gone
     failed: list[str] = field(default_factory=list)      # "name: reason"
-    replaced: int = 0            # other copies of friends' characters dropped (drop_other_copies)
 
     @property
     def changed(self) -> bool:
-        return bool(self.imported or self.removed or self.replaced)
+        return bool(self.imported or self.removed)
 
 
 def share_id_of(path: Path) -> str | None:
     match = PLAYER_FILE.match(path.name)
     if not match:
         return None
-    return f"{(match.group('id') or match.group('long_id'))[:8]}-{match.group('account')}"
+    return f"{match.group('id')}-{match.group('account')}"
+
+
+def friend_files(setup: SyncSetup) -> list[tuple[PlayerFile, str]] | None:
+    """The friends' files in the cloud with their share_id, one per friend (the first in player_files' order).
+    None when the cloud folder is not available (OneDrive not running?): then keep what we have."""
+    if not (Path(setup.cloud) / "players").is_dir():
+        return None
+    files, seen = [], set()
+    for f in player_files(setup):
+        share_id = share_id_of(f.path)
+        if f.mine or share_id is None or share_id in seen:
+            continue
+        seen.add(share_id)
+        files.append((f, share_id))
+    return files
 
 
 def import_friends(db: Database, setup: SyncSetup) -> FriendImportResult:
     result = FriendImportResult()
-    if not (Path(setup.cloud) / "players").is_dir():
-        return result  # cloud folder not available (OneDrive not running?): keep what we have
-    files = [f for f in player_files(setup) if not f.mine]
-    seen: set[str] = set()
+    files = friend_files(setup)
+    if files is None:
+        return result
     importer = SavedVariablesImporter(db)
-    for f in files:
-        share_id = share_id_of(f.path)
-        if share_id is None or share_id in seen:
-            continue
-        seen.add(share_id)
+    for f, share_id in files:
         result.friends += 1
         row = db.conn.execute("SELECT owner_id, shared_at FROM owners WHERE share_id = ?", (share_id,)).fetchone()
         has_characters = row is not None and db.conn.execute(
@@ -77,42 +83,13 @@ def import_friends(db: Database, setup: SyncSetup) -> FriendImportResult:
             result.failed.append(f"{f.name}: {reason}")
         else:
             result.imported.append(f.name)
+    seen = {share_id for _, share_id in files}
     for owner_id, share_id, name in db.conn.execute("SELECT owner_id, share_id, display_name FROM owners").fetchall():
-        if CLOUD_SHARE_ID.match(share_id) and share_id not in seen:
+        if share_id not in seen:
             with db.transaction():
                 remove_owner(db, owner_id)
             result.removed.append(name)
-    with db.transaction():
-        result.replaced = drop_other_copies(db)
     return result
-
-
-def drop_other_copies(db: Database) -> int:
-    """Other copies of the friends' characters (same player GUID, natural key without "friend:"), which the
-    friend's file replaces: from the old desktop share files, or a friend's backup imported as JSONL, which made them
-    look like mine. A copy counts as mine (and stays) when it is of a WoW account this PC imported game data from,
-    or of no known account. An old-share friend left without characters goes too. Returns how many copies went."""
-    my_accounts = {row[0] for row in db.conn.execute(
-        "SELECT DISTINCT account FROM import_runs WHERE source_type = 'saved_variables' AND account IS NOT NULL")}
-    dropped, emptied = 0, set()
-    for (natural_key,) in db.conn.execute(
-            "SELECT natural_key FROM characters WHERE owner_id IS NOT NULL AND natural_key LIKE 'friend:%'").fetchall():
-        plain = natural_key.split(":", 2)[2]
-        row = db.conn.execute("SELECT character_id, owner_id, wow_account FROM characters WHERE natural_key = ?",
-                              (plain,)).fetchone()
-        if row is None:
-            continue
-        character_id, owner_id, account = row
-        if owner_id is None and (account is None or account in my_accounts):
-            continue
-        delete_character_data(db, character_id, keep_character=False)
-        dropped += 1
-        if owner_id is not None:
-            emptied.add(owner_id)
-    for owner_id in emptied:
-        if db.conn.execute("SELECT 1 FROM characters WHERE owner_id = ?", (owner_id,)).fetchone() is None:
-            db.conn.execute("DELETE FROM owners WHERE owner_id = ?", (owner_id,))
-    return dropped
 
 
 def _import_friend(db: Database, importer: SavedVariablesImporter, path: Path, share_id: str, name: str,

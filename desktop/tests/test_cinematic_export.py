@@ -7,30 +7,9 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
-
-from forever_chronicle.app_context import AppContext  # noqa: E402
 from forever_chronicle.config import AppConfig  # noqa: E402
-from forever_chronicle.ui import theme  # noqa: E402
 from forever_chronicle.ui.cinematic_export import (FPS, SAMPLES, TAIL, Cancelled, Recorder, export_video,  # noqa: E402
                                                    ffmpeg_exe)
-from forever_chronicle.wow.lua_parser import parse_saved_variables  # noqa: E402
-
-
-@pytest.fixture(scope="module")
-def app():
-    application = QApplication.instance() or QApplication([])
-    theme.apply(application)
-    return application
-
-
-@pytest.fixture
-def ctx(app, db, tmp_path, monkeypatch, addon_fixture):
-    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
-    context = AppContext(AppConfig(client_dir=str(tmp_path / "missing")), db)
-    context._client_searched = True
-    context.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
-    return context
 
 
 def test_recorder_notes_effects_and_music(app):
@@ -46,7 +25,7 @@ def test_recorder_notes_effects_and_music(app):
 
 
 @pytest.mark.skipif(not ffmpeg_exe(), reason="ffmpeg (imageio-ffmpeg) not installed")
-def test_export_writes_a_video_with_sound(ctx, tmp_path):
+def test_export_writes_a_video_with_sound(ctx, imported, tmp_path):
     cid = ctx.repo.list_characters()[0].character_id
     start = ctx.repo.positions(cid)[0].time
     seen = []

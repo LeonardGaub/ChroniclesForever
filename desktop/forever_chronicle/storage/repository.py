@@ -107,7 +107,7 @@ class PositionPoint:
         return cls(t, until, map_id, x, y, instance_id, "T" in parts[5])
 
 
-def _int_or_none(text: Any) -> int | None:
+def int_or_none(text: Any) -> int | None:
     if isinstance(text, bool):
         return None
     if isinstance(text, int):
@@ -128,17 +128,16 @@ class Recipe:
     quality: int | None = None          # item quality of what the recipe creates
 
     @classmethod
-    def parse(cls, text: str, fmt: int | None = None) -> "Recipe | None":
-        """Parses the addon's compact format (the name is last and may contain commas):
-        format 2: recipeID,categoryID,icon,quality,name - format 1 (addon v0.10.0): recipeID,categoryID,icon,name."""
-        fields = 5 if (fmt or 1) >= 2 else 4
-        parts = text.split(",", fields - 1)
-        if len(parts) != fields or not parts[0].isdigit() or not parts[-1]:
+    def parse(cls, text: str) -> "Recipe | None":
+        """Parses the addon's compact format (recipe list format 2; the name is last and may contain commas):
+        recipeID,categoryID,icon,quality,name."""
+        parts = text.split(",", 4)
+        if len(parts) != 5 or not parts[0].isdigit() or not parts[4]:
             return None
-        quality = _int_or_none(parts[3]) if fields == 5 else None
-        if fields == 5 and parts[3] and quality is None:
+        quality = int_or_none(parts[3])
+        if parts[3] and quality is None:
             return None
-        return cls(int(parts[0]), _int_or_none(parts[1]), _int_or_none(parts[2]), parts[-1], quality)
+        return cls(int(parts[0]), int_or_none(parts[1]), int_or_none(parts[2]), parts[4], quality)
 
 
 @dataclass(frozen=True)
@@ -153,12 +152,19 @@ class RecipeCategory:
         parts = text.split(",", 2)
         if len(parts) != 3 or not parts[0].isdigit() or not parts[2]:
             return None
-        return cls(int(parts[0]), _int_or_none(parts[1]), parts[2])
+        return cls(int(parts[0]), int_or_none(parts[1]), parts[2])
 
 
 class Repository:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
+
+    def _upsert(self, table: str, values: dict[str, Any], key: tuple[str, ...],
+                update: Iterable[str] | None = None) -> None:
+        """Inserts a row; if one with the same key exists, sets its other columns (or only `update`) instead."""
+        sets = ", ".join(f"{c} = excluded.{c}" for c in (update or [c for c in values if c not in key]))
+        self.conn.execute(f"""INSERT INTO {table} ({', '.join(values)}) VALUES ({', '.join('?' for _ in values)})
+                              ON CONFLICT ({', '.join(key)}) DO UPDATE SET {sets}""", tuple(values.values()))
 
     # -- characters -------------------------------------------------------------
 
@@ -212,6 +218,12 @@ class Repository:
                c.last_seen_at DESC, c.name""").fetchall()
         return [Character.from_row(r) for r in rows]
 
+    def character(self, character_id: str | None) -> Character | None:
+        row = self.conn.execute(
+            """SELECT c.*, o.display_name AS owner_name FROM characters c LEFT JOIN owners o ON o.owner_id = c.owner_id
+               WHERE c.character_id = ?""", (character_id,)).fetchone()
+        return Character.from_row(row) if row else None
+
     # -- events -----------------------------------------------------------------
 
     def insert_event(self, character_id: str, rec: dict[str, Any], import_id: int, schema_version: int) -> bool:
@@ -255,27 +267,22 @@ class Repository:
                                  (character_id,)).fetchall()
         return [r[0] for r in rows]
 
-    def count_events(self, character_id: str, event_type: str | None = None) -> int:
-        if event_type:
-            q = "SELECT COUNT(*) FROM events WHERE character_id = ? AND event_type = ?"
-            return self.conn.execute(q, (character_id, event_type)).fetchone()[0]
-        return self.conn.execute("SELECT COUNT(*) FROM events WHERE character_id = ?", (character_id,)).fetchone()[0]
+    def count_events(self, character_id: str, event_type: str) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM events WHERE character_id = ? AND event_type = ?",
+                                 (character_id, event_type)).fetchone()[0]
 
     # -- sessions ---------------------------------------------------------------
 
     def upsert_session(self, character_id: str, rec: dict[str, Any]) -> None:
         """Sessions change while the character plays, so they are replaced on every import."""
-        self.conn.execute(
-            """INSERT INTO sessions (character_id, session_id, seq, started_at, ended_at, end_reason, reload_count,
-               start_level, end_level, played_total_seconds, played_level_seconds, played_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT (character_id, session_id) DO UPDATE SET
-               ended_at = excluded.ended_at, end_reason = excluded.end_reason, reload_count = excluded.reload_count,
-               end_level = excluded.end_level, played_total_seconds = excluded.played_total_seconds,
-               played_level_seconds = excluded.played_level_seconds, played_at = excluded.played_at""",
-            (character_id, rec["id"], rec["seq"], rec["startedAt"], rec.get("endedAt"), rec.get("endReason"),
-             rec.get("reloads") or 0, rec.get("startLevel"), rec.get("endLevel"), rec.get("playedTotal"),
-             rec.get("playedLevel"), rec.get("playedAt")))
+        self._upsert("sessions", {
+            "character_id": character_id, "session_id": rec["id"], "seq": rec["seq"], "started_at": rec["startedAt"],
+            "ended_at": rec.get("endedAt"), "end_reason": rec.get("endReason"), "reload_count": rec.get("reloads") or 0,
+            "start_level": rec.get("startLevel"), "end_level": rec.get("endLevel"),
+            "played_total_seconds": rec.get("playedTotal"), "played_level_seconds": rec.get("playedLevel"),
+            "played_at": rec.get("playedAt")}, ("character_id", "session_id"),
+            update=("ended_at", "end_reason", "reload_count", "end_level", "played_total_seconds",
+                    "played_level_seconds", "played_at"))
 
     def sessions(self, character_id: str) -> list[sqlite3.Row]:
         return self.conn.execute("SELECT * FROM sessions WHERE character_id = ? ORDER BY started_at DESC",
@@ -289,9 +296,8 @@ class Repository:
         return row[0] if row else None
 
     def set_last_seq(self, character_id: str, stream: str, seq: int) -> None:
-        self.conn.execute("""INSERT INTO stream_state (character_id, stream, last_seq) VALUES (?,?,?)
-                             ON CONFLICT (character_id, stream) DO UPDATE SET last_seq = excluded.last_seq""",
-                          (character_id, stream, seq))
+        self._upsert("stream_state", {"character_id": character_id, "stream": stream, "last_seq": seq},
+                     ("character_id", "stream"))
 
     def add_gap(self, character_id: str, stream: str, from_seq: int, to_seq: int, before_time: int | None,
                 import_id: int) -> None:
@@ -343,14 +349,12 @@ class Repository:
 
     def upsert_screenshot(self, character_id: str, rec: dict[str, Any]) -> None:
         """Status and linked events can change until the addon saves again, so records are replaced."""
-        self.conn.execute(
-            """INSERT INTO screenshots (character_id, screenshot_id, seq, trigger_type, status, requested_at,
-               captured_at, file_stamp, error_message) VALUES (?,?,?,?,?,?,?,?,?)
-               ON CONFLICT (character_id, screenshot_id) DO UPDATE SET status = excluded.status,
-               captured_at = excluded.captured_at, file_stamp = excluded.file_stamp,
-               error_message = excluded.error_message""",
-            (character_id, rec["id"], rec["seq"], rec.get("trigger") or "?", rec.get("status") or "?",
-             rec.get("requestedAt"), rec.get("capturedAt"), rec.get("fileStamp"), rec.get("error")))
+        self._upsert("screenshots", {
+            "character_id": character_id, "screenshot_id": rec["id"], "seq": rec["seq"],
+            "trigger_type": rec.get("trigger") or "?", "status": rec.get("status") or "?",
+            "requested_at": rec.get("requestedAt"), "captured_at": rec.get("capturedAt"),
+            "file_stamp": rec.get("fileStamp"), "error_message": rec.get("error")}, ("character_id", "screenshot_id"),
+            update=("status", "captured_at", "file_stamp", "error_message"))
         for event_id in rec.get("events") or []:
             if isinstance(event_id, str):
                 self.conn.execute("""INSERT OR IGNORE INTO screenshot_events (character_id, screenshot_id, event_id)
@@ -426,46 +430,32 @@ class Repository:
                until_at = excluded.until_at WHERE excluded.until_at IS NOT positions.until_at""",
             (character_id, p.time, p.until, p.map_id, p.x, p.y, p.instance_id, int(p.taxi)))
 
-    def positions(self, character_id: str, start: int | None = None, end: int | None = None) -> list["PositionPoint"]:
-        sql = "SELECT * FROM positions WHERE character_id = ?"
-        args: list[Any] = [character_id]
-        if start is not None:
-            sql += " AND COALESCE(until_at, occurred_at) >= ?"
-            args.append(start)
-        if end is not None:
-            sql += " AND occurred_at <= ?"
-            args.append(end)
-        rows = self.conn.execute(sql + " ORDER BY occurred_at", args).fetchall()
+    def positions(self, character_id: str) -> list["PositionPoint"]:
+        rows = self.conn.execute("SELECT * FROM positions WHERE character_id = ? ORDER BY occurred_at",
+                                 (character_id,)).fetchall()
         return [PositionPoint(r["occurred_at"], r["until_at"], r["map_id"], r["x"], r["y"], r["instance_id"],
                               bool(r["on_taxi"])) for r in rows]
 
     def upsert_map_info(self, map_id: int, info: dict[str, Any]) -> None:
-        self.conn.execute(
-            """INSERT INTO map_info (map_id, name, map_type, parent_map_id, continent_id, min_x, max_x, min_y, max_y,
-               client_build) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT (map_id) DO UPDATE SET name = excluded.name,
-               map_type = excluded.map_type, parent_map_id = excluded.parent_map_id,
-               continent_id = excluded.continent_id, min_x = excluded.min_x, max_x = excluded.max_x,
-               min_y = excluded.min_y, max_y = excluded.max_y, client_build = excluded.client_build""",
-            (map_id, info.get("name"), info.get("mapType"), info.get("parent"), info.get("continent"),
-             info.get("minX"), info.get("maxX"), info.get("minY"), info.get("maxY"),
-             None if info.get("build") is None else str(info.get("build"))))
+        self._upsert("map_info", {
+            "map_id": map_id, "name": info.get("name"), "map_type": info.get("mapType"),
+            "parent_map_id": info.get("parent"), "continent_id": info.get("continent"), "min_x": info.get("minX"),
+            "max_x": info.get("maxX"), "min_y": info.get("minY"), "max_y": info.get("maxY"),
+            "client_build": None if info.get("build") is None else str(info.get("build"))}, ("map_id",))
 
     def map_infos(self) -> dict[int, sqlite3.Row]:
         return {r["map_id"]: r for r in self.conn.execute("SELECT * FROM map_info").fetchall()}
 
     def upsert_instance(self, instance_id: int, name: str) -> None:
-        self.conn.execute("""INSERT INTO instances (instance_id, name) VALUES (?, ?)
-                             ON CONFLICT (instance_id) DO UPDATE SET name = excluded.name""", (instance_id, name))
+        self._upsert("instances", {"instance_id": instance_id, "name": name}, ("instance_id",))
 
     def instance_names(self) -> dict[int, str]:
         return {r[0]: r[1] for r in self.conn.execute("SELECT instance_id, name FROM instances").fetchall()}
 
     def upsert_entrance(self, instance_id: int, map_id: int, x: float, y: float, source: str | None,
                         name: str | None) -> None:
-        self.conn.execute("""INSERT INTO instance_entrances (instance_id, map_id, x, y, source, name)
-                             VALUES (?,?,?,?,?,?) ON CONFLICT (instance_id) DO UPDATE SET map_id = excluded.map_id,
-                             x = excluded.x, y = excluded.y, source = excluded.source, name = excluded.name""",
-                          (instance_id, map_id, x, y, source, name))
+        self._upsert("instance_entrances", {"instance_id": instance_id, "map_id": map_id, "x": x, "y": y,
+                                            "source": source, "name": name}, ("instance_id",))
 
     def entrances(self) -> dict[int, tuple[int, float, float]]:
         """Recorded dungeon entrances: instance ID -> (map ID, x, y)."""
@@ -476,11 +466,8 @@ class Repository:
 
     def upsert_metric(self, character_id: str, t: int, xp: int, kills: int | None, money: int | None,
                       level: int | None) -> None:
-        self.conn.execute(
-            """INSERT INTO metrics (character_id, occurred_at, xp, kills, money, level) VALUES (?,?,?,?,?,?)
-               ON CONFLICT (character_id, occurred_at) DO UPDATE SET xp = excluded.xp, kills = excluded.kills,
-               money = excluded.money, level = excluded.level""",
-            (character_id, t, xp, kills, money, level))
+        self._upsert("metrics", {"character_id": character_id, "occurred_at": t, "xp": xp, "kills": kills,
+                                 "money": money, "level": level}, ("character_id", "occurred_at"))
 
     def metrics(self, character_id: str) -> list[tuple[int, int, int | None]]:
         """(time, experience earned in total, level) of the samples, in time order."""
@@ -491,9 +478,8 @@ class Repository:
     # -- counters from the addon --------------------------------------------------
 
     def set_character_stat(self, character_id: str, key: str, value: float) -> None:
-        self.conn.execute("""INSERT INTO character_stats (character_id, stat_key, value) VALUES (?,?,?)
-                             ON CONFLICT (character_id, stat_key) DO UPDATE SET value = excluded.value""",
-                          (character_id, key, value))
+        self._upsert("character_stats", {"character_id": character_id, "stat_key": key, "value": value},
+                     ("character_id", "stat_key"))
 
     def character_stat(self, character_id: str, key: str) -> float | None:
         row = self.conn.execute("SELECT value FROM character_stats WHERE character_id = ? AND stat_key = ?",
@@ -515,7 +501,7 @@ class Repository:
                recipe_status = COALESCE(excluded.recipe_status, professions.recipe_status),
                recipes_updated_at = COALESCE(excluded.recipes_updated_at, professions.recipes_updated_at),
                recipes_total = COALESCE(excluded.recipes_total, professions.recipes_total)""",
-            (character_id, prof["skillLine"], prof.get("name") or "?", _int_or_none(prof.get("icon")), prof.get("kind"),
+            (character_id, prof["skillLine"], prof.get("name") or "?", int_or_none(prof.get("icon")), prof.get("kind"),
              prof.get("rank"), prof.get("maxRank"), prof.get("modifier"), 0 if prof.get("active") is False else 1,
              prof.get("firstSeenAt"), prof.get("updatedAt"), recipes.get("status"), recipes.get("updatedAt"),
              recipes.get("total")))
@@ -538,18 +524,17 @@ class Repository:
 
     def upsert_recipe_category(self, character_id: str, skill_line: int, category_id: int, parent_id: int | None,
                                name: str) -> None:
-        self.conn.execute(
-            """INSERT INTO recipe_categories (character_id, skill_line, category_id, parent_id, name)
-               VALUES (?,?,?,?,?) ON CONFLICT (character_id, skill_line, category_id) DO UPDATE SET
-               parent_id = excluded.parent_id, name = excluded.name""",
-            (character_id, skill_line, category_id, parent_id, name))
+        self._upsert("recipe_categories", {"character_id": character_id, "skill_line": skill_line,
+                                           "category_id": category_id, "parent_id": parent_id, "name": name},
+                     ("character_id", "skill_line", "category_id"))
 
-    def professions(self, character_id: str, include_inactive: bool = False) -> list[sqlite3.Row]:
-        sql = """SELECT p.*, (SELECT COUNT(*) FROM recipes r WHERE r.character_id = p.character_id
-                 AND r.skill_line = p.skill_line) AS recipe_count FROM professions p WHERE p.character_id = ?"""
-        if not include_inactive:
-            sql += " AND p.active = 1"
-        return self.conn.execute(sql + " ORDER BY p.kind = 'secondary', p.name", (character_id,)).fetchall()
+    def professions(self, character_id: str) -> list[sqlite3.Row]:
+        """The character's active professions, primary first."""
+        return self.conn.execute(
+            """SELECT p.*, (SELECT COUNT(*) FROM recipes r WHERE r.character_id = p.character_id
+               AND r.skill_line = p.skill_line) AS recipe_count FROM professions p
+               WHERE p.character_id = ? AND p.active = 1 ORDER BY p.kind = 'secondary', p.name""",
+            (character_id,)).fetchall()
 
     def recipes(self, character_id: str, skill_line: int | None = None, search: str | None = None) -> list[sqlite3.Row]:
         """Recipes of active professions with profession and category names."""
@@ -574,7 +559,7 @@ class Repository:
             self.conn.execute("""INSERT OR REPLACE INTO gear (character_id, slot, slot_name, item_id, link, icon, quality,
                                  updated_at) VALUES (?,?,?,?,?,?,?,?)""",
                               (character_id, it["slot"], it.get("slotName"), it.get("item"), it["link"],
-                               _int_or_none(it.get("icon")), it.get("quality"), updated_at))
+                               int_or_none(it.get("icon")), it.get("quality"), updated_at))
 
     def gear(self, character_id: str) -> list[sqlite3.Row]:
         return self.conn.execute("SELECT * FROM gear WHERE character_id = ? ORDER BY slot", (character_id,)).fetchall()
@@ -588,11 +573,8 @@ class Repository:
     # -- capabilities -----------------------------------------------------------
 
     def set_capability(self, key: str, status: str, confirmed_at: int | None, build: str | None) -> None:
-        self.conn.execute("""INSERT INTO client_capabilities (capability, status, confirmed_at, client_build, updated_at)
-                             VALUES (?,?,?,?,?) ON CONFLICT (capability) DO UPDATE SET status = excluded.status,
-                             confirmed_at = excluded.confirmed_at, client_build = excluded.client_build,
-                             updated_at = excluded.updated_at""",
-                          (key, status, confirmed_at, build, int(time.time())))
+        self._upsert("client_capabilities", {"capability": key, "status": status, "confirmed_at": confirmed_at,
+                                             "client_build": build, "updated_at": int(time.time())}, ("capability",))
 
     def capabilities(self) -> list[sqlite3.Row]:
         return self.conn.execute("SELECT * FROM client_capabilities ORDER BY capability").fetchall()

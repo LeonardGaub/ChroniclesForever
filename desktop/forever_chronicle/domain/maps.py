@@ -12,16 +12,10 @@ from ..i18n import language, tr
 
 ART_WIDTH, ART_HEIGHT = 1002, 668
 WORLD, KALIMDOR, EASTERN_KINGDOMS = 947, 1414, 1415
-# Where each continent's map art lies on the world map art (min_x, max_x, min_y, max_y; may reach past its
-# edges). Found by matching the continent map art onto the world map art, so the pictures line up when one fades
-# into the other (the cinematic's trips between continents on the zone maps); the game itself does not tell the
-# addon these.
-CONTINENT_ON_WORLD = {KALIMDOR: (-0.1808, 0.6346, 0.0681, 0.8835),
-                      EASTERN_KINGDOMS: (0.3937, 1.1399, 0.1184, 0.8646)}
-# Where the game places each continent on the world map (C_Map.GetMapRectOnMap(continent, 947)): from the
-# client's UiMapAssignment table (tools/build_world_map.py --placement; rerun after a client patch). The seamless
-# world map (OpenMap's zones, placed by the game's rectangles) and every position on it use these. The world map
-# art draws the Eastern Kingdoms smaller, which is why CONTINENT_ON_WORLD differs.
+# Where the game places each continent on the world map (C_Map.GetMapRectOnMap(continent, 947); min_x, max_x,
+# min_y, max_y): from the client's UiMapAssignment table (tools/build_world_map.py --placement; rerun after a client
+# patch). The seamless world map (OpenMap's zones, placed by the game's rectangles) and every position on it use
+# these.
 CONTINENT_IN_WORLD = {KALIMDOR: (-0.18589, 0.63409, 0.06768, 0.88774),
                       EASTERN_KINGDOMS: (0.37148, 1.15916, 0.0815, 0.8691)}
 
@@ -103,6 +97,12 @@ def display_name(map_id: int | None, client_name: str | None = None) -> str:
     if known:
         return known.de if language() == "de" else known.en
     return client_name or tr("map.unknown_map", id=map_id)
+
+
+def zone_name(map_id: int | None, map_infos: dict) -> str:
+    """display_name with the name the client recorded for the map (map_infos: Repository.map_infos)."""
+    info = map_infos.get(map_id)
+    return display_name(map_id, info["name"] if info is not None else None)
 
 
 def world_xy(map_id: int | None, x: float | None, y: float | None,

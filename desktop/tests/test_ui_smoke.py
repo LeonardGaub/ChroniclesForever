@@ -2,39 +2,21 @@
 
 import os
 
-import pytest
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
-
 from forever_chronicle import i18n  # noqa: E402
-from forever_chronicle.app_context import AppContext  # noqa: E402
 from forever_chronicle.config import AppConfig  # noqa: E402
-from forever_chronicle.ui import theme  # noqa: E402
 from forever_chronicle.ui.cards import ICON, KIND, TITLE, TITLE_COLOR  # noqa: E402
 from forever_chronicle.ui.main_window import MainWindow  # noqa: E402
-from forever_chronicle.wow.lua_parser import parse_saved_variables  # noqa: E402
 
 
-@pytest.fixture(scope="module")
-def app():
-    application = QApplication.instance() or QApplication([])
-    theme.apply(application)
-    return application
-
-
-def test_main_window_with_data(app, db, tmp_path, monkeypatch, addon_fixture):
-    monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path))
-    config = AppConfig(client_dir=str(tmp_path / "missing"))
-    ctx = AppContext(config, db)
-    ctx._client_searched = True  # do not scan the real disk in tests
+def test_main_window_with_data(app, ctx, sv_data, db):
+    config = ctx.config
 
     window = MainWindow(ctx)
     assert window.characters.count() == 0
 
-    ctx.importer.import_data(parse_saved_variables(addon_fixture.read_text(encoding="utf-8")), "fixture")
+    ctx.importer.import_data(sv_data, "fixture")
     ctx.data_changed.emit()
     assert window.characters.count() == 1
     assert window.char_name.text() == "Blind Bullseye"  # Forever characters have a last name
