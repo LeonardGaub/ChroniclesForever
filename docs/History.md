@@ -4,6 +4,28 @@ The session notes that used to be the "History" section of `NEXT_STEPS.md`, newe
 at the time: older entries may describe things that changed or were removed later. The current state is in
 `NEXT_STEPS.md`.
 
+### Cinematic: opening dive, flights, level-up textures, footprints, smooth own maps (2026-10-26)
+- User picks from the brainstorm, "to test them all but may revert them later": one commit each, so each can be
+  reverted on its own: opening dive a7d6507, smooth own maps b359622, flights 1f800d4, level-up 60c3de8,
+  footprints 67819da. Checked on rendered frames, not yet watched in the app.
+- Opening: the whole map (filling the picture) under the character's title, then a straight dive to the first
+  point (`INTRO_HOLD`, `INTRO_DIVE`, `_advance_intro`); a jump skips it.
+- Sharper maps: the client has nothing sharper (every zone 1002x668 from 256 px DXT1 tiles, used at full size;
+  OpenMap's tiles at 16 px per world unit). Own maps (Zephras Isle) were drawn nearest-neighbour (a pixmap item
+  ignores the view's render hint): now smooth. Upscaling (Lanczos, Real-ESRGAN) was judged not worth it: little
+  gain, 2.5x the disk, or invented detail.
+- Flights: the map leans back 30 degrees (`TAXI_TILT`); `CinemaView` draws the map flat into a larger picture and
+  shows it tilted, since a perspective view transform drops lines with a point behind the eye (the route, the
+  sky's tint). On a flight path the frame shows at least 90x60 world units within a second (`TAXI_FRAME`): leaving
+  a city the camera stayed city-close, 5-15x the coarse art. `ZOOM_OUT_TAXI` 0.8.
+- Level-up: `Interface\LevelUp\LevelUpTex` gives the gold line and the golden glow (`tools/build_ui_skin.py`,
+  `levelup_line.png`, `levelup_glow.png`); its dark backdrop overlaps other pieces there, so the title keeps its
+  soft band. Title tone "level": lines grow from the middle, the glow flares behind; a pillar of the glow rises
+  from the player (burst "level").
+- Footprints: the last three game minutes walked (`PRINT_SECONDS`), alternating, at fixed distances along the
+  route. No hoofprints: mounts cannot be told from the route (Zitter, a Windshaper rogue without a mount, reads
+  at mount speed 11 % of the time). Recording `IsMounted()` in the addon's position flags would allow them.
+
 ### Cinematic: alerts in videos, city landings, standstill symbols, cloud trips (2026-10-26)
 - Found by rendering Zitter's replay frame by frame (the export's loop, a copy of the data) and looking at the
   frames. Desktop only; the brainstorm's other ideas are not built.
