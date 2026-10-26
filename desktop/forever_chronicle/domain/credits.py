@@ -98,7 +98,7 @@ def _distances(route: Route, start: float, end: float, j: Journey) -> None:
     prev = None
     for p in route.points_in(start, end):
         if prev is not None and route.connected(prev, p, maps.WORLD):
-            d = yards(route, prev, p)
+            d = _yards(route, prev, p)
             if d is not None:
                 if p.taxi:
                     j.flown_yards += d
@@ -109,8 +109,7 @@ def _distances(route: Route, start: float, end: float, j: Journey) -> None:
         prev = p
 
 
-def yards(route: Route, a, b) -> float | None:
-    """Yards between two route points on one continent (None elsewhere: islands, dungeons)."""
+def _yards(route: Route, a, b) -> float | None:
     if a.map_id is None or a.x is None or b.x is None:
         return None
     continent = a.map_id if a.map_id in CONTINENT_YARDS else route.continent(a.map_id)

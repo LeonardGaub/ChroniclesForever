@@ -3,9 +3,8 @@
 - Opening: the replay starts over the whole map under the character's title (name, level, race, class) and the
   camera dives straight to where it begins; a jump on the timeline skips it.
 - The route is painted up to the current moment: older parts thin and dim, the last 15 minutes brighter
-  towards the marker, the newest minutes glowing, the last minutes walked footprints; flight paths dashed with
-  moving dashes. Its colours follow the map page's choice (by level, by session, one colour), as in the addon
-  (domain/route_colors.py).
+  towards the marker, the newest minutes glowing; flight paths dashed with moving dashes. Its colours follow
+  the map page's choice (by level, by session, one colour), as in the addon (domain/route_colors.py).
 - The marker shows the player in the class colour with an arrow in the direction of travel, a gryphon on flight
   paths and a portal inside dungeons. Each event leaves a pin on the map; screenshots leave a small polaroid.
 - The camera follows the player calmly and zooms a little on its own: out on flight paths and fast stretches, in
@@ -145,9 +144,6 @@ SKY_MARKER = 1.8           # the marker's size high up (it shrinks as the player
 LIGHT_SECONDS = 1.2        # time constant of the light following the time of day
 OUTRO_SECONDS = 4.0        # the camera pulling back over the whole route at the end
 OUTRO_MARGIN = 1.3
-RIDE_SPEED = 18.0          # yards a second no one walks or rides (running 7, a mount 11-14): a boat or zeppelin.
-                           # Mounts cannot be told from the route: a Windshaper rogue without one reads at
-                           # mount speed 11 % of the time (the addon records no mounting)
 INTRO_HOLD = 1.2           # real seconds the opening shows the whole map under the character's title ...
 INTRO_DIVE = 2.4           # ... and the camera then takes to dive to where the replay starts
 
@@ -1193,8 +1189,7 @@ class CinematicWindow(QWidget):
     def _fill_scene(self, view: int, fade: bool) -> None:
         """The route, pins, marker and light on the new map art; the camera starts over (fade: in from black)."""
         scene = self.view.scene()
-        self.route_item = RouteItem(self.route.segments(view, self.start, self.end), self.colors, self.ghost_spans,
-                                    self._ride)
+        self.route_item = RouteItem(self.route.segments(view, self.start, self.end), self.colors, self.ghost_spans)
         scene.addItem(self.route_item)
         self.pins = PinsItem(self._pins_for(view))
         scene.addItem(self.pins)
@@ -1206,13 +1201,6 @@ class CinematicWindow(QWidget):
         if fade:
             self.cover_age = 0.0
             self.cover_effect.setOpacity(1.0)
-
-    def _ride(self, t0: float, t1: float) -> bool:
-        """True when the step from the route point at t0 to the one at t1 was a ride (a boat, a zeppelin): far
-        faster than anyone on foot or mounted. No footprints there."""
-        a, b = self.route.point_at(int(t0)), self.route.point_at(int(t1))
-        d = journey_credits.yards(self.route, a, b) if a and b else None
-        return d is not None and d / max(1.0, t1 - a.end) > RIDE_SPEED
 
     def _show_world(self, fade: bool = True) -> None:
         """Shows the seamless world map: every zone at once, the route and pins of the whole range on it

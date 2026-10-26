@@ -22,9 +22,9 @@ at the time: older entries may describe things that changed or were removed late
   `levelup_line.png`, `levelup_glow.png`); its dark backdrop overlaps other pieces there, so the title keeps its
   soft band. Title tone "level": lines grow from the middle, the glow flares behind; a pillar of the glow rises
   from the player (burst "level").
-- Footprints: the last three game minutes walked (`PRINT_SECONDS`), alternating, at fixed distances along the
-  route. No hoofprints: mounts cannot be told from the route (Zitter, a Windshaper rogue without a mount, reads
-  at mount speed 11 % of the time). Recording `IsMounted()` in the addon's position flags would allow them.
+- Footprints (the last three game minutes walked, alternating, at fixed distances along the route) were built and
+  reverted the same day at the user's request. Do not bring them back without asking. Mounts cannot be told
+  from the route anyway (Zitter, a Windshaper rogue without a mount, reads at mount speed 11 % of the time).
 
 ### Cinematic: alerts in videos, city landings, standstill symbols, cloud trips (2026-10-26)
 - Found by rendering Zitter's replay frame by frame (the export's loop, a copy of the data) and looking at the

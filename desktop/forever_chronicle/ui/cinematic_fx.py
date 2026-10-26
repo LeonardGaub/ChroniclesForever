@@ -49,9 +49,6 @@ FADE_SECONDS = 0.45
 TRAIL_SECONDS = 15 * 60
 TRAIL_STEPS = 8            # the trail gets brighter in this many steps
 GLOW_SECONDS = 4 * 60      # the newest part of the route glows
-PRINT_SECONDS = 3 * 60     # the newest minutes walked are footprints instead of a line
-PRINT_PX = 13              # screen pixels between prints (in steps of octaves, so they stay put as the zoom drifts)
-PRINT_COLOR = QColor(52, 34, 16)
 DASH_SPEED = 5.0           # dash pattern lengths (in pen widths) per real second on flight paths
 DASH = (2.2, 1.6)          # dash and gap, in pen widths
 OUTLINE = QColor("#1a0f05")
@@ -260,15 +257,12 @@ def _plate(painter: QPainter, rect: QRectF, stops, radius: float = 0.0) -> None:
 
 class RouteItem(QGraphicsItem):
     """The route on one map, painted up to time t; the last part up to the moving marker (head). Lines within a
-    ghost span (from the release to coming back to life) are the corpse run. The newest minutes walked are
-    footprints instead (PRINT_SECONDS), alternating left and right at fixed distances along the route, so they
-    stay put; a step that vehicle(t0, t1) calls a ride (a boat, a zeppelin) stays a line."""
+    ghost span (from the release to coming back to life) are the corpse run."""
 
-    def __init__(self, segments, colors: RouteColors, ghost_spans=(), vehicle=None):
+    def __init__(self, segments, colors: RouteColors, ghost_spans=()):
         super().__init__()
         self.setZValue(2)                        # above the map art and the light
         self.segs = []
-        self.prints = []                         # per segment: (distance along it, ridden) or None
         self.has_taxi = False
         for seg in segments:
             times = [p[0] for p in seg.points]
@@ -278,15 +272,9 @@ class RouteItem(QGraphicsItem):
                 for i in range(1, len(times)):
                     if any(a < times[i] <= b for a, b in ghost_spans):
                         line_colors[i] = GHOST_COLOR
-            pts = [QPointF(x * W, y * H) for _, x, y in seg.points]
-            self.segs.append((times, pts, seg.taxi, self._runs(line_colors), line_colors))
+            self.segs.append((times, [QPointF(x * W, y * H) for _, x, y in seg.points], seg.taxi,
+                              self._runs(line_colors), line_colors))
             self.has_taxi = self.has_taxi or seg.taxi
-            # For the prints: the distance along the segment to each point, and which lines were rides.
-            along = [0.0]
-            for a, b in zip(pts, pts[1:]):
-                along.append(along[-1] + math.hypot(b.x() - a.x(), b.y() - a.y()))
-            ridden = [False] + [bool(vehicle and vehicle(t0, t1)) for t0, t1 in zip(times, times[1:])]
-            self.prints.append(None if seg.taxi else (along, ridden))
         self.t = 0.0
         self.head: QPointF | None = None
         self.phase = 0.0
@@ -355,7 +343,7 @@ class RouteItem(QGraphicsItem):
     def paint(self, painter: QPainter, option, widget=None) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         old, trail, glow = [], [], []        # (taxi, colour, points), (taxi, step, colour, points), ...
-        for s, (times, pts, taxi, runs, line_colors) in enumerate(self.segs):
+        for times, pts, taxi, runs, line_colors in self.segs:
             n = bisect.bisect_right(times, self.t)
             if n == 0:
                 continue
@@ -367,10 +355,6 @@ class RouteItem(QGraphicsItem):
                 if len(line) >= 2:
                     old.append((taxi, color, line))
             lines = self._trail_lines(times, pts, line_colors, first, n)
-            if not taxi:                         # the newest walking is footprints, not a line (rides stay lines)
-                ridden = self.prints[s][1]
-                lines = [ln for i, ln in enumerate(lines, first + 1)
-                         if ln[0] >= PRINT_SECONDS or ln[1] == GHOST_COLOR or ridden[i]]
             for (step, color), line in self._group(
                     lines, lambda ln: (min(TRAIL_STEPS - 1, int(ln[0] / TRAIL_SECONDS * TRAIL_STEPS)), ln[1])):
                 trail.append((taxi, step, color, line))
@@ -402,61 +386,6 @@ class RouteItem(QGraphicsItem):
             k = 1 - (step + 0.5) / TRAIL_STEPS
             painter.setPen(self._pen(color, 3 + 1.8 * k, 130 + 125 * k, taxi))
             painter.drawPolyline(line)
-        self._paint_prints(painter)
-
-    def _paint_prints(self, painter: QPainter) -> None:
-        """Footprints along the newest minutes walked, at screen size, fading with age."""
-        transform = painter.worldTransform()
-        scale = math.hypot(transform.m11(), transform.m12())
-        if scale <= 0:
-            return
-        step = 2.0 ** round(math.log2(PRINT_PX / scale))        # scene units between prints
-        painter.save()
-        painter.resetTransform()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        for (times, pts, taxi, _runs, line_colors), prints in zip(self.segs, self.prints):
-            if prints is None:
-                continue
-            along, ridden = prints
-            n = bisect.bisect_right(times, self.t)
-            if n == 0:
-                continue
-            first = max(1, bisect.bisect_left(times, self.t - PRINT_SECONDS))
-            lines = [(i, pts[i - 1], pts[i], along[i - 1], along[i], times[i - 1], times[i]) for i in range(first, n)]
-            if n < len(pts) and self.head is not None:
-                a = pts[n - 1]
-                lines.append((n, a, self.head, along[n - 1],
-                              along[n - 1] + math.hypot(self.head.x() - a.x(), self.head.y() - a.y()),
-                              times[n - 1], self.t))
-            for i, a, b, d0, d1, t0, t1 in lines:
-                if d1 <= d0 or line_colors[i] == GHOST_COLOR or ridden[i]:
-                    continue
-                sa, sb = transform.map(a), transform.map(b)
-                angle = math.degrees(math.atan2(sb.y() - sa.y(), sb.x() - sa.x()))
-                nx, ny = -(sb.y() - sa.y()), sb.x() - sa.x()
-                norm = math.hypot(nx, ny) or 1.0
-                for k in range(math.ceil(d0 / step), math.floor(d1 / step) + 1):
-                    f = (k * step - d0) / (d1 - d0)
-                    age = self.t - (t0 + (t1 - t0) * f)
-                    if not 0 <= age < PRINT_SECONDS:
-                        continue
-                    side = 3.2 if k % 2 else -3.2
-                    p = QPointF(sa.x() + (sb.x() - sa.x()) * f + nx / norm * side,
-                                sa.y() + (sb.y() - sa.y()) * f + ny / norm * side)
-                    self._print(painter, p, angle, line_colors[i], 1 - 0.75 * age / PRINT_SECONDS)
-        painter.restore()
-
-    @staticmethod
-    def _print(painter: QPainter, p: QPointF, angle: float, color: QColor, alpha: float) -> None:
-        """One footprint at p (screen), pointing along angle: a sole and a heel in the route's colour, inked."""
-        painter.save()
-        painter.translate(p)
-        painter.rotate(angle)
-        painter.setPen(QPen(with_alpha(PRINT_COLOR, 230 * alpha), 1.1))
-        painter.setBrush(with_alpha(color, 235 * alpha))
-        painter.drawEllipse(QPointF(1.8, 0), 3.3, 1.8)
-        painter.drawEllipse(QPointF(-2.9, 0), 1.6, 1.4)
-        painter.restore()
 
 
 # -- marker -------------------------------------------------------------------------------------------------
