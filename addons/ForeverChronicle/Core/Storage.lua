@@ -104,8 +104,25 @@ end
 -- True if text holds only literal data: strings, numbers, true/false/nil, braces, brackets, keys, "=" and ",".
 -- No names, calls, operators or loops, so compiling it cannot run anything (friends' data arrives packed too).
 local function plainData(text)
-  local s = text:gsub("\\.", "")                       -- escapes inside strings
-  s = s:gsub('"[^"\n]*"', "")                          -- strings
+  -- Strings are cut out by walking them like Lua does (escapes included), so nothing outside a string can pass
+  -- for one. Long brackets ([[ ]], [=[ ]=]) and comments are never written by the packer: rejected.
+  local outside, i, n = {}, 1, #text
+  while i <= n do
+    local q = text:find('"', i, true)
+    outside[#outside + 1] = text:sub(i, (q or n + 1) - 1)
+    if not q then break end
+    local j = q + 1
+    while true do
+      local c = text:find('[\\"\n]', j)
+      if not c or text:byte(c) == 10 then return false end -- unterminated string
+      if text:byte(c) == 34 then j = c + 1; break end
+      j = c + 2                                            -- an escape: skip the escaped character
+    end
+    outside[#outside + 1] = " "
+    i = j
+  end
+  local s = table.concat(outside)
+  if s:find("[[", 1, true) or s:find("[=", 1, true) or s:find("--", 1, true) then return false end
   s = s:gsub("[%a_][%w_]*%s*=", "=")                   -- keys
   s = s:gsub("%f[%w_]true%f[^%w_]", ""):gsub("%f[%w_]false%f[^%w_]", ""):gsub("%f[%w_]nil%f[^%w_]", "")
   s = s:gsub("%-?%d+%.?%d*[eE]?[%+%-]?%d*", "")        -- numbers

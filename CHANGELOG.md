@@ -12,6 +12,9 @@ then turn "Unreleased" into the uploaded version and date.
 - The recipe search on the Professions tab ignores the case of umlauts too ("ä" finds "Ä").
 - The `/fj dungeon` command is gone. It reported test data for dungeon maps, which the addon no longer has;
   that data is removed from the saved file.
+- Safer reading of other characters' saved data: a specially crafted entry can no longer freeze the game.
+- Negative numbers show correctly ("-123,456" instead of "-,123,456").
+- The gold graph keeps working for characters with more than 214,748 gold.
 
 ## 0.15.0 – 2026-10-20
 

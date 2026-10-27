@@ -57,7 +57,8 @@ def test_rejects_code(code):
         parse_saved_variables(code)
 
 
-@pytest.mark.parametrize("text", ['A = { "a", ', 'A = "unterminated', 'A = { ["k"] = }', 'A ='])
+@pytest.mark.parametrize("text", ['A = { "a", ', 'A = "unterminated', 'A = { ["k"] = }', 'A =',
+                                  'A = { [{}] = 1 }', 'A = { [{1}] = 1 }'])
 def test_rejects_truncated(text):
     with pytest.raises(LuaParseError):
         parse_saved_variables(text)

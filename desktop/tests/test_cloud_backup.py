@@ -169,6 +169,10 @@ def test_cloud_folder_gone(world):
     s = BackupSettings(world["cloud"] / "missing", "Leon")
     result = cloud_backup.upload(s, world["client"], None)
     assert result.errors and not result.changed
+    snapshot = world["cloud"].parent / "cloud-upload.db"
+    snapshot.write_bytes(b"database copy")
+    cloud_backup.upload(s, world["client"], snapshot)
+    assert not snapshot.exists(), "the database copy is not left behind"
 
 
 # -- the app ----------------------------------------------------------------------------------------------

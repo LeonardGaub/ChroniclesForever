@@ -252,6 +252,8 @@ def upload(s: BackupSettings, client: ClientInstall | None, snapshot: Path | Non
     state = load_state()
     if not s.cloud.is_dir():
         result.errors.append(f"cloud folder not available: {s.cloud}")
+        if snapshot is not None:
+            snapshot.unlink(missing_ok=True)
         return result
     now = time.time()
     for sv in (find_saved_variables(client) if client else []):

@@ -285,6 +285,10 @@ MIGRATIONS: list[str] = [
     ALTER TABLE characters ADD COLUMN xp_max INTEGER;
     ALTER TABLE characters ADD COLUMN xp_at INTEGER;
     """,
+    # 12: the addon's "J" flag on route points (first point after a loading screen: a teleport, never connected)
+    """
+    ALTER TABLE positions ADD COLUMN jump INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

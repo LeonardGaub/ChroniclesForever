@@ -121,11 +121,12 @@ end
 -- 1234567 -> "1.234.567" (German) / "1,234,567" (English)
 function Util.FormatNumber(n)
   if type(n) ~= "number" then return FC.L.UNKNOWN end
-  local s = tostring(math.floor(n))
+  local v = math.floor(n)
+  local s = tostring(math.abs(v)) -- the sign is added afterwards, so no separator lands next to it
   local sep = FC.L.THOUSANDS_SEP
   local out = s:reverse():gsub("(%d%d%d)", "%1" .. sep):reverse()
   if out:sub(1, #sep) == sep then out = out:sub(#sep + 1) end
-  return out
+  return (v < 0 and "-" or "") .. out
 end
 
 function Util.FormatTime(t)

@@ -217,6 +217,8 @@ class Route:
 
     def is_jump(self, prev: PositionPoint, p: PositionPoint) -> bool:
         """True when the step from prev to p (same map) is a teleport."""
+        if p.jump:
+            return True
         if prev.taxi or p.taxi or prev.x is None or p.x is None:
             return False
         d = math.hypot(p.x - prev.x, p.y - prev.y) * self._continent_scale(p.map_id)
@@ -225,7 +227,7 @@ class Route:
     def connected(self, prev: PositionPoint, p: PositionPoint, view: int | None = None) -> bool:
         """True when a route line joins prev and p. On the world map (the seamless one) lines also cross from
         one zone into the next, unless the step is a teleport."""
-        if p.time - prev.end > GAP_SECONDS or prev.taxi != p.taxi:
+        if p.time - prev.end > GAP_SECONDS or prev.taxi != p.taxi or p.jump:
             return False
         if prev.map_id == p.map_id:
             return not self.is_jump(prev, p)

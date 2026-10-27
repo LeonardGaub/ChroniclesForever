@@ -124,6 +124,26 @@ def test_a_newer_copy_adds_to_the_friends_history(db, cloud):
     assert count(db, "SELECT COUNT(*) FROM events") == 0 and count(db, "SELECT COUNT(*) FROM positions") == 0
 
 
+def test_a_broken_friend_file_stops_only_that_friend(db, cloud):
+    put(cloud, "Ann", 'ForeverChronicleDB = { schemaVersion = "2", characters = {} }')     # TypeError before
+    put(cloud, "Cid", 'ForeverChronicleDB = { schemaVersion = 2, characters = { [{}] = 1 } }')
+    put(cloud, "Dan", 'ForeverChronicleDB = { schemaVersion = 2, characters = { ["P-9"] = { info = { name = "X",'
+                      ' realm = { "not a string" } } } } }')                                 # cannot be stored
+    put(cloud, "Bob", small_db({"P-1": (["e1"], [])}))
+    result = import_friends(db, cloud, "Leon")
+    assert result.imported == ["Ann", "Bob"] and sorted(f.split(":")[0] for f in result.failed) == ["Cid", "Dan"]
+    assert [c.name for c in friends(db)] == ["P-1"]
+
+
+def test_a_rejected_copy_is_tried_again(db, cloud, monkeypatch):
+    """A friend's newer addon is rejected; once the app supports it, the same copy is imported."""
+    from forever_chronicle.importing import sv_importer
+    put(cloud, "Bob", small_db({"P-1": (["e1"], [])}).replace('["schemaVersion"] = 2', '["schemaVersion"] = 3'))
+    assert import_friends(db, cloud, "Leon").failed
+    monkeypatch.setattr(sv_importer, "SUPPORTED_SCHEMA", 3)
+    assert import_friends(db, cloud, "Leon").imported == ["Bob"] and friends(db)
+
+
 def test_two_accounts_one_friend(db, cloud):
     put(cloud, "Bob", small_db({"P-1": (["e1"], [])}), account="00000001")
     put(cloud, "Bob", small_db({"P-2": (["e2"], [])}), account="00000002")

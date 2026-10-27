@@ -237,6 +237,8 @@ class _Parser:
                 key = self.value()
                 if key is None:
                     raise self.error("nil table key")
+                if isinstance(key, (list, dict)):
+                    raise self.error("table as table key")
                 if isinstance(key, float) and key.is_integer():
                     key = int(key)
                 self.expect("]")

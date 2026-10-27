@@ -21,6 +21,7 @@ from typing import Any
 from ..cloud_backup import friend_folders, versions
 from ..storage.database import Database
 from ..storage.jsonl import RECORD_TYPES
+from ..storage.repository import int_or_none
 from ..wow.lua_parser import LuaParseError, as_dict, parse_saved_variables_bytes
 from .sv_importer import VARIABLE_NAME, ImportResult, SavedVariablesImporter
 
@@ -75,7 +76,11 @@ def import_friends(db: Database, cloud: Path | None, own_name: str | None) -> Fr
         if row is not None and row[1] == modified and has_characters:
             result.unchanged += 1
             continue
-        reason = _import_friend(db, importer, files, share_id, folder.name, modified)
+        try:
+            reason = _import_friend(db, importer, files, share_id, folder.name, modified)
+        except Exception as exc:  # a friend's file is not ours: whatever is wrong in it must not stop the others
+            db.conn.rollback()
+            reason = f"{type(exc).__name__}: {exc}"
         if reason:
             result.failed.append(f"{folder.name}: {reason}")
         else:
@@ -104,7 +109,7 @@ def _import_friend(db: Database, importer: SavedVariablesImporter, files: list[P
         if not data:
             return f"{VARIABLE_NAME} not found in {path.name}"
         size += len(raw)
-        root["schemaVersion"] = max(root["schemaVersion"], data.get("schemaVersion") or 1)
+        root["schemaVersion"] = max(root["schemaVersion"], int_or_none(data.get("schemaVersion")) or 1)
         for key, char in as_dict(data.get("characters")).items():
             if isinstance(key, str) and isinstance(char, dict):
                 characters[f"friend:{share_id}:{key}"] = char
@@ -119,8 +124,8 @@ def _import_friend(db: Database, importer: SavedVariablesImporter, files: list[P
                                        (share_id, name)).lastrowid)
     else:
         owner_id = row[0]
-    db.conn.execute("UPDATE owners SET display_name = ?, shared_at = ?, imported_at = ? WHERE owner_id = ?",
-                    (name, modified, int(time.time()), owner_id))
+    db.conn.execute("UPDATE owners SET display_name = ?, imported_at = ? WHERE owner_id = ?",
+                    (name, int(time.time()), owner_id))
     for (character_id, natural_key) in db.conn.execute(
             "SELECT character_id, natural_key FROM characters WHERE owner_id = ?", (owner_id,)).fetchall():
         if natural_key not in characters:  # no longer in their files: goes with everything
@@ -129,6 +134,9 @@ def _import_friend(db: Database, importer: SavedVariablesImporter, files: list[P
                                   ImportResult(source=name), owner_id=owner_id)
     if result.status in ("rejected", "failed"):
         return "; ".join(result.messages) or result.status
+    # Only an imported copy counts as done: a rejected one (e.g. a newer addon) is tried again after an app update.
+    with db.transaction():
+        db.conn.execute("UPDATE owners SET shared_at = ? WHERE owner_id = ?", (modified, owner_id))
     return None
 
 

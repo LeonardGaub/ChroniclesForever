@@ -141,6 +141,7 @@ if PHASE == 1 then
   check(stats.kills == 2, "kills counted (" .. tostring(stats.kills) .. ")")
   check(stats.xp_earned == 500 + 3300 + 400, "experience counted across a level-up (" .. tostring(stats.xp_earned) .. ")")
   check(FC.Util.FormatNumber(1234567) == "1.234.567", "German number format")
+  check(FC.Util.FormatNumber(-123456) == "-123.456" and FC.Util.FormatNumber(-12) == "-12", "negative numbers")
 
   -- Pastimes: jumps from the ground only (not in the air, not swimming up), fish from fishing loot only.
   JumpOrAscendStart(); JumpOrAscendStart()
@@ -331,7 +332,10 @@ elseif PHASE == 4 then
 
   -- Friends' data arrives packed: only plain data is ever compiled.
   check(Storage.IsPlainData('{a=1,["b c"]=-2.5e+3,[3]=true,d={nil,false}},{e="x\\"y"}'), "plain data accepted")
-  for _, bad in ipairs({ '}while true do end{', '{a=("x"):rep(9)}', '{a=b}', '{a=1}}return{', '{a=#"x"}' }) do
+  check(Storage.IsPlainData('{a="[[ -- ]]",b="\\\\",c="x\\\ny"}'), "brackets and dashes inside strings accepted")
+  for _, bad in ipairs({ '}while true do end{', '{a=("x"):rep(9)}', '{a=b}', '{a=1}}return{', '{a=#"x"}',
+      '{[[ "]],(function() while true do end end)(),[[" ]]}', '{[==[ "]==],f(),[==[" ]==]}',
+      '{a=1}--"\n,f(),{"', '{a="x}', '{a="x\n"}' }) do
     check(not Storage.IsPlainData(bad), "code rejected: " .. bad)
   end
   local evil = { nextSeq = 1, records = {}, packed = { format = 1, kind = "tables", chunks = { '}while true do end{' } } }

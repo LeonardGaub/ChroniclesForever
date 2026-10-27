@@ -34,7 +34,20 @@ def test_parse_position(text, ok):
 
 def test_parse_flags():
     p = PositionPoint.parse("100,1413,0.1,0.2,160,T,")
-    assert p.taxi and p.until == 160 and p.end == 160
+    assert p.taxi and not p.jump and p.until == 160 and p.end == 160
+    assert PositionPoint.parse("100,1413,0.1,0.2,,J,").jump
+
+
+def test_loading_screen_breaks_the_route(db):
+    """The addon's "J" flag (first point after a loading screen) survives the import and ends the line, even for a
+    step too short and slow to look like a teleport."""
+    repo = Repository(db.conn)
+    cid = repo.upsert_character("P-1", {"name": "Leon"}, None)
+    repo.upsert_position(cid, PositionPoint.parse("100,1413,0.5000,0.5000,,,"))
+    repo.upsert_position(cid, PositionPoint.parse("140,1413,0.5050,0.5000,,,"))   # imported before the fix
+    repo.upsert_position(cid, PositionPoint.parse("140,1413,0.5050,0.5000,,J,"))  # the same point again
+    route = Route(repo.positions(cid))
+    assert route.points[1].jump and [len(s.points) for s in route.segments(1413)] == [1, 1]
 
 
 def test_import_positions_and_geometry(db, sv_data):

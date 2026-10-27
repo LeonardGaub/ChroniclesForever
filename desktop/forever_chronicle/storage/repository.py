@@ -82,6 +82,7 @@ class PositionPoint:
     y: float | None
     instance_id: int | None
     taxi: bool
+    jump: bool = False                  # first point after a loading screen: not connected to the one before
 
     @property
     def end(self) -> int:
@@ -106,7 +107,7 @@ class PositionPoint:
             return None
         if x is not None and not (0 <= x <= 1 and 0 <= y <= 1):
             return None
-        return cls(t, until, map_id, x, y, instance_id, "T" in parts[5])
+        return cls(t, until, map_id, x, y, instance_id, "T" in parts[5], "J" in parts[5])
 
 
 def int_or_none(text: Any) -> int | None:
@@ -427,16 +428,17 @@ class Repository:
     def upsert_position(self, character_id: str, p: "PositionPoint") -> None:
         """Inserts a point. A stationary point may have grown (until_at) since the last import."""
         self.conn.execute(
-            """INSERT INTO positions (character_id, occurred_at, until_at, map_id, x, y, instance_id, on_taxi)
-               VALUES (?,?,?,?,?,?,?,?) ON CONFLICT (character_id, occurred_at) DO UPDATE SET
-               until_at = excluded.until_at WHERE excluded.until_at IS NOT positions.until_at""",
-            (character_id, p.time, p.until, p.map_id, p.x, p.y, p.instance_id, int(p.taxi)))
+            """INSERT INTO positions (character_id, occurred_at, until_at, map_id, x, y, instance_id, on_taxi, jump)
+               VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (character_id, occurred_at) DO UPDATE SET
+               until_at = excluded.until_at, jump = excluded.jump
+               WHERE excluded.until_at IS NOT positions.until_at OR excluded.jump != positions.jump""",
+            (character_id, p.time, p.until, p.map_id, p.x, p.y, p.instance_id, int(p.taxi), int(p.jump)))
 
     def positions(self, character_id: str) -> list["PositionPoint"]:
         rows = self.conn.execute("SELECT * FROM positions WHERE character_id = ? ORDER BY occurred_at",
                                  (character_id,)).fetchall()
         return [PositionPoint(r["occurred_at"], r["until_at"], r["map_id"], r["x"], r["y"], r["instance_id"],
-                              bool(r["on_taxi"])) for r in rows]
+                              bool(r["on_taxi"]), bool(r["jump"])) for r in rows]
 
     def upsert_map_info(self, map_id: int, info: dict[str, Any]) -> None:
         self._upsert("map_info", {

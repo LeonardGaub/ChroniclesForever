@@ -26,7 +26,8 @@ local function current()
 end
 
 local function encode(s)
-  return string.format("%d,%d,%d,%d,%d", s.time, s.xp, s.kills, s.money, s.level)
+  -- %.0f for the totals that can pass 2^31 (money in copper): %d is 32-bit on some clients
+  return string.format("%d,%.0f,%d,%.0f,%d", s.time, s.xp, s.kills, s.money, s.level)
 end
 
 function Metrics.Parse(text)
