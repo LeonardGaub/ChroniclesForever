@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
-from . import cloud_sync, i18n
+from . import cloud_backup, i18n
 from .config import AppConfig
 from .domain.route_colors import MODES
 from .importing.friend_importer import FriendImportResult, import_friends
@@ -16,6 +16,7 @@ from .importing.sv_importer import ImportResult, SavedVariablesImporter
 from .storage.database import Database
 from .storage.jsonl import ExportResult, JsonlImportResult, export_jsonl, import_jsonl
 from .storage.repository import Repository
+from .ui.backup_runner import BackupRunner
 from .ui.sound import Sound
 from .wow import game_icons
 from .wow.paths import ClientInstall, SavedVariablesFile, client_from_path, find_saved_variables, pick_client
@@ -44,6 +45,7 @@ class AppContext(QObject):
         self._client_searched = False
         self.last_friend_import = FriendImportResult()
         self.last_friend_screenshots = FriendScreenshotsResult()
+        self.backup = BackupRunner(self)       # the cloud backup, off the main thread (ui/backup_runner.py)
 
     def set_language(self, code: str) -> None:
         """Switches the language (i18n tells its listeners) and keeps it in the settings."""
@@ -89,12 +91,17 @@ class AppContext(QObject):
             self.imported.emit(fresh)
         return results
 
+    def backup_settings(self) -> cloud_backup.BackupSettings | None:
+        """The cloud backup's folder and my name (cloud_backup.py); None until both are set."""
+        return cloud_backup.settings(self.config)
+
     def import_friends(self, notify: bool = True) -> FriendImportResult:
-        """Friends' characters from the cloud folder of this PC's sync (importing/friend_importer.py)."""
-        setup = cloud_sync.find_setup()
-        self.last_friend_import = import_friends(self.db, setup) if setup else FriendImportResult()
-        # Their pictures, sorted per character (importing/friend_screenshots.py), linked to the records just read.
-        self.last_friend_screenshots = sync_friend_screenshots(self.db, setup) if setup else FriendScreenshotsResult()
+        """Friends' characters from the other players' folders in my cloud folder (importing/friend_importer.py)."""
+        s = self.backup_settings()
+        cloud, name = (s.cloud, s.name) if s else (None, None)
+        self.last_friend_import = import_friends(self.db, cloud, name) if s else FriendImportResult()
+        # Their pictures (importing/friend_screenshots.py), linked to the records just read.
+        self.last_friend_screenshots = sync_friend_screenshots(self.db, cloud, name) if s else FriendScreenshotsResult()
         if notify and (self.last_friend_import.changed or self.last_friend_screenshots.changed):
             self.data_changed.emit()
         return self.last_friend_import

@@ -5,6 +5,9 @@ with Import, Einstellungen and Diagnose. The app starts on the home screen. Ctrl
 Pages ask for another page or character through AppContext.navigate / select_character (home screen cards).
 Motion (ui/motion.py): page changes crossfade, buttons and cards glow under the mouse, and an import that brought
 new moments is announced by a toast per character at the top right.
+Cloud backup (cloud_backup.py): while the window is open, WoW starting and closing start a backup (closing imports
+first); at start, changes since the last backup go up, and a banner above the page says when my other PC has newer
+addon data (it only offers the restore).
 The game's fonts (wow/game_fonts.py) are taken from the install and loaded before anything is built; the game's
 sounds (wow/game_sounds.py) are taken in the background.
 """
@@ -16,13 +19,14 @@ from PySide6.QtGui import QAction, QActionGroup, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QButtonGroup, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow,
                                QMenu, QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget)
 
-from .. import i18n
+from .. import cloud_backup, i18n
 from ..app_context import AppContext
 from ..i18n import format_datetime, tr
 from ..storage.repository import Character
 from ..wow import game_fonts
 from . import theme
 from .pages import MAIN_PAGES, MENU_PAGES
+from .backup_runner import GameWatcher
 from .motion import HoverGlow, PageFader, ToastQueue
 from .sound import install_game_sounds
 from .widgets import Page, heading, muted, panel
@@ -96,6 +100,25 @@ class MainWindow(QMainWindow):
         right.addWidget(header)
         right.addSpacing(8)
 
+        # My other PC has newer addon data: offered, never done by itself.
+        self.banner = panel()
+        bl = QHBoxLayout(self.banner)
+        bl.setContentsMargins(14, 6, 8, 6)
+        self.banner_text = QLabel()
+        self.banner_text.setWordWrap(True)
+        self.banner_text.setStyleSheet(theme.font_css(11, theme.GOLD))
+        self.banner_restore = QPushButton()
+        self.banner_restore.clicked.connect(self._restore_from_banner)
+        banner_close = QPushButton("✕")
+        banner_close.setFixedWidth(32)
+        banner_close.clicked.connect(self.banner.hide)
+        bl.addWidget(self.banner_text, 1)
+        bl.addWidget(self.banner_restore)
+        bl.addWidget(banner_close)
+        self.banner.hide()
+        self.banner_version: cloud_backup.Version | None = None
+        right.addWidget(self.banner)
+
         self.pages: list[Page] = [page_cls(ctx) for page_cls in MAIN_PAGES + MENU_PAGES]
         self.menu_pages = self.pages[len(MAIN_PAGES):]
         self.stack = QStackedWidget()
@@ -148,6 +171,9 @@ class MainWindow(QMainWindow):
         self.toasts = ToastQueue(self.stack, ctx.config)
         ctx.imported.connect(self.announce)
         ctx.setup_requested.connect(self.open_setup)
+        self.watcher = GameWatcher(ctx, self)
+        self.watcher.game_started.connect(ctx.backup.run)
+        self.watcher.game_closed.connect(self._game_closed)
 
         self._build_menu()
         ctx.data_changed.connect(self.reload)
@@ -209,7 +235,7 @@ class MainWindow(QMainWindow):
         self.import_action.triggered.connect(self._import_now)
         self.sync_action = QAction(self)
         self.sync_action.setShortcut(QKeySequence("F5"))
-        self.sync_action.triggered.connect(self._sync_now)
+        self.sync_action.triggered.connect(self._backup_now)
         self.quit_action = QAction(self)
         self.quit_action.setShortcut(QKeySequence.StandardKey.Quit)
         self.quit_action.triggered.connect(self.close)
@@ -241,10 +267,47 @@ class MainWindow(QMainWindow):
         self.show_page(import_page)
         import_page.run_import()
 
-    def _sync_now(self) -> None:
+    def _backup_now(self) -> None:
         import_page = self.page("tab.import")
         self.show_page(import_page)
-        import_page.run_sync()
+        import_page.run_backup()
+
+    # -- cloud backup -----------------------------------------------------------------
+
+    def _game_closed(self) -> None:
+        """WoW was closed: its saved file is new, so into the app first, then into the cloud."""
+        self.ctx.import_all(skip_unchanged=True)
+        self.ctx.backup.run()
+
+    def start_backup(self) -> None:
+        """At app start: the hint about my other PC, then a catch-up backup if something changed meanwhile."""
+        s = self.ctx.backup_settings()
+        if s is None:
+            return
+        client = self.ctx.client()
+        try:
+            self.show_newer_elsewhere(cloud_backup.newer_elsewhere(s, client))
+            changed = cloud_backup.has_changes(s, client)
+        except OSError:
+            return
+        if changed:
+            self.ctx.backup.run()
+
+    def show_newer_elsewhere(self, version: cloud_backup.Version | None) -> None:
+        self.banner_version = version
+        if version is None:
+            self.banner.hide()
+            return
+        self.banner_text.setText(tr("cloud.newer", pc=version.pc, when=format_datetime(int(version.when.timestamp()))))
+        self.banner_restore.setText(tr("cloud.newer_restore"))
+        self.banner.show()
+
+    def _restore_from_banner(self) -> None:
+        import_page = self.page("tab.import")
+        self.show_page(import_page)
+        import_page.open_restore(self.banner_version)
+        s = self.ctx.backup_settings()
+        self.show_newer_elsewhere(cloud_backup.newer_elsewhere(s, self.ctx.client()) if s else None)
 
     # -- data -------------------------------------------------------------------------
 

@@ -394,20 +394,6 @@ ForeverChronicleDB = {
 			["Session"] = {
 				["autoPlayed"] = true,
 			},
-			["Share"] = {
-				["cats"] = {
-					["chronicle"] = true,
-					["gear"] = true,
-					["professions"] = true,
-					["routes"] = true,
-					["screenshots"] = true,
-					["sessions"] = true,
-					["stats"] = true,
-				},
-				["chars"] = {
-				},
-				["name"] = "",
-			},
 			["Travel"] = {
 				["dwellSeconds"] = 5,
 			},

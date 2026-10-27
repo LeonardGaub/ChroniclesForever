@@ -4,6 +4,23 @@ The session notes that used to be the "History" section of `NEXT_STEPS.md`, newe
 at the time: older entries may describe things that changed or were removed later. The current state is in
 `NEXT_STEPS.md`.
 
+### Cloud backup replaces the friends sync (2026-10-27)
+- User: plays the same characters on two PCs and found the first answer (a whole two-PC sync with join codes and a
+  three-way merge, built the same day and never committed) far too complicated. New rules: back up the screenshots
+  and the addon file when the game starts or quits and by a button; a cloud folder chosen by hand; data always both
+  local and in the cloud, nothing overwritten; no friend invites; friends back up the same way and the import reads
+  everyone's data. Design: `docs/Cloud_Backup.md`.
+- User decisions: backup plus manual restore (no merge); the desktop app watches WoW (only while open) and catches
+  up at its start; dated copies, newest 30; the app database too; full-size screenshots for everyone; friends only
+  in the desktop app, whole addon files (no share settings); the sync lives in the app; the app installs addon
+  updates and removes the old companion; the old cloud layout stays until deleted by hand; a banner when my other
+  PC has newer data.
+- Removed: `addons/ForeverChronicle_Share` (Share module, Teilen settings, friends view), `sync/` (ForeverSync.ps1,
+  Einrichten.bat, Abgleichen.bat), `desktop/forever_chronicle/cloud_sync.py`, `tests/addon/dump_friends.js`, the
+  share and friends fixtures, addon test phase 13 (phase 12 now tests the alt alone), `docs/Sharing_Design.md`,
+  `docs/Friends_Map_Design.md` (friends' routes in game have no source any more).
+- The live client appeared on 2026-10-27 (`_forever_`, flavor `wowf`, 1.60.1.70634): added to the known flavors.
+
 ### Cinematic: wider flights, softer way into the credits (2026-10-26)
 - User: the flight Thunder Bluff → Orgrimmar stayed too close, and the credits came too abruptly with the music
   cut off. Zooming out now has its own quicker time constant (`ZOOM_OUT_SECONDS` 1.8 s, in stays 2.6 s); flights

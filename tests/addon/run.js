@@ -5,18 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 
-const addonsDir = path.join(__dirname, '..', '..', 'addons');
-const addonDir = path.join(addonsDir, 'ForeverChronicle');
-function tocFiles(addon) {
-  const toc = fs.readFileSync(path.join(addonsDir, addon, addon + '.toc'), 'utf8');
-  return toc.split(/\r?\n/).map(l => l.trim()).filter(l => l.endsWith('.lua') && !l.startsWith('#'))
-    .map(l => l.replace(/\\/g, '/'));
-}
-// Main addon files by their path inside the addon; the companion's files with its folder in front.
-const mainFiles = tocFiles('ForeverChronicle');
-const companion = 'ForeverChronicle_Share';
-const companionFiles = tocFiles(companion).map(f => companion + '/' + f);
-const sourceOf = f => f.startsWith(companion + '/') ? path.join(addonsDir, f) : path.join(addonDir, f);
+const addonDir = path.join(__dirname, '..', '..', 'addons', 'ForeverChronicle');
+const toc = fs.readFileSync(path.join(addonDir, 'ForeverChronicle.toc'), 'utf8');
+const files = toc.split(/\r?\n/).map(l => l.trim()).filter(l => l.endsWith('.lua') && !l.startsWith('#'))
+  .map(l => l.replace(/\\/g, '/'));
 
 // Loads and runs Lua chunks ([name, source] pairs) in order; any error ends the test run.
 function runChunks(L, chunks, what) {
@@ -29,8 +21,7 @@ function runChunks(L, chunks, what) {
   }
 }
 
-function runPhase(phase, saved, offset, overrides, mainOnly) {
-  const files = mainOnly ? mainFiles : mainFiles.concat(companionFiles);
+function runPhase(phase, saved, offset) {
   const L = lauxlib.luaL_newstate();
   lualib.luaL_openlibs(L);
   const setStr = (name, value) => { lua.lua_pushstring(L, to_luastring(value)); lua.lua_setglobal(L, to_luastring(name)); };
@@ -39,19 +30,10 @@ function runPhase(phase, saved, offset, overrides, mainOnly) {
   lua.lua_setglobal(L, to_luastring('ADDON_FILES'));
   lua.lua_newtable(L);
   for (const f of files) {
-    const text = overrides && overrides[f] !== undefined ? overrides[f] : fs.readFileSync(sourceOf(f), 'utf8');
-    lua.lua_pushstring(L, to_luastring(text));
+    lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(addonDir, f), 'utf8')));
     lua.lua_setfield(L, -2, to_luastring(f));
   }
   lua.lua_setglobal(L, to_luastring('ADDON_SRC'));
-  lua.lua_newtable(L);
-  for (const f of files) {
-    if (f.startsWith(companion + '/')) {
-      lua.lua_pushstring(L, to_luastring(companion));
-      lua.lua_setfield(L, -2, to_luastring(f));
-    }
-  }
-  lua.lua_setglobal(L, to_luastring('ADDON_OF'));
   lua.lua_pushinteger(L, phase); lua.lua_setglobal(L, to_luastring('PHASE'));
   lua.lua_pushinteger(L, offset); lua.lua_setglobal(L, to_luastring('PHASE_OFFSET'));
   if (saved) setStr('SAVED', saved);
@@ -78,7 +60,7 @@ runQueueTests();
 const p1 = runPhase(1, null, 0);
 const p2 = runPhase(2, p1, 1000);
 const p3 = runPhase(3, p2, 90000);
-// The desktop tests read this file; write it right away (phase 12 below needs a file the desktop tests write).
+// The desktop tests read this file.
 const fixtures = path.join(__dirname, '..', 'fixtures');
 fs.mkdirSync(fixtures, { recursive: true });
 fs.writeFileSync(path.join(fixtures, 'ForeverChronicle.lua'), p3);
@@ -90,18 +72,7 @@ runPhase(7, 'ForeverChronicleDB = { schemaVersion = 1, settings = { modules = { 
 runPhase(9, null, 0);
 runPhase(10, null, 0);
 runPhase(11, null, 0);
-const shareData = runPhase(13, null, 0);
-fs.writeFileSync(path.join(fixtures, 'ForeverChronicle_Share.lua'), shareData);
-console.log('fixture written: tests/fixtures/ForeverChronicle_Share.lua');
-// Friends' characters as written by the sync script (desktop/tests/test_sync.py writes the fixture).
-const friendsFixture = path.join(__dirname, '..', 'fixtures', 'FriendsData.lua');
-if (fs.existsSync(friendsFixture)) {
-  runPhase(12, null, 0, { 'ForeverChronicle_Share/Friends/FriendsData.lua': fs.readFileSync(friendsFixture, 'utf8') });
-} else {
-  console.log('phase 12 skipped: run the desktop tests first (they write tests/fixtures/FriendsData.lua)');
-}
-
-// The main addon alone, as uploaded to CurseForge.
-runPhase(14, null, 0, null, true);
+runPhase(12, null, 0);
+runPhase(14, null, 0);
 runPhase(15, null, 0);
 console.log('ALL PHASES PASSED');

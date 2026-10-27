@@ -11,18 +11,13 @@ end
 local function loadAddon()
   if SAVED then assert(load(SAVED, "=SavedVariables"))() end
   MOCK.clock = MOCK.clock + (PHASE_OFFSET or 0)
-  -- Like the game: the main addon's files, its ADDON_LOADED, then the companion addon's files.
-  local ns, other, mainLoaded = {}, {}, false
+  -- Like the game: the addon's files, then its ADDON_LOADED.
+  local ns = {}
   for _, name in ipairs(ADDON_FILES) do
-    local addon = ADDON_OF and ADDON_OF[name] or "ForeverChronicle"
-    if addon ~= "ForeverChronicle" and not mainLoaded then
-      MOCK.fire("ADDON_LOADED", "ForeverChronicle")
-      mainLoaded = true
-    end
     local chunk = assert(load(ADDON_SRC[name], "@" .. name))
-    chunk(addon, addon == "ForeverChronicle" and ns or other)
+    chunk("ForeverChronicle", ns)
   end
-  if not mainLoaded then MOCK.fire("ADDON_LOADED", "ForeverChronicle") end
+  MOCK.fire("ADDON_LOADED", "ForeverChronicle")
   return ns
 end
 
@@ -1095,7 +1090,7 @@ if PHASE == 11 then
 end
 
 if PHASE == 12 then
-  print("phase 12: character layer with an alt and a friend's characters")
+  print("phase 12: character layer with an alt")
   local FC = startClient(true, false)
   -- An alt on the same account (all characters share the SavedVariables).
   ForeverChronicleDB.characters["Player-4619-0ALT0001"] = {
@@ -1106,13 +1101,10 @@ if PHASE == 12 then
   }
 
   local entries = FC:ViewEntries()
-  check(#entries == 4 and entries[1].played and entries[1].key == ME, "played character first")
+  check(#entries == 2 and entries[1].played and entries[1].key == ME, "played character first")
   check(entries[2].key == "Player-4619-0ALT0001" and not entries[2].owner, "then the account's other characters")
-  check(entries[3].owner == 'Bob "the" Friend' and entries[3].char.info.name == "Thrall"
-    and entries[4].owner == 'Bob "the" Friend', "then the friend's characters, names exactly as shared")
   check(FC:IsViewingPlayed() and FC:ViewChar() == FC.char, "the window starts on the played character")
 
-  -- Chooser: header, played, alt, friend header, friend.
   FC.UI:Toggle()
   local UI = FC.UI
   check(UI.viewBar.name.text:find("Blind Bullseye", 1, true) and UI.viewBar.sub.text:find("Stufe 22", 1, true),
@@ -1120,72 +1112,31 @@ if PHASE == 12 then
   check(not UI.viewBack:IsShown(), "no back button while viewing myself")
   check(ForeverChronicleFrame.portraitUnit == "player", "portrait: the played character")
   UI.viewBar:GetScript("OnClick")(UI.viewBar)
-  local rows = {}
-  for _, row in ipairs(UI.viewRows.rows) do if row:IsShown() then rows[#rows + 1] = row end end
-  check(#rows == 6 and rows[1].header.text == "Meine Charaktere" and rows[4].header.text:find("Bob", 1, true),
-    "list: my characters, then the friend's (" .. #rows .. " rows)")
-  check(rows[2].name.text:find("du spielst", 1, true) and rows[3].key == "Player-4619-0ALT0001", "rows")
-  check(rows[3].icon.texture == "Interface\\TargetingFrame\\UI-Classes-Circles", "class emblem in the rows")
-
-  -- Choose the friend's character.
-  rows[5]:GetScript("OnMouseUp")(rows[5])
-  check(not FC:IsViewingPlayed() and FC:ViewOwner():find("Bob", 1, true) and not UI.viewList:IsShown(), "friend chosen")
-  check(UI.viewBack:IsShown() and UI.viewBar.sub.text:find("Charakter von", 1, true)
-    and UI.viewBar.sub.text:find("nur lesen", 1, true), "bar says whose character it is, back button")
-  check(UI.viewBar.name.text:find("Thrall", 1, true), "the bar shows the friend's character")
-  check(ForeverChronicleFrame.portraitClass == "HUNTER" and rawget(ForeverChronicleFrame, "portraitUnit") == nil,
-    "portrait: the friend's class emblem")
-
-  local ov = openPage("overview")
-  check(ov.name.text:find("Thrall", 1, true) and ov.details.text:find("Charakter von", 1, true), "overview header")
-  check(ov.otherNote:IsShown() and ov.gearPanel:IsShown() and not ov.model:IsShown() and not ov.xp:IsShown(),
-    "model and live parts hidden, gear shown")
-  local function link(slot) return rawget(slot, "link") end   -- mock frames return functions for unset fields
-  local head = ov.slots[1]
-  check(link(head) and link(head):find("Green Tinted Goggles", 1, true) and head.icon.texture == 133001,
-    "the friend's gear from the shared snapshot")
-  check(link(ov.slots[2]) == nil, "empty slot stays empty")
-  local kills, played
-  for _, tile in ipairs(ov.tiles) do
-    if tile.def.key == "kills" then kills = tile.value.text end
-    if tile.def.key == "played_total" then played = tile.value.text end
+  local alt
+  for _, row in ipairs(UI.viewRows.rows) do
+    if row:IsShown() and row.key == "Player-4619-0ALT0001" then alt = row end
   end
-  check(played and played ~= "-", "friend stats (played " .. tostring(played) .. ")")
+  check(alt and alt.icon.texture == "Interface\\TargetingFrame\\UI-Classes-Circles", "the alt in the list, class emblem")
 
+  -- The alt, then back to me.
+  alt:GetScript("OnMouseUp")(alt)
+  local ov = openPage("overview")
+  local function link(slot) return rawget(slot, "link") end   -- mock frames return functions for unset fields
+  check(ov.name.text:find("Altie", 1, true) and UI.viewBar.sub.text:find("Anderer Charakter", 1, true), "alt shown")
+  check(UI.viewBack:IsShown(), "back button")
+  check(link(ov.slots[1]) == nil, "the alt has no gear snapshot: empty slots")
+  check(ForeverChronicleFrame.portraitClass == "MAGE", "portrait: the alt's class emblem")
+  local overviewTab = ForeverChronicleFrame.Tabs[1]
+  check(overviewTab.icon.texture == "Interface\\TargetingFrame\\UI-Classes-Circles", "overview tab icon follows")
   local chron = openPage("chronicle")
-  local shown, headings = 0, 0
-  for _, item in ipairs(chron.shown) do if item.header then headings = headings + 1 else shown = shown + 1 end end
-  local friendEvents = #FC:ViewStream("events").records
-  check(friendEvents > 0 and shown == friendEvents and headings >= 1, "friend's chronicle (" .. shown .. " entries)")
-
-  local map = openPage("map")
-  check(#map.points >= 8 and map.viewMap == 1413 and map.canvas.marker:IsShown(), "friend's route on the map")
-
-  local prof = openPage("professions")
-  local profButtons = 0
-  for _, b in ipairs(prof.buttons) do if b:IsShown() then profButtons = profButtons + 1 end end
-  check(profButtons == 4 and prof.title.text == "Herbalism", "friend's professions (" .. profButtons .. ")")
-  local marked = 0
-  for _, item in ipairs(openPage("chronicle").items) do if item.shot then marked = marked + 1 end end
-  check(marked == 0, "no screenshots for the friend in game")
+  check(#chron.items == 1, "alt's chronicle")
 
   -- Recording continues for the played character only.
   local mine = #S(ForeverChronicleDB.characters[ME].streams.events).records
   MOCK.fire("PLAYER_DEAD")
   check(#S(ForeverChronicleDB.characters[ME].streams.events).records == mine + 1, "events still recorded for me")
-  check(#FC:ViewStream("events").records == friendEvents, "the friend's data is not changed")
+  check(#FC:ViewStream("events").records == 1, "the alt's data is not changed")
 
-  -- The alt, then back to me.
-  FC:SetView("Player-4619-0ALT0001")
-  openPage("overview")
-  check(ov.name.text:find("Altie", 1, true) and UI.viewBar.sub.text:find("Anderer Charakter", 1, true), "alt shown")
-  check(link(ov.slots[1]) == nil, "the alt has no gear snapshot: empty slots")
-  check(ForeverChronicleFrame.portraitClass == "MAGE", "portrait: the alt's class emblem")
-  local overviewTab = ForeverChronicleFrame.Tabs[1]
-  check(overviewTab.icon.texture == "Interface\\TargetingFrame\\UI-Classes-Circles", "overview tab icon follows")
-  openPage("chronicle")
-  shown = #chron.items
-  check(shown == 1, "alt's chronicle")
   UI.viewBack:GetScript("OnClick")(UI.viewBack)
   check(FC:IsViewingPlayed() and not UI.viewBack:IsShown(), "back to me")
   check(ForeverChronicleFrame.portraitUnit == "player", "portrait: back to the played character")
@@ -1196,123 +1147,6 @@ if PHASE == 12 then
   check(gear and #gear.slots == 2 and gear.slots[1].slotName == "HeadSlot" and gear.slots[1].quality == 3,
     "my gear snapshot")
   for i = 1, #UI.pages do UI:SelectPage(i) end
-
-  local errors = 0
-  for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
-  check(errors == 0, "no errors logged")
-end
-
-if PHASE == 13 then
-  print("phase 13: data for friends (Share module, cloud sync)")
-  local FC = startClient(true, false)
-  local Share = FC:GetModule("Share")
-  -- Some play: a route over two sessions, events.
-  for i = 1, 8 do MOCK.x = 0.30 + i * 0.01; MOCK.advance(2) end
-  MOCK.fire("PLAYER_DEAD")
-  -- Screenshots: one taken (shared, its picture goes up with the sync), one failed (not shared).
-  FC.Storage:Append("screenshots", { id = "shot-share-1", trigger = "level_up", events = {}, requestedAt = 1791800000,
-    capturedAt = 1791800005, fileStamp = "100726_101005", status = "confirmed", error = "kept at home" })
-  FC.Storage:Append("screenshots", { id = "shot-share-2", trigger = "zone", events = {}, requestedAt = 1791800100,
-    status = "failed", error = "no file" })
-  ForeverChronicleDB.characters["Player-4619-0ALT0001"] = {
-    info = { name = "Altie", level = 10, classFile = "MAGE", lastSeenAt = 1791900000 }, stats = { kills = 5 },
-    streams = {}, snapshots = {}, state = {} }
-
-  MOCK.fire("PLAYER_LOGOUT")
-  -- What the game writes as SavedVariables\ForeverChronicle_Share.lua (test data for the sync script), taken
-  -- before the checks below unpack streams.
-  local shareText = "\nForeverChronicleShareDB = " .. serialize(ForeverChronicleShareDB) .. "\n"
-  local data = ForeverChronicleShareDB
-  for _, name in ipairs({ "events", "positions", "sessions" }) do
-    check(data.characters[1].streams[name].packed ~= nil, "share stream packed: " .. name)
-  end
-  check(type(data) == "table" and data.format == 2 and data.name == "Blind" and #data.characters == 2,
-    "written on logout: both characters, name defaults to the character's")
-  local mine = data.characters[1]
-  check(mine.info.name == "Blind" and mine.info.key == ME and mine.stats.kills == ForeverChronicleDB.characters[ME].stats.kills,
-    "info and stats")
-  check(#S(mine.streams.events).records >= 2 and #S(mine.streams.positions).records >= 8, "chronicle and route")
-  check(mine.snapshots.gear and #mine.snapshots.gear.slots == 2, "gear")
-  check(data.maps["1413"] and data.maps["1414"], "maps of the route and their continent")
-  local shared = S(mine.streams.screenshots).records
-  check(#shared == 1 and shared[1].id == "shot-share-1" and shared[1].fileStamp == "100726_101005"
-    and shared[1].error == nil, "only taken screenshots are shared, without their error text")
-  check(data.screenshotFiles["100726_101005"] == mine.info.name .. "-" .. mine.info.realm,
-    "the sync script learns which character took the picture")
-  SAVED_OUT = shareText
-
-  -- Limits: only the newest events and route points (the route of all sessions, not only the newest).
-  Share.EVENTS = 1
-  data = Share:Build()
-  check(#S(data.characters[1].streams.events).records == 1, "event limit")
-  Share.EVENTS = 200
-  local all = S(ForeverChronicleDB.characters[ME].streams.positions).records
-  check(#S(data.characters[1].streams.positions).records == #all, "the whole route, all sessions")
-  Share.MAX_POINTS = 3
-  data = Share:Build()
-  local points = S(data.characters[1].streams.positions).records
-  check(#points == 3 and points[3] == all[#all] and points[1] == all[#all - 2], "point limit keeps the newest")
-  Share.MAX_POINTS = 20000
-
-  -- Categories and characters can be switched off.
-  local s = Share:GetSettings()
-  s.cats.routes, s.cats.gear, s.cats.stats = false, false, false
-  s.chars["Player-4619-0ALT0001"] = false
-  s.name = "Leon"
-  data = Share:Build()
-  mine = data.characters[1]
-  check(#data.characters == 1 and data.name == "Leon", "alt excluded, own name")
-  check(mine.streams.positions == nil and mine.snapshots.gear == nil and mine.stats == nil, "categories off")
-  check(mine.streams.events ~= nil and mine.streams.sessions ~= nil and mine.snapshots.professions ~= nil,
-    "the other categories stay on")
-  s.cats.routes, s.cats.gear, s.cats.stats = true, true, true
-  s.cats.screenshots = false
-  data = Share:Build()
-  check(data.characters[1].streams.screenshots == nil and next(data.screenshotFiles) == nil,
-    "screenshots off: no records, no pictures for the sync script")
-  s.cats.screenshots = true
-  s.chars["Player-4619-0ALT0001"] = nil
-
-  -- Settings page: the name field and one check box per character.
-  FC.UI:Toggle()
-  local settings = openPage("settings")
-  local nameRow, charRow
-  for _, control in ipairs(settings.controls) do
-    if rawget(control, "box") then nameRow = control end
-    if rawget(control, "boxes") then charRow = control end
-  end
-  check(nameRow and nameRow.box.text == "Leon", "name field shows the setting")
-  nameRow.box:SetText("  Leonard ")
-  nameRow.box:GetScript("OnEnterPressed")(nameRow.box)
-  check(Share:GetSettings().name == "Leonard", "name saved (trimmed)")
-  check(charRow and #charRow.boxes == 2, "one check box per character")
-  local alt
-  for _, cb in ipairs(charRow.boxes) do if cb.key == "Player-4619-0ALT0001" then alt = cb end end
-  alt:SetChecked(false)
-  alt:GetScript("OnClick")(alt)
-  check(Share:GetSettings().chars["Player-4619-0ALT0001"] == false and #Share:Build().characters == 1,
-    "unticking a character stops sharing it")
-  alt:SetChecked(true)
-  alt:GetScript("OnClick")(alt)
-  check(Share:GetSettings().chars["Player-4619-0ALT0001"] == nil, "ticking shares it again")
-
-  -- What the sync script delivers to friends: the share data as one friend of ForeverChronicleFriends.
-  data = Share:Build()
-  ForeverChronicleFriends = { friends = { { name = data.name, characters = data.characters } }, maps = data.maps,
-    instances = data.instances, entrances = data.entrances }
-  local entry
-  for _, e in ipairs(FC:ViewEntries()) do if e.owner == "Leonard" and e.char.info.name == "Blind" then entry = e end end
-  check(entry ~= nil, "a shared character appears in a friend's chooser")
-  FC:SetView(entry.key)
-  for i = 1, #FC.UI.pages do FC.UI:SelectPage(i) end
-  local ov = FC.UI.pages[1]
-  FC.UI:SelectPage(1)
-  check(ov.name.text:find("Blind", 1, true) and rawget(ov.slots[1], "link"), "overview of the shared character")
-
-  SlashCmdList.FOREVERCHRONICLE("share")
-  local said = false
-  for _, line in ipairs(MOCK.chat) do if line:find("wird beim nächsten Logout", 1, true) then said = true end end
-  check(said, "/fj share tells when the data is saved")
 
   local errors = 0
   for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end

@@ -235,7 +235,7 @@ MIGRATIONS: list[str] = [
         name           TEXT
     );
     """,
-    # 8: friends' characters (see docs/Sharing_Design.md) - imported from their share files, read-only
+    # 8: friends' characters (see docs/Cloud_Backup.md) - imported from their addon files, read-only
     """
     CREATE TABLE owners (
         owner_id       INTEGER PRIMARY KEY AUTOINCREMENT,

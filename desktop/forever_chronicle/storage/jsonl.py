@@ -10,7 +10,7 @@ Import is a merge: idempotent, row by row, and invalid rows are counted and repo
 file. Which version of a record wins is defined per record type in ``RECORD_TYPES``. Local-only columns
 (database IDs, import bookkeeping, screenshot file paths of this computer) are not exported.
 
-Only my own characters are exported; friends' characters (docs/Sharing_Design.md, version 1) are never
+Only my own characters are exported; friends' characters (docs/Cloud_Backup.md) are never
 exported again.
 """
 

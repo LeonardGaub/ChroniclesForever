@@ -24,18 +24,36 @@ def fake_client(tmp_path) -> ClientInstall:
     return ClientInstall(root, "wow_classic_beta")
 
 
-def test_install_addon_keeps_friends_file(tmp_path):
+def test_install_addon_removes_stale_files_and_the_old_companion(tmp_path):
     source = REPO / "addons" / "ForeverChronicle"
     client = fake_client(tmp_path)
     target = client.addons_dir / "ForeverChronicle"
-    (target / "Friends").mkdir(parents=True)
-    (target / "Friends" / "FriendsData.lua").write_text("ForeverChronicleFriends = { friends = {} } -- from the app")
+    target.mkdir(parents=True)
     (target / "Old.lua").write_text("stale")
+    companion = client.addons_dir / "ForeverChronicle_Share" / "Friends"
+    companion.mkdir(parents=True)
+    (companion / "FriendsData.lua").write_text("ForeverChronicleFriends = {}")
     result = setup_addon.install_addon(source, client)
     assert (target / "ForeverChronicle.toc").read_bytes() == (source / "ForeverChronicle.toc").read_bytes()
-    assert "from the app" in (target / "Friends" / "FriendsData.lua").read_text()
     assert not (target / "Old.lua").exists() and result.removed == 1
     assert result.version and result.target == target
+    assert not (client.addons_dir / "ForeverChronicle_Share").exists()
+
+
+def test_update_addon_at_start_only_when_newer(tmp_path, monkeypatch):
+    client = fake_client(tmp_path)
+    assert setup_addon.update_addon(client) is None, "not installed yet: the setup does the first install"
+    setup_addon.install_addon(REPO / "addons" / "ForeverChronicle", client)
+    assert setup_addon.update_addon(client) is None, "same version: nothing to do"
+    toc = client.addons_dir / "ForeverChronicle" / "ForeverChronicle.toc"
+    toc.write_text(toc.read_text(encoding="utf-8").replace("## Version: ", "## Version: 0.0.", 1), encoding="utf-8")
+    (client.addons_dir / "ForeverChronicle_Share").mkdir()
+    monkeypatch.setattr(setup_addon, "game_running", lambda _path: True)
+    assert setup_addon.update_addon(client) is None, "never while WoW runs"
+    monkeypatch.setattr(setup_addon, "game_running", lambda _path: False)
+    assert setup_addon.update_addon(client) is not None
+    assert "## Version: 0.0." not in toc.read_text(encoding="utf-8")
+    assert not (client.addons_dir / "ForeverChronicle_Share").exists()
 
 
 def test_setup_main_asks_when_not_found(tmp_path, monkeypatch):

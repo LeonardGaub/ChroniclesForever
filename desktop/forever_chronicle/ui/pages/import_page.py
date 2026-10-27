@@ -1,5 +1,5 @@
-"""Import: client folder, found SavedVariables files, import button, the friends' cloud sync (run it now),
-backups/JSONL transfer and history."""
+"""Import: client folder, found SavedVariables files, import button, the cloud backup (folder, name, back up now,
+restore), local backups/JSONL transfer and history."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ import sqlite3
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, Qt, QUrl
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
-from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QInputDialog, QLabel, QMessageBox,
-                               QPushButton, QTableWidgetItem, QVBoxLayout)
+from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
+                               QMessageBox, QPushButton, QTableWidgetItem, QVBoxLayout)
 
-from ... import cloud_sync
+from ... import cloud_backup
 from ...i18n import format_datetime, tr
 from .. import theme
 from ..widgets import Page, busy, choose_client_dir, muted, run_import, table, value_label
@@ -70,24 +70,47 @@ class ImportPage(Page):
         fl.addWidget(self.message)
         root.addWidget(self.files_box)
 
-        # The friends' cloud sync (sync/ForeverSync.ps1): one run now instead of waiting for the next one.
-        self.sync_box = QGroupBox()
-        sl = QVBoxLayout(self.sync_box)
-        self.sync_label = QLabel()
-        self.sync_label.setWordWrap(True)
-        sl.addWidget(self.sync_label)
-        sync_actions = QHBoxLayout()
-        self.sync_button = QPushButton()
-        self.sync_button.clicked.connect(self.run_sync)
-        sync_actions.addWidget(self.sync_button)
-        sync_actions.addStretch(1)
-        sl.addLayout(sync_actions)
-        self.sync_message = muted()
-        self.sync_message.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        sl.addWidget(self.sync_message)
-        root.addWidget(self.sync_box)
-        self.sync_process: QProcess | None = None
-        self._sync_log_start = 0
+        # The cloud backup (cloud_backup.py): where, under which name, and the two buttons.
+        self.cloud_box = QGroupBox()
+        cb = QVBoxLayout(self.cloud_box)
+        self.cloud_explain = muted()
+        cb.addWidget(self.cloud_explain)
+        folder_row = QHBoxLayout()
+        self.cloud_folder_caption = QLabel()
+        self.cloud_folder = value_label()
+        self.cloud_folder.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.cloud_choose = QPushButton()
+        self.cloud_choose.clicked.connect(self._choose_cloud)
+        folder_row.addWidget(self.cloud_folder_caption)
+        folder_row.addWidget(self.cloud_folder, 1)
+        folder_row.addWidget(self.cloud_choose)
+        cb.addLayout(folder_row)
+        name_row = QHBoxLayout()
+        self.cloud_name_caption = QLabel()
+        self.cloud_name = QLineEdit()
+        self.cloud_name.setMaxLength(40)
+        self.cloud_name.editingFinished.connect(self._name_changed)
+        name_row.addWidget(self.cloud_name_caption)
+        name_row.addWidget(self.cloud_name, 1)
+        cb.addLayout(name_row)
+        self.cloud_status = QLabel()
+        self.cloud_status.setWordWrap(True)
+        cb.addWidget(self.cloud_status)
+        cloud_actions = QHBoxLayout()
+        self.cloud_button = QPushButton()
+        self.cloud_button.clicked.connect(self.run_backup)
+        self.restore_cloud_button = QPushButton()
+        self.restore_cloud_button.clicked.connect(lambda: self.open_restore())
+        cloud_actions.addWidget(self.cloud_button)
+        cloud_actions.addWidget(self.restore_cloud_button)
+        cloud_actions.addStretch(1)
+        cb.addLayout(cloud_actions)
+        self.cloud_message = muted()
+        self.cloud_message.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        cb.addWidget(self.cloud_message)
+        root.addWidget(self.cloud_box)
+        ctx.backup.started.connect(self._refresh_cloud)
+        ctx.backup.finished.connect(self._backup_finished)
 
         # Backups and JSONL export/import (spec F-011).
         self.backup_box = QGroupBox()
@@ -149,94 +172,75 @@ class ImportPage(Page):
         else:
             self.files_label.setText(tr("import.files_none"))
         self.run.setEnabled(bool(files))
-        self._refresh_sync()
+        self._refresh_cloud()
         self._refresh_backups()
         self._fill_history()
 
-    def _refresh_sync(self) -> None:
-        self.sync_box.setTitle(tr("sync.group"))
-        running = self.sync_process is not None
-        setup = cloud_sync.find_setup()
-        self.sync_button.setText(tr("sync.running") if running else tr("sync.run") if setup else tr("sync.setup_run"))
-        self.sync_button.setEnabled(not running and cloud_sync.sync_script() is not None)
-        if cloud_sync.sync_script() is None:
-            self.sync_label.setText(tr("sync.no_script"))
+    def _refresh_cloud(self) -> None:
+        self.cloud_box.setTitle(tr("cloud.group"))
+        self.cloud_explain.setText(tr("cloud.explain"))
+        self.cloud_folder_caption.setText(tr("cloud.folder"))
+        self.cloud_choose.setText(tr("cloud.choose"))
+        self.cloud_name_caption.setText(tr("cloud.name"))
+        self.cloud_name.setPlaceholderText(tr("cloud.name_hint"))
+        self.cloud_name.setToolTip(tr("cloud.name_hint"))
+        self.restore_cloud_button.setText(tr("cloud.restore"))
+        folder = self.ctx.config.extra.get("cloud_folder")
+        self.cloud_folder.setText(folder or tr("cloud.folder_none"))
+        if not self.cloud_name.hasFocus():
+            self.cloud_name.setText(self.ctx.config.extra.get("cloud_name") or "")
+        running = self.ctx.backup.running
+        s = self.ctx.backup_settings()
+        self.cloud_button.setText(tr("cloud.running") if running else tr("cloud.run"))
+        self.cloud_button.setEnabled(s is not None and not running)
+        self.restore_cloud_button.setEnabled(s is not None and not running)
+        if s is None:
+            self.cloud_status.setText(tr("cloud.not_set"))
             return
-        if setup is None:
-            self.sync_label.setText(tr("sync.none"))
-            return
-        # What is where: my upload (push), friends' files in the cloud and what the game got of them (pull).
-        files = cloud_sync.player_files(setup)
-        mine = [f for f in files if f.mine]
-        friends = [f for f in files if not f.mine]
-        lines = [tr("sync.cloud", cloud=setup.cloud),
-                 tr("sync.pushed", files=self._player_list(mine)) if mine else tr("sync.pushed_none"),
-                 tr("sync.pulled", files=self._player_list(friends)) if friends else tr("sync.pulled_none")]
-        game = cloud_sync.friends_in_game(setup)
-        lines.append(tr("sync.in_game", n=game[0], when=format_datetime(int(game[1]))) if game
-                     else tr("sync.in_game_none"))
-        last = cloud_sync.log_lines(setup.folder)[-1:]
-        if last:
-            lines.append(tr("sync.last", line=last[0]))
-        self.sync_label.setText("\n".join(lines))
+        addon, db, shots = cloud_backup.summary(s)
+        last = cloud_backup.load_state().get("last_upload")
+        friends = [f.name for f in cloud_backup.friend_folders(s.cloud, s.name)]
+        self.cloud_status.setText("\n".join([
+            tr("cloud.status", addon=addon, db=db, shots=shots),
+            tr("cloud.last", when=format_datetime(int(last))) if last else tr("cloud.last_none"),
+            tr("cloud.friends", names=", ".join(friends)) if friends else tr("cloud.friends_none")]))
 
-    @staticmethod
-    def _player_list(files: list[cloud_sync.PlayerFile]) -> str:
-        return ", ".join(f"{f.name} ({format_datetime(int(f.modified))})" for f in files)
+    def _choose_cloud(self) -> None:
+        start = self.ctx.config.extra.get("cloud_folder") or str(Path.home())
+        folder = QFileDialog.getExistingDirectory(self, tr("cloud.choose_title"), start)
+        if folder:
+            self.ctx.config.set("cloud_folder", str(Path(folder)))
+            self.ctx.import_friends()
+            self._refresh_cloud()
 
-    def run_sync(self) -> None:
-        """Starts one sync run (the setup first, when there is none yet): it uploads my share file and pulls
-        friends' files into the game. The window keeps working while it runs."""
-        script = cloud_sync.sync_script()
-        if script is None or self.sync_process is not None:
-            self._refresh_sync()
-            return
-        folder = cloud_sync.sync_dir()
-        self._sync_log_start = cloud_sync.log_size(folder)
-        command = cloud_sync.run_command if cloud_sync.find_setup(folder) else cloud_sync.setup_command
-        program, args = command(script, folder)
-        self.sync_process = QProcess(self)
-        self.sync_process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
-        self.sync_process.finished.connect(self._sync_finished)
-        self.sync_process.errorOccurred.connect(self._sync_failed)
-        self.sync_message.setText("")
-        self.sync_process.start(program, args)
-        self._refresh_sync()
+    def _name_changed(self) -> None:
+        name = self.cloud_name.text().strip()
+        if name != (self.ctx.config.extra.get("cloud_name") or ""):
+            self.ctx.config.set("cloud_name", name)
+            self.ctx.import_friends()
+        self._refresh_cloud()
 
-    def _sync_finished(self, code: int, status: QProcess.ExitStatus) -> None:
-        process, self.sync_process = self.sync_process, None
-        if process is None:
-            return
-        output = bytes(process.readAll()).decode("utf-8", errors="replace").strip()
-        process.deleteLater()
-        new = cloud_sync.log_lines(cloud_sync.sync_dir(), self._sync_log_start)
-        if code != 0 or status != QProcess.ExitStatus.NormalExit:
-            self.sync_message.setText(tr("sync.failed", message=output or code))
-            self._refresh_sync()
-            return
-        self.run_import()  # into the app too: my newest data and friends' characters from the cloud folder
-        lines = [tr("sync.failed", message="") if any(" failed: " in line for line in new) else tr("sync.done")]
-        lines += new
-        friends = self.ctx.last_friend_import
-        if friends.imported:
-            lines.append(tr("sync.app_friends", names=", ".join(friends.imported)))
-        if friends.removed:
-            lines.append(tr("sync.app_removed", names=", ".join(friends.removed)))
-        shots = self.ctx.last_friend_screenshots
-        if shots.copied or shots.removed:
-            lines.append(tr("sync.app_shots", copied=shots.copied, removed=shots.removed))
-        if friends.failed:
-            lines.append(tr("sync.app_failed", message="; ".join(friends.failed)))
-        self.sync_message.setText("\n".join(lines))
-        self._refresh_sync()
+    def run_backup(self) -> None:
+        """Backs up now (the button, F5): what changed goes up as new copies, the window keeps working."""
+        self.cloud_message.setText("")
+        if not self.ctx.backup.run():
+            self.cloud_message.setText(tr("cloud.not_set"))
+        self._refresh_cloud()
 
-    def _sync_failed(self, error: QProcess.ProcessError) -> None:
-        if error != QProcess.ProcessError.FailedToStart or self.sync_process is None:
-            return  # a crash also ends in finished()
-        process, self.sync_process = self.sync_process, None
-        self.sync_message.setText(tr("sync.failed", message=process.errorString()))
-        process.deleteLater()
-        self._refresh_sync()
+    def _backup_finished(self, result) -> None:
+        if result.errors:
+            self.cloud_message.setText(tr("cloud.failed", message="; ".join(result.errors)))
+        elif result.changed:
+            self.cloud_message.setText(tr("cloud.done", addon=result.addon, shots=result.screenshots,
+                                          db=tr("cloud.done_db") if result.database else ""))
+        else:
+            self.cloud_message.setText(tr("cloud.unchanged"))
+        self._refresh_cloud()
+
+    def open_restore(self, preselect=None) -> None:
+        from ..restore_dialog import RestoreDialog
+        RestoreDialog(self, self.ctx, preselect).exec()
+        self.refresh()
 
     def _refresh_backups(self) -> None:
         self.backup_box.setTitle(tr("backup.group"))

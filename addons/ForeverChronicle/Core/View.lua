@@ -1,5 +1,5 @@
 -- Journey Forever - View
--- Which character the window shows (docs/Sharing_Design.md, phase 2). Recording always writes to the played
+-- Which character the window shows (ARCHITECTURE.md). Recording always writes to the played
 -- character (FC.char); the pages read through the view instead:
 --   FC:ViewChar(), FC:ViewStream(name), FC:IsViewingPlayed(), FC:ViewOwner()
 -- Available characters: every character of this account (FC.db.characters, all in the same SavedVariables)

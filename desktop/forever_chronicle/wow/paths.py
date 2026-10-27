@@ -10,9 +10,9 @@ from pathlib import Path
 from . import battlenet, casc
 
 ADDON_NAME = "ForeverChronicle"
-# Product flavors known to run Forever. The live flavor was not known before the release (2026-11-04), so a client
-# of any other flavor counts too when its build is 1.60 or newer (Forever's version line; Classic Era is 1.15).
-FOREVER_FLAVORS = ("wow_classic_beta",)
+# Product flavors known to run Forever (wowf: the live client, installed on 2026-10-27). A client of any other flavor
+# counts too when its build is 1.60 or newer (Forever's version line; Classic Era is 1.15).
+FOREVER_FLAVORS = ("wow_classic_beta", "wowf")
 FOREVER_VERSION = (1, 60)
 TEST_FLAVOR_SUFFIXES = ("_beta", "_ptr")
 

@@ -11,8 +11,8 @@ The clients are found like the desktop app finds them (forever_chronicle/wow/pat
 the live client the target; --from / --to take client folders instead.
 
 - account: the account-wide files (keybinds, macros, interface settings, Edit Mode, chat, text-to-speech), the
-  addon folders the live client does not have yet (never ForeverChronicle and ForeverChronicle_Share: the sync
-  script and CurseForge install those), the account SavedVariables of Blizzard's UI and of the copied or already
+  addon folders the live client does not have yet (never ForeverChronicle and the old companion ForeverChronicle_Share:
+  the desktop app and CurseForge install the addon), the account SavedVariables of Blizzard's UI and of the copied or already
   installed addons (not the chronicle's: the live chronicle starts fresh), and Config.wtf without the beta's
   connection, login and cache lines (portal "test" would connect the live client to the test servers).
 - characters: lists the characters of both clients. The live characters are new, on new realms, and their folder

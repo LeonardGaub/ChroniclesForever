@@ -4,7 +4,8 @@
 
 The game folder comes from the app settings, else Battle.net / the usual folders (wow/paths.py); if none is
 found, the user is asked for it. The choice is saved, so the desktop app uses the same folder.
-Friends\\FriendsData.lua in the game folder belongs to the desktop app and is never overwritten.
+The desktop app also updates the addon at start (``update_addon``: a newer version from the repository, only while
+WoW is closed). Both remove the old friends companion (ForeverChronicle_Share), which has no job any more.
 """
 
 from __future__ import annotations
@@ -16,8 +17,9 @@ from pathlib import Path
 
 from .config import AppConfig
 from .wow.paths import ADDON_NAME, ClientInstall, client_from_path, pick_client
+from .wow.processes import game_running
 
-KEEP = {Path("Friends") / "FriendsData.lua"}   # written by the desktop app in the game folder
+OLD_COMPANION = "ForeverChronicle_Share"
 
 
 @dataclass
@@ -45,7 +47,8 @@ def addon_version(addon: Path) -> str | None:
 
 
 def install_addon(source: Path, client: ClientInstall) -> InstallResult:
-    """Mirrors the addon folder into the client's AddOns folder (stale files removed, KEEP files kept)."""
+    """Mirrors the addon folder into the client's AddOns folder (stale files removed) and removes the old
+    companion addon."""
     if not (source / f"{ADDON_NAME}.toc").is_file():
         raise FileNotFoundError(f"{source} is not the {ADDON_NAME} addon folder")
     target = client.addons_dir / ADDON_NAME
@@ -58,20 +61,39 @@ def install_addon(source: Path, client: ClientInstall) -> InstallResult:
         rel = file.relative_to(source)
         wanted.add(rel)
         dest = target / rel
-        if rel in KEEP and dest.exists():
-            continue
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(file, dest)
         copied += 1
     removed = 0
     for file in sorted(target.rglob("*"), reverse=True):
         rel = file.relative_to(target)
-        if file.is_file() and rel not in wanted and rel not in KEEP:
+        if file.is_file() and rel not in wanted:
             file.unlink()
             removed += 1
         elif file.is_dir() and not any(file.iterdir()):
             file.rmdir()
+    shutil.rmtree(client.addons_dir / OLD_COMPANION, ignore_errors=True)
     return InstallResult(target, copied, removed, addon_version(source))
+
+
+def _version_key(version: str | None) -> tuple[int, ...]:
+    try:
+        return tuple(int(part) for part in (version or "").split("."))
+    except ValueError:
+        return ()
+
+
+def update_addon(client: ClientInstall | None) -> InstallResult | None:
+    """At app start: installs the repository's addon when it is newer than the game's (or the old companion is
+    still there), only while WoW is closed. None: nothing to do."""
+    source = bundled_addon()
+    if client is None or source is None or game_running(client.path):
+        return None
+    installed = client.addons_dir / ADDON_NAME
+    newer = installed.is_dir() and _version_key(addon_version(source)) > _version_key(addon_version(installed))
+    if not newer and not (client.addons_dir / OLD_COMPANION).exists():
+        return None
+    return install_addon(source, client)
 
 
 def find_client(config: AppConfig, ask=input) -> ClientInstall | None:

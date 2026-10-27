@@ -6,7 +6,8 @@ Output in dist/curseforge/:
     ForeverChronicle/                     the addon folder as uploaded (for a look before uploading)
     JourneyForever-<version>.zip          the upload: the addon folder at the top level of the zip
 
-Not part of it: the friends companion (ForeverChronicle_Share), the cloud sync scripts, the desktop app, tests.
+Not part of it: the desktop app (and its cloud backup), tests. The checks below still reject any trace of the
+removed friends companion (ForeverChronicle_Share).
 
 Checks (the build stops on any error):
 - Blizzard UI Add-On Development Policy: code visible (plain Lua, no compiled or encoded files), no advertising,

@@ -3,8 +3,8 @@
 1. Welcome: what the app does, and the language (German or English, switched at once).
 2. The game: WoW Forever found automatically (wow/paths.py), or chosen by hand.
 3. The addon: installed in the game, and its version against the one next to the app (addons\\ForeverChronicle
-   beside the desktop folder); installs or updates it (setup_addon.install_addon, which keeps the friends' data
-   file). Then: log in once, /fj opens the addon, logging out saves its data.
+   beside the desktop folder); installs or updates it (setup_addon.install_addon, which also removes the old
+   friends companion). Then: log in once, /fj opens the addon, logging out saves its data.
 4. The data: the addon's saved files found per WoW account; imports them now; automatic import at start.
 5. Done: what is ready, and where the cinematic mode is.
 

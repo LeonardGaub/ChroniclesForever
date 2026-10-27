@@ -2,9 +2,7 @@
 
 ```
 addons/ForeverChronicle/        in-game addon (Lua, TOC Interface 16001, 16002, 16003, 16100), the CurseForge upload
-addons/ForeverChronicle_Share/  private friends companion (sharing through a cloud folder)
-desktop/                        desktop app (Python 3.12 + PySide6 + SQLite)
-sync/                           cloud sync script for the friend group (PowerShell)
+desktop/                        desktop app (Python 3.12 + PySide6 + SQLite), also the cloud backup and friends
 tools/                          CurseForge packaging; extract/build from the game files (maps, world map, icons, UI
                                 skin, zone music; shared setup in db2.py); beta-to-live settings port; sound generation
 tests/addon/                    addon tests in a mocked WoW client (Node + fengari)
@@ -29,19 +27,22 @@ desktop: wow/paths ──► wow/lua_parser (literals only) ──► importing/
   (professions and recipes). They are replaced over time, and the desktop app mirrors the latest version.
 - The character key is the player GUID (globally unique in Forever). The desktop app assigns its own UUID.
 
-### Characters shown in the window (sharing, docs/Sharing_Design.md)
+### Characters shown in the window
 Recording always writes to the played character (`FC.char`). Pages read through `Core/View.lua`:
 `FC:ViewChar()`, `FC:ViewStream(name)`, `FC:IsViewingPlayed()`. Map, instance and
-entrance lookups go through `FC:MapInfo`, `FC:InstanceName` and `FC:StoredEntrance`, so friends' data
+entrance lookups go through `FC:MapInfo`, `FC:InstanceName` and `FC:StoredEntrance`, so another source's data
 counts as well. A new page that reads character data must use these helpers. A stat that needs live state can add
 `fromRecord(char)` for other characters. `UI/ViewBar.lua` is the chooser; `FC_VIEW_CHANGED` calls
 `page:OnViewChanged()` if a page has one.
-Other addons add characters with `FC:RegisterViewSource` (entries, map/instance/entrance data). The private
-companion addon `ForeverChronicle_Share` (not part of the CurseForge upload) does this for friends: their
-characters come from its `Friends/FriendsData.lua` (`ForeverChronicleFriends`), which the sync script
-(`sync/ForeverSync.ps1`) writes from the friends' `ForeverChronicle_Share.lua` files. The game writes those files
-from the companion's `Share.lua` (SavedVariables `ForeverChronicleShareDB`), in the addon's own record shape. Each
-friend is loaded on its own in an empty environment after a strict plain-data check.
+Other addons could add characters with `FC:RegisterViewSource` (entries, map/instance/entrance data); none does
+since the friends companion was removed on 2026-10-27. Friends are shown in the desktop app only.
+
+### Cloud backup and friends (docs/Cloud_Backup.md)
+`desktop/forever_chronicle/cloud_backup.py` copies the addon file, the screenshots and the app database into the
+player's folder in a cloud folder (dated copies, newest 30 kept, nothing overwritten) and restores from it;
+`ui/backup_runner.py` runs it off the main thread and watches WoW starting and closing; `ui/restore_dialog.py`.
+Every other player's folder there is a friend: `importing/friend_importer.py` imports the newest addon copy per
+account read-only, `importing/friend_screenshots.py` copies the pictures their records point to.
 
 ### Backups and transfer (F-011)
 `storage/jsonl.py`: the JSON Lines export/import. To include a new table, add a `RecordType` with its natural key
