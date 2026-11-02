@@ -75,4 +75,5 @@ runPhase(11, null, 0);
 runPhase(12, null, 0);
 runPhase(14, null, 0);
 runPhase(15, null, 0);
+runPhase(16, null, 0);
 console.log('ALL PHASES PASSED');

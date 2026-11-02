@@ -4,6 +4,23 @@ The session notes that used to be the "History" section of `NEXT_STEPS.md`, newe
 at the time: older entries may describe things that changed or were removed later. The current state is in
 `NEXT_STEPS.md`.
 
+### Cinematic tracking: facts instead of guesses (2026-10-30)
+- User picked from a brainstorm: record why a teleport happened, how a death ended, riding, the group (with
+  friends walking along in the cinematic), a hearthstone toast, notable loot with a clear trash/loot rule, and a
+  manual screenshot with the player's own text.
+- Addon: route flags `M` (mounted), `H`/`P` (the jump after a long cast: hearthstone/Astral Recall or another
+  spell, always with `J`); `player_died` gains releasedAt, revivedAt, revive, reviver (filled in later, also
+  across sessions); new modules Mounts (`mount_learned`, first = milestone + trigger "mount"), Group (stream
+  `group`: "start,until,name/class/guid;..."), Loot (`item_obtained`, rules in the file header; trigger "loot" for
+  epic+; changed the same day at the user's request: epics always, blue gear only from a boss/rare or worn within an
+  hour, no greens, no quality setting), Moments (`moment`, `/fj moment`, key binding in Bindings.xml, trigger "moment" without delay or
+  cooldown); Travel records `hearth_set`.
+- Desktop: schema 13 (positions.mounted/cause, group_stretches); a re-import updates an event's payload (the
+  addon fills events in later); deaths and cast teleports come from the data when present, the route heuristics
+  stay for older data; new cues and banners, a revival toast, "with Gigel" on boss/dungeon/rare cues, the mount's
+  icon on the marker while riding, and friends' markers from their own routes while grouped. Credits lines for
+  all of this were built and removed again the same day: the user wants only cool long-term stats in the credits.
+
 ### Cloud backup replaces the friends sync (2026-10-27)
 - User: plays the same characters on two PCs and found the first answer (a whole two-PC sync with join codes and a
   three-way merge, built the same day and never committed) far too complicated. New rules: back up the screenshots

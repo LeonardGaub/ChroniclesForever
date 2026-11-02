@@ -58,6 +58,7 @@ function Rares:Record(guid, info)
   self.killed[guid] = true
   FC:Record("rare_killed", { guid = guid, npcID = Util.NpcID(guid), name = info.name,
     classification = info.classification, level = info.level })
+  self.lastKill = { name = info.name, time = time() } -- the loot that follows comes from it (Modules/Loot.lua)
   FC:IncrementStat("rares_killed")
   FC:ConfirmCapability("rares")
 end

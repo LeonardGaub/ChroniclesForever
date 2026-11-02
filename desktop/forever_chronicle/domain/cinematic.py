@@ -5,13 +5,15 @@
   Toasts and screenshots carry a banner like the game's achievement alert (heading, title, place).
 - A screenshot cue pauses the replay and shows the picture taken at that moment. Only screenshots whose file
   was found are used.
-- Deaths (death_spans): when the character lay dead, ran back as a ghost and came back to life, found in the
-  route because the addon records only the death itself.
+- Deaths (death_spans): when the character lay dead, ran back as a ghost and came back to life. Since addon
+  0.16.0 the death's event says so (releasedAt, revivedAt, how and by whom); older deaths are read from the route.
+- Companions (Companions): who the player was grouped with, from the addon's group stream (since 0.16.0).
 - Standstills (still_spans): stretches in which the character did not move at all (AFK, waiting), which the
   replay can run through faster or skip.
 - Teleports (teleports): hearthstone, portals and the ghost's release to the graveyard, which the replay shows as a
   flight across the world map. A jump to the other continent counts only after the player stood still before it
-  (casting); otherwise it was a boat or zeppelin, which the replay shows as a crossing of the sea.
+  (casting); otherwise it was a boat or zeppelin, which the replay shows as a crossing of the sea. Since addon
+  0.16.0 a teleport the player cast is marked on the route (hearthstone or another spell) and always counts.
 """
 
 from __future__ import annotations
@@ -29,7 +31,10 @@ from .route import WORLD_PER_CONTINENT, Route, too_fast
 
 # Event types the replay announces. Quests are left out: there are too many for a replay at speed.
 CUE_EVENT_TYPES = ("level_up", "player_died", "zone_discovered", "achievement_earned", "rare_killed",
-                   "boss_killed", "dungeon_completed", "profession_learned", "profession_rank")
+                   "boss_killed", "dungeon_completed", "profession_learned", "profession_rank", "mount_learned",
+                   "hearth_set", "item_obtained", "moment")
+# Cues that name the companions the player was grouped with.
+WITH_COMPANIONS = ("boss_killed", "dungeon_completed", "rare_killed")
 GAP_SKIP = 30              # breaks without points longer than this are skipped by the replay: no playing time
 
 
@@ -68,7 +73,25 @@ BANNER_TITLES: dict[str, Callable[[EventRow], Any]] = {
     "player_died": lambda e: e.subzone_name or e.zone_name,
     "profession_learned": lambda e: e.payload.get("name"),
     "profession_rank": lambda e: event_types.describe(e),
+    "mount_learned": lambda e: e.payload.get("name"),
+    "hearth_set": lambda e: e.payload.get("place"),
+    "item_obtained": event_types.item_name,
+    "moment": lambda e: e.payload.get("text") or tr("cine.moment_untitled"),
+    "player_revived": lambda e: e.payload.get("reviver"),
 }
+
+
+def _heading_key(event: EventRow) -> str:
+    """The banner's heading: per type, a first mount, worn gear and epic loot have their own."""
+    p = event.payload
+    if event.event_type == "mount_learned" and p.get("first"):
+        return "cine.banner.first_mount"
+    if event.event_type == "item_obtained":
+        if p.get("equipped"):
+            return "cine.banner.item_equipped"
+        if isinstance(p.get("quality"), int) and p["quality"] >= 4:
+            return "cine.banner.item_epic"
+    return f"cine.banner.{event.event_type}"
 
 
 def banner(event: EventRow | None, trigger: str | None) -> tuple[str, str, str]:
@@ -80,15 +103,17 @@ def banner(event: EventRow | None, trigger: str | None) -> tuple[str, str, str]:
         title = make(event) if make else None
     except Exception:  # a malformed payload must never break the replay
         title = None
-    heading = tr(f"cine.banner.{event.event_type}") if make else tr(event_types.get(event.event_type).label_key)
+    heading = tr(_heading_key(event)) if make else tr(event_types.get(event.event_type).label_key)
     place = event.payload.get("instance") if event.event_type == "boss_killed" else None
     return heading, str(title or event_types.describe(event)), place or event_types.location_text(event)
 
 
-def build_cues(events: Iterable[EventRow], screenshots: Iterable[Any], start: int, end: int) -> list[Cue]:
+def build_cues(events: Iterable[EventRow], screenshots: Iterable[Any], start: int, end: int,
+               companions: "Companions | None" = None) -> list[Cue]:
     """Cues within [start, end] in time order. events: may include other types (their screenshots get a
-    banner); only CUE_EVENT_TYPES become cues. screenshots: rows with captured_at/requested_at, file_path,
-    trigger_type and first_event_id (Repository.screenshots)."""
+    banner); only CUE_EVENT_TYPES become cues, and a toast for each time another player brought the character
+    back to life. screenshots: rows with captured_at/requested_at, file_path, trigger_type and first_event_id
+    (Repository.screenshots). companions: named on boss, dungeon and rare cues ("with Gigel")."""
     events = list(events)
     by_id = {e.event_id: e for e in events}
     shots = [r for r in screenshots if _shown(r, start, end)]
@@ -100,11 +125,22 @@ def build_cues(events: Iterable[EventRow], screenshots: Iterable[Any], start: in
         et = event_types.get(e.event_type)
         level = e.payload.get("level") if e.event_type == "level_up" else None
         heading, title, place = banner(e, None)
+        if companions and e.event_type in WITH_COMPANIONS:
+            place = companions.with_text(e.occurred_at, place)
         cues.append(Cue(e.occurred_at, "level" if isinstance(level, int) else "event", event_types.describe(e),
                         et.glyph, et.color, event_types.icon_of(e), level=level if isinstance(level, int) else None,
                         heading=heading, title=title, place=place, event_type=e.event_type,
                         has_screenshot=e.event_id in with_shot,
                         cause=event_types.death_cause(e) if e.event_type == "player_died" else ""))
+    for e in events:
+        revived = e.payload.get("revivedAt") if e.event_type == "player_died" else None
+        if e.payload.get("revive") == "player" and isinstance(revived, int) and start <= revived <= end:
+            rev = EventRow(e.character_id, e.event_id + ":revived", "player_revived", revived, e.zone_name,
+                           e.subzone_name, e.map_id, e.x, e.y, e.payload, e.instance_id)
+            et = event_types.get(rev.event_type)
+            heading, title, place = banner(rev, None)
+            cues.append(Cue(revived, "event", event_types.describe(rev), et.glyph, et.color, et.icon,
+                            heading=heading, title=title, place=place, event_type=rev.event_type))
     for row in shots:
         t = row["captured_at"] or row["requested_at"]
         path = row["file_path"]
@@ -149,6 +185,31 @@ class Levels:
         return self.current
 
 
+# -- companions -----------------------------------------------------------------------------------------------
+
+class Companions:
+    """Who the player was grouped with: the addon's group stretches (from, until, members), a member being
+    {"name", "class", "guid"}."""
+
+    def __init__(self, stretches: Iterable[tuple[int, int, list[dict[str, str]]]]):
+        self.stretches = sorted(stretches, key=lambda s: s[0])
+
+    def at(self, t: float) -> list[dict[str, str]]:
+        """The members of the group at time t (a few seconds of slack at both ends)."""
+        for a, b, members in self.stretches:
+            if a - 5 <= t <= b + 5:
+                return members
+        return []
+
+    def with_text(self, t: float, place: str) -> str:
+        """The place with "with Gigel, Thrall" added when the player was in a group at t."""
+        names = [m.get("name") for m in self.at(t) if m.get("name")]
+        if not names:
+            return place
+        shown = ", ".join(names[:4]) + (f" +{len(names) - 4}" if len(names) > 4 else "")
+        return "  ·  ".join(p for p in (place, tr("cine.with", names=shown)) if p)
+
+
 # -- deaths ---------------------------------------------------------------------------------------------------
 
 RELEASE_WITHIN = 6 * 60    # a teleport this soon after dying is the release to the graveyard
@@ -164,6 +225,8 @@ class Death:
     time: int                  # died
     released: int | None       # the ghost appears at the graveyard (None: brought back where the body lay)
     revived: int               # alive again
+    revive: str | None = None  # how, as the addon recorded it: "corpse" | "spirit_healer" | "player" | "self"
+    reviver: str | None = None # who, when another player brought the character back
 
     def dead(self, t: float) -> bool:
         return self.time <= t < self.revived
@@ -180,6 +243,14 @@ def death_spans(events: Iterable[EventRow], route: Route) -> list[Death]:
     result: list[Death] = []
     for e in sorted((e for e in events if e.event_type == "player_died"), key=lambda e: e.occurred_at):
         t = e.occurred_at
+        p = e.payload
+        revived, released = p.get("revivedAt"), p.get("releasedAt")
+        if isinstance(revived, int) and revived >= t:
+            # Recorded by the addon: no need to read it from the route.
+            released = released if isinstance(released, int) and t <= released <= revived else None
+            result.append(Death(t, released, revived, p.get("revive"),
+                                p.get("reviver") if isinstance(p.get("reviver"), str) else None))
+            continue
         body = route.point_at(t)
         if body is None or abs(_gap(body, t)) > RELEASE_WITHIN:
             result.append(Death(t, None, t + NO_ROUTE_DEATH))
@@ -283,6 +354,7 @@ class Teleport:
     origin: tuple[float, float]        # on the world map (normalized)
     target: tuple[float, float]
     spirit: bool = False               # the ghost's release to the graveyard
+    cause: str | None = None           # recorded by the addon: "hearth" (hearthstone) or "spell" (another teleport)
 
 
 def teleports(route: Route, deaths: Iterable[Death], start: float, end: float) -> list[Teleport]:
@@ -305,9 +377,9 @@ def teleports(route: Route, deaths: Iterable[Death], start: float, end: float) -
         d = math.hypot(wb[0] - wa[0], wb[1] - wa[1]) / WORLD_PER_CONTINENT      # continent widths
         if not too_fast(d, gap, TELEPORT_MIN):
             continue
-        if _continent(route, a) != _continent(route, b) and not _cast(route, k - 1):
+        if b.cause is None and _continent(route, a) != _continent(route, b) and not _cast(route, k - 1):
             continue                                                         # a boat or a zeppelin
-        result.append(Teleport(a.end, b.time, wa, wb, b.time in releases))
+        result.append(Teleport(a.end, b.time, wa, wb, b.time in releases, b.cause))
     return result
 
 

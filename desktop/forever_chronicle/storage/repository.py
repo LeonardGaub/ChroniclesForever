@@ -83,6 +83,8 @@ class PositionPoint:
     instance_id: int | None
     taxi: bool
     jump: bool = False                  # first point after a loading screen: not connected to the one before
+    mounted: bool = False               # riding (not on a flight path)
+    cause: str | None = None            # a teleport the player cast: "hearth" (hearthstone) or "spell"
 
     @property
     def end(self) -> int:
@@ -107,7 +109,9 @@ class PositionPoint:
             return None
         if x is not None and not (0 <= x <= 1 and 0 <= y <= 1):
             return None
-        return cls(t, until, map_id, x, y, instance_id, "T" in parts[5], "J" in parts[5])
+        flags = parts[5]
+        cause = "hearth" if "H" in flags else "spell" if "P" in flags else None
+        return cls(t, until, map_id, x, y, instance_id, "T" in flags, "J" in flags, "M" in flags, cause)
 
 
 def int_or_none(text: Any) -> int | None:
@@ -230,15 +234,19 @@ class Repository:
     # -- events -----------------------------------------------------------------
 
     def insert_event(self, character_id: str, rec: dict[str, Any], import_id: int, schema_version: int) -> bool:
-        """Inserts an event; returns False if it already exists (duplicate import)."""
+        """Inserts an event; returns False if it already exists (duplicate import). The addon may fill in an event
+        later (a death's revival, a moment's text): an existing event then takes the newer data."""
         loc = rec.get("location") if isinstance(rec.get("location"), dict) else {}
+        payload = json.dumps(rec.get("data") or {}, ensure_ascii=False)
+        self.conn.execute("UPDATE events SET payload_json = ? WHERE character_id = ? AND event_id = ? "
+                          "AND payload_json != ?", (payload, character_id, rec["id"], payload))
         cur = self.conn.execute(
             """INSERT OR IGNORE INTO events (character_id, event_id, seq, event_type, occurred_at, server_time,
                session_id, map_id, zone_name, subzone_name, instance_id, x, y, location_quality, payload_json,
                schema_version, import_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (character_id, rec["id"], rec["seq"], rec["type"], rec["time"], rec.get("serverTime"), rec.get("session"),
              loc.get("mapID"), loc.get("zone"), loc.get("subzone"), loc.get("instanceID"), loc.get("x"), loc.get("y"),
-             loc.get("quality"), json.dumps(rec.get("data") or {}, ensure_ascii=False), schema_version, import_id))
+             loc.get("quality"), payload, schema_version, import_id))
         return cur.rowcount == 1
 
     def events(self, character_id: str, types: Iterable[str] | None = None, search: str | None = None,
@@ -428,17 +436,47 @@ class Repository:
     def upsert_position(self, character_id: str, p: "PositionPoint") -> None:
         """Inserts a point. A stationary point may have grown (until_at) since the last import."""
         self.conn.execute(
-            """INSERT INTO positions (character_id, occurred_at, until_at, map_id, x, y, instance_id, on_taxi, jump)
-               VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (character_id, occurred_at) DO UPDATE SET
-               until_at = excluded.until_at, jump = excluded.jump
-               WHERE excluded.until_at IS NOT positions.until_at OR excluded.jump != positions.jump""",
-            (character_id, p.time, p.until, p.map_id, p.x, p.y, p.instance_id, int(p.taxi), int(p.jump)))
+            """INSERT INTO positions (character_id, occurred_at, until_at, map_id, x, y, instance_id, on_taxi, jump,
+               mounted, cause) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (character_id, occurred_at) DO UPDATE SET
+               until_at = excluded.until_at, jump = excluded.jump, mounted = excluded.mounted, cause = excluded.cause
+               WHERE excluded.until_at IS NOT positions.until_at OR excluded.jump != positions.jump
+               OR excluded.mounted != positions.mounted OR excluded.cause IS NOT positions.cause""",
+            (character_id, p.time, p.until, p.map_id, p.x, p.y, p.instance_id, int(p.taxi), int(p.jump),
+             int(p.mounted), p.cause))
 
     def positions(self, character_id: str) -> list["PositionPoint"]:
         rows = self.conn.execute("SELECT * FROM positions WHERE character_id = ? ORDER BY occurred_at",
                                  (character_id,)).fetchall()
         return [PositionPoint(r["occurred_at"], r["until_at"], r["map_id"], r["x"], r["y"], r["instance_id"],
-                              bool(r["on_taxi"]), bool(r["jump"])) for r in rows]
+                              bool(r["on_taxi"]), bool(r["jump"]), bool(r["mounted"]), r["cause"]) for r in rows]
+
+    # -- group (who the player played with) ---------------------------------------
+
+    def upsert_group_stretch(self, character_id: str, started_at: int, until_at: int,
+                             members: list[dict[str, str]]) -> None:
+        self._upsert("group_stretches", {"character_id": character_id, "started_at": started_at,
+                                         "until_at": until_at,
+                                         "members_json": json.dumps(members, ensure_ascii=False)},
+                     ("character_id", "started_at"))
+
+    def group_stretches(self, character_id: str) -> list[tuple[int, int, list[dict[str, str]]]]:
+        """(from, until, members) in time order; a member is {"name", "class", "guid"}."""
+        out = []
+        for r in self.conn.execute("SELECT started_at, until_at, members_json FROM group_stretches "
+                                   "WHERE character_id = ? ORDER BY started_at", (character_id,)):
+            try:
+                members = [m for m in json.loads(r["members_json"]) if isinstance(m, dict)]
+            except (TypeError, ValueError):
+                members = []
+            out.append((r["started_at"], r["until_at"], members))
+        return out
+
+    def characters_by_guid(self) -> dict[str, "Character"]:
+        """All characters (mine and friends') by player GUID."""
+        rows = self.conn.execute(
+            """SELECT c.*, o.display_name AS owner_name FROM characters c LEFT JOIN owners o ON o.owner_id = c.owner_id
+               WHERE c.player_guid IS NOT NULL""").fetchall()
+        return {r["player_guid"]: Character.from_row(r) for r in rows}
 
     def upsert_map_info(self, map_id: int, info: dict[str, Any]) -> None:
         self._upsert("map_info", {

@@ -125,6 +125,22 @@ def _killing_blow(e: EventRow) -> str:
     return tr("evt.player_died.blow", how=how, damage=num(damage))
 
 
+REVIVES = ("corpse", "spirit_healer", "self", "player")
+
+
+def revival(e: EventRow) -> str:
+    """How the character came back after a death (addon 0.16.0): "Resurrected by Gigel", "Returned to the body",
+    or "" when unknown."""
+    p = e.payload
+    if p.get("revive") == "player" and isinstance(p.get("reviver"), str):
+        return tr("evt.player_died.revived_by", name=p["reviver"])
+    return tr(f"evt.player_died.revive.{p['revive']}") if p.get("revive") in REVIVES else ""
+
+
+def _death_detail(e: EventRow) -> str:
+    return "  ·  ".join(line for line in (_killing_blow(e), revival(e)) if line)
+
+
 def _achievement(e: EventRow) -> str:
     name = e.payload.get("name") or f"#{e.payload.get('achievementID', '?')}"
     return tr("evt.achievement_earned.text", name=name)
@@ -138,7 +154,7 @@ register(EventType("level_up", "evt.level_up", "▲", "#ffd100",
 register(EventType("quest_completed", "evt.quest_completed", "!", "#ffd100", _quest, ICONS + "INV_Misc_Note_01"))
 register(EventType("player_died", "evt.player_died", "☠", "#ff3333", _died, ICONS + "INV_Misc_Bone_HumanSkull_01",
                    highlight="danger", pin_icon="Interface\\TargetingFrame\\UI-TargetingFrame-Skull",
-                   detail=_killing_blow))
+                   detail=_death_detail))
 register(EventType("zone_discovered", "evt.zone_discovered", "⚑", "#73d9ff",
                    lambda e: tr("evt.zone_discovered.text", zone=e.payload.get("zone") or e.zone_name or "?"),
                    ICONS + "INV_Misc_Map_01"))
@@ -180,3 +196,45 @@ register(EventType("profession_rank", "evt.profession_rank", "⚒", "#40c040",
                                 rank=rank_name(e.payload.get("maxRank"))),
                    ICONS + "Trade_BlackSmithing"))
 register(EventType("recipe_learned", "evt.recipe_learned", "✎", "#40c040", _recipe, ICONS + "INV_Scroll_03"))
+
+# Since addon 0.16.0: mounts, the hearthstone, notable loot and the player's own moments.
+LOOT_SOURCES = ("boss", "rare", "fishing", "loot", "quest", "craft", "vendor", "mail", "trade", "auction", "other")
+QUALITY_COLORS = {2: "#1eff00", 3: "#0070dd", 4: "#a335ee", 5: "#ff8000", 6: "#e6cc80", 7: "#00ccff"}
+
+
+def item_name(e: EventRow) -> str:
+    return e.payload.get("name") or f"#{e.payload.get('item', '?')}"
+
+
+def _item(e: EventRow) -> str:
+    key = "evt.item_obtained.equipped" if e.payload.get("equipped") else "evt.item_obtained.text"
+    return tr(key, name=item_name(e))
+
+
+def _item_source(e: EventRow) -> str:
+    source = e.payload.get("source")
+    if source not in LOOT_SOURCES:
+        return ""
+    text = tr(f"evt.item_obtained.source.{source}")
+    return tr("evt.item_obtained.from", source=text, name=e.payload["from"]) if e.payload.get("from") else text
+
+
+def _moment(e: EventRow) -> str:
+    text = e.payload.get("text")
+    return tr("evt.moment.text", text=text) if isinstance(text, str) and text else tr("evt.moment.empty")
+
+
+register(EventType("mount_learned", "evt.mount_learned", "♞", "#ffd100",
+                   lambda e: tr("evt.mount_learned.first" if e.payload.get("first") else "evt.mount_learned.text",
+                                name=e.payload.get("name") or "?"),
+                   ICONS + "Ability_Mount_RidingHorse", highlight="milestone"))
+register(EventType("hearth_set", "evt.hearth_set", "⌂", "#73d9ff",
+                   lambda e: tr("evt.hearth_set.text", place=e.payload.get("place") or "?"),
+                   ICONS + "INV_Misc_Rune_01"))
+register(EventType("item_obtained", "evt.item_obtained", "◈", "#a335ee", _item, ICONS + "INV_Misc_Bag_10",
+                   detail=_item_source))
+register(EventType("moment", "evt.moment", "✦", "#ffd100", _moment, ICONS + "INV_Misc_Spyglass_03",
+                   highlight="milestone"))
+# Never recorded: the cinematic's toast when another player brought the character back to life.
+register(EventType("player_revived", "evt.player_revived", "✚", "#ffe680",
+                   lambda e: revival(e) or tr("evt.player_died.revive.player"), ICONS + "Spell_Holy_Resurrection"))

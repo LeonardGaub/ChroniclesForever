@@ -202,7 +202,7 @@ if PHASE == 1 then
   check(kills.value.text == "2" and kills.name.text ~= nil, "tile shows name and value")
   check(#overview.slots == 19 and overview.slots[1].border ~= nil, "19 gear slots")
   settingsPage = openPage("settings")
-  check(#settingsPage.bars == 6, "storage bars on the settings page (" .. #settingsPage.bars .. ")")
+  check(#settingsPage.bars == 7, "storage bars on the settings page (" .. #settingsPage.bars .. ")")
   local testButton
   for _, control in ipairs(settingsPage.controls) do if type(rawget(control, "button")) == "table" then testButton = control.button end end
   check(testButton and testButton.text == FC.L.SHOT_TEST_BUTTON, "test screenshot button in the screenshot settings")
@@ -1231,6 +1231,217 @@ if PHASE == 15 then
   MOCK.advance(5)
   check(lastDeath().data.spell == nil, "secret recap is ignored")
   check(char.stats.deaths == 5, "every death counted")
+end
+
+if PHASE == 16 then
+  print("phase 16: mounts, teleports, revival, hearthstone, group, loot, moments")
+  MOCK.bags[0] = { [1] = { itemID = 2589, count = 20, quality = 1, link = "|cffffffff|Hitem:2589::|h[Linen Cloth]|h|r" } }
+  MOCK.items[2589] = { classID = 7, maxStack = 200 }
+  local FC = startClient(true, false)
+  local char = ForeverChronicleDB.characters[ME]
+  local function points() return char.streams.positions.records end
+  local function lastPoint() return FC.Route.Parse(points()[#points()]) end
+  MOCK.travel(1413, "The Barrens")
+  MOCK.advance(6)
+
+  -- Riding: the "M" flag, and a new point when the player mounts on the spot.
+  local before = #points()
+  MOCK.mounted = true
+  MOCK.advance(2)
+  check(#points() == before + 1 and lastPoint().mounted, "mounting starts a mounted point")
+  MOCK.x = 0.47; MOCK.advance(2)
+  check(points()[#points()]:find(",M,", 1, true) ~= nil, "flag M in the saved point")
+  MOCK.mounted = false
+
+  -- Hearthstone: a 10 s cast, then the player is far away: "J" and "H".
+  MOCK.casting = { spellID = 8690, seconds = 10 }
+  MOCK.fire("UNIT_SPELLCAST_START", "player", "cast-1", 8690)
+  MOCK.advance(10)
+  MOCK.casting = nil
+  MOCK.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-1", 8690)
+  MOCK.x, MOCK.y = 0.20, 0.20
+  MOCK.advance(1.5)
+  local hearth = lastPoint()
+  check(hearth.jump and hearth.cause == "H", "hearthstone teleport flagged (" .. points()[#points()] .. ")")
+  -- A short cast never marks the next jump.
+  MOCK.casting = { spellID = 133, seconds = 1.5 }
+  MOCK.fire("UNIT_SPELLCAST_START", "player", "cast-2", 133)
+  MOCK.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-2", 133)
+  MOCK.casting = nil
+  MOCK.x, MOCK.y = 0.60, 0.60
+  MOCK.advance(2)
+  check(lastPoint().cause == nil, "a short cast marks nothing")
+  -- A mage's teleport: another spell, after a loading screen.
+  MOCK.casting = { spellID = 3567, seconds = 10 }
+  MOCK.fire("UNIT_SPELLCAST_START", "player", "cast-3", 3567)
+  MOCK.advance(10)
+  MOCK.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-3", 3567)
+  MOCK.casting = nil
+  MOCK.fire("LOADING_SCREEN_ENABLED")
+  MOCK.advance(0.5)
+  MOCK.travel(1454, "Orgrimmar")
+  MOCK.fire("LOADING_SCREEN_DISABLED")
+  MOCK.fire("PLAYER_ENTERING_WORLD", false, false)
+  MOCK.advance(2)
+  check(lastPoint().cause == "P" and lastPoint().jump, "teleport spell flagged P (" .. points()[#points()] .. ")")
+  local thinned = table.concat(FC.Route.Thin(points()), ";")
+  check(thinned:find(",JH,", 1, true) and thinned:find(",JP,", 1, true), "flagged points survive thinning")
+
+  -- Death: release, run back, alive at the body.
+  local function lastDeath() local d = eventsOfType("player_died"); return d[#d] end
+  MOCK.fire("PLAYER_DEAD")
+  MOCK.advance(20)
+  MOCK.ghost = true
+  MOCK.fire("PLAYER_ALIVE")
+  MOCK.advance(60)
+  MOCK.ghost = false
+  MOCK.fire("PLAYER_UNGHOST")
+  local d1 = lastDeath().data
+  check(d1.releasedAt and d1.revivedAt - d1.releasedAt == 60 and d1.revive == "corpse", "corpse run recorded")
+  -- Resurrected by a friend before releasing.
+  MOCK.advance(30)
+  MOCK.fire("PLAYER_DEAD")
+  MOCK.fire("RESURRECT_REQUEST", "Gigel")
+  MOCK.advance(10)
+  MOCK.fire("PLAYER_ALIVE")
+  local d2 = lastDeath()
+  check(d2.data.revive == "player" and d2.data.reviver == "Gigel" and not d2.data.releasedAt, "resurrected by a player")
+  local tip = FC:EventDetails(d2)
+  check(tip and tip[#tip] == "Wiederbelebt von Gigel", "the resurrecter in the tooltip")
+  -- The spirit healer.
+  MOCK.advance(30)
+  MOCK.fire("PLAYER_DEAD")
+  MOCK.ghost = true
+  MOCK.fire("PLAYER_ALIVE")
+  MOCK.advance(20)
+  MOCK.fire("CONFIRM_XP_LOSS")
+  MOCK.ghost = false
+  MOCK.fire("PLAYER_UNGHOST")
+  check(lastDeath().data.revive == "spirit_healer", "spirit healer")
+  -- PLAYER_ALIVE while alive (a login) changes nothing.
+  MOCK.fire("PLAYER_ALIVE")
+  check(lastDeath().data.revive == "spirit_healer", "alive players are not revived again")
+
+  -- First mount (the collection was empty at the first scan), with its screenshot.
+  MOCK.advance(60)
+  local shots = #MOCK.screenshots
+  MOCK.mountsCollected[6] = true
+  MOCK.fire("NEW_MOUNT_ADDED", 6)
+  MOCK.advance(8)
+  local mounts = eventsOfType("mount_learned")
+  check(#mounts == 1 and mounts[1].data.first and mounts[1].data.name == "Brown Horse"
+    and FC:DescribeEvent(mounts[1]) == "Erstes Reittier: Brown Horse", "first mount recorded")
+  check(#MOCK.screenshots == shots + 1, "first mount screenshot")
+  MOCK.mountsCollected[14] = true
+  MOCK.fire("NEW_MOUNT_ADDED", 14)
+  MOCK.advance(2)
+  mounts = eventsOfType("mount_learned")
+  check(#mounts == 2 and not mounts[2].data.first, "second mount is no first")
+
+  -- Hearthstone bound: once per new place.
+  MOCK.bind = "Razor Hill"
+  MOCK.fire("HEARTHSTONE_BOUND")
+  MOCK.fire("HEARTHSTONE_BOUND")
+  local homes = eventsOfType("hearth_set")
+  check(#homes == 1 and FC:DescribeEvent(homes[1]) == "Ruhestein gebunden: Razor Hill", "hearthstone bound once")
+
+  -- Group: one stretch per group, its end moved on.
+  MOCK.group = { { name = "Gigel", realm = "", class = "MAGE", guid = "Player-4619-0AAAAAAA" } }
+  MOCK.fire("GROUP_ROSTER_UPDATE")
+  MOCK.advance(3)
+  MOCK.group[2] = { name = "Thrall", realm = "Other Realm", class = "SHAMAN", guid = "Player-1-0BBBBBBB" }
+  MOCK.fire("GROUP_ROSTER_UPDATE")
+  MOCK.advance(65)
+  local group = char.streams.group.records
+  check(#group == 2, "two stretches (" .. #group .. ")")
+  local Group = FC:GetModule("Group")
+  local first, second = Group.Parse(group[1]), Group.Parse(group[2])
+  check(#first.members == 1 and first.members[1].name == "Gigel" and first.members[1].class == "MAGE"
+    and first.untilTime > first.time, "first stretch: Gigel")
+  check(#second.members == 2 and second.untilTime > second.time, "second stretch moved on")
+  check(group[2]:find("Thrall-Other Realm/SHAMAN/", 1, true), "other realm in the name")
+  MOCK.group = {}
+  MOCK.fire("GROUP_ROSTER_UPDATE")
+  MOCK.advance(3)
+  check(#char.streams.group.records == 2, "leaving the group closes the stretch")
+
+  -- Loot: the first look takes what is carried as known (the cloth stays out).
+  local function loot() return eventsOfType("item_obtained") end
+  local function give(slot, id, quality, name, extra)
+    MOCK.bags[0][slot] = { itemID = id, count = 1, quality = quality, icon = 130000 + id,
+      link = "|cff0070dd|Hitem:" .. id .. "::|h[" .. name .. "]|h|r" }
+    MOCK.items[id] = extra or { equipLoc = "INVTYPE_CHEST", classID = 4, maxStack = 1 }
+    MOCK.fire("BAG_UPDATE_DELAYED")
+  end
+  check(#loot() == 0, "nothing recorded at the first look")
+  give(2, 1000, 1, "Plain Shirt")                                   -- white gear: trash
+  give(4, 1002, 3, "Blue Stack", { classID = 7, maxStack = 20 })    -- rare reagent: stacks
+  give(11, 1008, 3, "Blue Recipe", { classID = 9, maxStack = 1 })   -- blue, but no gear
+  MOCK.fire("LOOT_OPENED")
+  give(5, 1003, 3, "Blue Vendor Sword")                             -- blue gear nobody wears: sold
+  MOCK.fire("LOOT_CLOSED")
+  check(#loot() == 0, "trash stays out")
+  -- Blue gear from a boss counts, green never; the same item again does not.
+  FC:GetModule("Dungeons").lastKill = { id = 1, name = "Bazzalan", time = time() }
+  MOCK.fire("LOOT_OPENED")
+  give(3, 1001, 2, "Green Boss Boots")
+  give(6, 1004, 3, "Boss Gloves")
+  MOCK.fire("LOOT_CLOSED")
+  check(#loot() == 1 and loot()[1].data.source == "boss" and loot()[1].data.from == "Bazzalan"
+    and loot()[1].data.name == "Boss Gloves", "blue from a boss, green from a boss stays out")
+  FC:GetModule("Dungeons").lastKill = nil
+  MOCK.bags[0][6] = nil; MOCK.fire("BAG_UPDATE_DELAYED")
+  give(7, 1004, 3, "Boss Gloves")
+  check(#loot() == 1, "an item seen before stays out")
+  -- Blue gear put on within the hour mattered; green gear put on does not.
+  give(8, 1005, 3, "Quest Belt")
+  give(12, 1009, 2, "Green Bracers")
+  MOCK.advance(600)
+  MOCK.bags[0][8], MOCK.bags[0][12] = nil, nil
+  MOCK.equippedIDs = { [6] = 1005, [9] = 1009 }
+  MOCK.fire("BAG_UPDATE_DELAYED")
+  MOCK.fire("PLAYER_EQUIPMENT_CHANGED", 6, true)
+  MOCK.fire("PLAYER_EQUIPMENT_CHANGED", 9, true)
+  check(#loot() == 2 and loot()[2].data.equipped and FC:DescribeEvent(loot()[2]):find("^Neue Ausrüstung"), "worn blue")
+  -- The bank: taking things out is no loot.
+  MOCK.fire("BANKFRAME_OPENED")
+  give(9, 1006, 4, "Epic From The Bank")
+  MOCK.fire("BANKFRAME_CLOSED")
+  MOCK.advance(5)
+  check(#loot() == 2, "bank withdrawals stay out")
+  -- The first epic: a milestone with its own screenshot.
+  MOCK.advance(40)
+  shots = #MOCK.screenshots
+  MOCK.fire("QUEST_TURNED_IN", 3513, 100, 0)
+  give(10, 1007, 4, "Epic Reward")
+  MOCK.advance(8)
+  check(#loot() == 3 and loot()[3].data.first and loot()[3].data.source == "quest", "first epic from a quest")
+  check(#MOCK.screenshots == shots + 1, "epic loot screenshot")
+
+  -- Moments: with text from the command, at once; without text the window asks (no popup in the mock).
+  MOCK.advance(40)
+  shots = #MOCK.screenshots
+  local momentAt = MOCK.now
+  SlashCmdList.FOREVERCHRONICLE("moment Gigel tanzt auf dem Tisch")
+  MOCK.advance(2)
+  local moments = eventsOfType("moment")
+  check(#moments == 1 and moments[1].data.text == "Gigel tanzt auf dem Tisch", "moment with its text (case kept)")
+  check(#MOCK.screenshots == shots + 1 and MOCK.screenshots[#MOCK.screenshots] - momentAt < 1, "moment shot at once")
+  local shotRecords = char.streams.screenshots.records
+  check(shotRecords[#shotRecords].trigger == "moment" and shotRecords[#shotRecords].events[1] == moments[1].id,
+    "the screenshot belongs to the moment")
+  ForeverChronicle_CaptureMoment()
+  MOCK.advance(3)
+  moments = eventsOfType("moment")
+  check(#moments == 2 and moments[2].data.text == nil and FC:DescribeEvent(moments[2]) == "Moment festgehalten",
+    "keybinding: a moment without text")
+  FC:GetModule("Moments"):SetText(moments[2], "  Sonnenuntergang\n ")
+  check(moments[2].data.text == "Sonnenuntergang", "text added afterwards")
+
+  MOCK.fire("PLAYER_LOGOUT")
+  local errors = 0
+  for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
+  check(errors == 0, "no errors logged")
 end
 
 print("PHASE " .. PHASE .. " PASSED")

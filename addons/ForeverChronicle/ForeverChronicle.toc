@@ -31,11 +31,15 @@ Modules\Progress.lua
 Modules\Rares.lua
 Modules\Pastimes.lua
 Modules\Dungeons.lua
+Modules\Mounts.lua
 Modules\Professions.lua
 Modules\Gear.lua
+Modules\Group.lua
+Modules\Loot.lua
 Modules\Metrics.lua
 Modules\ScreenshotQueue.lua
 Modules\Screenshots.lua
+Modules\Moments.lua
 
 # User interface
 UI\Widgets.lua

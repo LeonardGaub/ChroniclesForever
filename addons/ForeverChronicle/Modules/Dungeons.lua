@@ -119,7 +119,7 @@ function Dungeons:OnBossKilled(encounterID, name, difficultyID)
   if type(encounterID) ~= "number" then return end
   local now = time()
   if self.lastKill and self.lastKill.id == encounterID and now - self.lastKill.time <= DEDUPE_SECONDS then return end
-  self.lastKill = { id = encounterID, time = now }
+  self.lastKill = { id = encounterID, name = name, time = now } -- also tells Modules/Loot.lua where loot came from
 
   local instanceName, kind, _, _, _, _, _, instanceID = Util.SafeValues(GetInstanceInfo)
   instanceName = type(instanceName) == "string" and instanceName or nil

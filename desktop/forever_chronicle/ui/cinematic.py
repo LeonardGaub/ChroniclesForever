@@ -73,8 +73,9 @@ from PySide6.QtWidgets import (QGraphicsOpacityEffect, QGraphicsPathItem, QGraph
 
 from ..domain import credits as journey_credits
 from ..domain import daylight, maps
-from ..domain.cinematic import (GAP_SKIP, Cue, Death, Levels, Teleport, build_cues, CUE_EVENT_TYPES, death_spans,
-                                played_time, still_spans, teleports)
+from ..domain.cinematic import (GAP_SKIP, Companions, Cue, Death, Levels, Teleport, build_cues, CUE_EVENT_TYPES,
+                                death_spans, played_time, still_spans, teleports)
+from ..domain import event_types
 from ..domain.experience import Experience
 from ..domain.route import Route, Timeline
 from ..domain.route_colors import RouteColors, zone_colors
@@ -86,7 +87,7 @@ from .world_art import WorldArt
 from .cinematic_credits import CreditsOverlay
 from .cinematic_hud import XpBar
 from .cinematic_fx import (ARCANE_COLOR, FADE_SECONDS, GHOST_COLOR, AchievementToast, CinemaFrame, CinemaView,
-                           CloudCover, MarkerItem, PhotoOverlay, Pin, PinsItem, RouteItem, SkyItem, TitleCard, clamp,
+                           CloudCover, CompanionItem, MarkerItem, PhotoOverlay, Pin, PinsItem, RouteItem, SkyItem, TitleCard, clamp,
                            ease_in, ease_in_out, ease_out, geo_mix, lerp_point, scatter, smooth, with_alpha)
 from .screenshots import load_thumbnail
 
@@ -108,6 +109,7 @@ STILL_MODES = ("normal", "fast", "skip")
 STILL_FASTER = 8           # standstills run this many times faster in "fast" mode
 STILL_NOTE = 2.4           # seconds a skipped standstill is named
 DEATH_SECONDS = 3.2        # the death title
+COMPANION_SLACK = 120      # a companion is shown only while their route has a point this close in time
 DEATH_HOLD = 1.4           # real seconds the replay holds at a death
 GREY_IN, GREY_OUT = 0.9, 1.6   # seconds for the colour to drain at a death and to return on coming back
 TOAST_SECONDS = 4.0
@@ -384,7 +386,10 @@ class CinematicWindow(QWidget):
         self.route = Route.load(repo, character_id)
         # Quests are no cues, but a quest screenshot names its quest.
         events = repo.events(character_id, types=CUE_EVENT_TYPES + ("quest_completed",), limit=1_000_000)
-        self.cues: list[Cue] = build_cues(events, repo.screenshots(character_id, only_files=True), start, end)
+        # Who the player was grouped with (addon 0.16.0); friends whose routes the app knows walk along.
+        self.companions = Companions(s for s in repo.group_stretches(character_id) if s[1] >= start and s[0] <= end)
+        self.cues: list[Cue] = build_cues(events, repo.screenshots(character_id, only_files=True), start, end,
+                                          self.companions)
         self.cue_times = [c.time for c in self.cues]
         self.quest_times = sorted(e.occurred_at for e in events
                                   if e.event_type == "quest_completed" and start <= e.occurred_at <= end)
@@ -489,6 +494,8 @@ class CinematicWindow(QWidget):
         self.marker = MarkerItem()
         self.marker.color = QColor(self.char_color)
         self.marker.flyer = "wyvern" if char and char.faction == "Horde" else "gryphon"
+        self.marker.mount_icon = self._mount_icon(events)
+        self.companion_marks = self._companion_marks(repo, character_id)
 
         # The last picture of the old map, fading out over the new one (crossfade).
         self.snapshot = QLabel(self)
@@ -1171,7 +1178,8 @@ class CinematicWindow(QWidget):
             self.pins.set_time(self.t, animate=not jump)
         death = self._death_at(self.t)
         self.marker.set_mode("dungeon" if point.instance_id is not None else "taxi" if point.taxi
-                             else ("ghost" if death.ghost(self.t) else "dead") if death else "walk")
+                             else ("ghost" if death.ghost(self.t) else "dead") if death
+                             else "mount" if point.mounted else "walk")
         self._set_flying(self.marker.mode == "taxi", jump)
         if head is not None:
             moved = 0.0
@@ -1185,9 +1193,61 @@ class CinematicWindow(QWidget):
         else:
             self.last_head = None
             self.marker.hide()
+        self._place_companions()
         self._set_caption(zone, self.route.instance_name(point))
         self.bar.set_value(self.bar.timeline.to_value(self.t))
         self.clock_label.setText(format_datetime(int(self.t)))
+
+    # -- companions and mounts -----------------------------------------------------------------
+
+    @staticmethod
+    def _mount_icon(events) -> QPixmap | None:
+        """The medallion's icon while riding: the newest mount learned (its game icon), else a horse."""
+        mounts = sorted((e for e in events if e.event_type == "mount_learned"), key=lambda e: e.occurred_at)
+        for e in reversed(mounts):
+            pixmap = icons.pixmap(event_types.icon_of(e))
+            if pixmap is not None:
+                return pixmap
+        return icons.pixmap(event_types.get("mount_learned").icon)
+
+    def _companion_marks(self, repo, character_id: str) -> list[tuple[list[tuple[int, int]], Route, CompanionItem]]:
+        """For each companion whose character is in the app (a friend's cloud backup, or an alt): when they were
+        grouped with the player, their route and their marker."""
+        spans: dict[str, list[tuple[int, int]]] = {}
+        for a, b, members in self.companions.stretches:
+            for m in members:
+                if m.get("guid"):
+                    spans.setdefault(m["guid"], []).append((a, b))
+        if not spans:
+            return []
+        known = repo.characters_by_guid()
+        marks = []
+        for guid, times in spans.items():
+            other = known.get(guid)
+            if other is None or other.character_id == character_id:
+                continue
+            route = Route.load(repo, other.character_id)
+            if route.points:
+                item = CompanionItem(other.name, QColor(theme.class_color(other.class_file)))
+                item.hide()
+                marks.append((times, route, item))
+        return marks
+
+    def _place_companions(self) -> None:
+        """Companions stand where their own route has them, while they are in the player's group."""
+        t = self.t
+        for times, route, item in self.companion_marks:
+            spot = None
+            if any(a <= t <= b for a, b in times):
+                p = route.point_at(int(t))
+                if p and p.instance_id is None and p.time - COMPANION_SLACK <= t <= p.end + COMPANION_SLACK:
+                    spot = route.glide(t, maps.WORLD if self.view_map == maps.WORLD else None)
+            xy = route.project(*spot, self.view_map) if spot and self.view_map is not None else None
+            if xy:
+                item.setPos(QPointF(xy[0] * W, xy[1] * H))
+                item.show()
+            else:
+                item.hide()
 
     # -- camera ------------------------------------------------------------------------------
 
@@ -1272,10 +1332,11 @@ class CinematicWindow(QWidget):
         self._fill_scene(view, fade)
 
     def _reset_scene(self) -> QGraphicsScene:
-        """The view's scene, emptied (the marker is kept across maps; clear() would delete it)."""
+        """The view's scene, emptied (the markers are kept across maps; clear() would delete them)."""
         scene = self.view.scene()
-        if self.marker.scene() is scene:
-            scene.removeItem(self.marker)
+        for item in [self.marker] + [mark[2] for mark in self.companion_marks]:
+            if item.scene() is scene:
+                scene.removeItem(item)
         scene.clear()
         return scene
 
@@ -1287,6 +1348,8 @@ class CinematicWindow(QWidget):
         self.pins = PinsItem(self._pins_for(view))
         scene.addItem(self.pins)
         scene.addItem(self.marker)
+        for _, _, item in self.companion_marks:
+            scene.addItem(item)
         self._add_sky(scene)
         self.camera = None
         self.last_head = None

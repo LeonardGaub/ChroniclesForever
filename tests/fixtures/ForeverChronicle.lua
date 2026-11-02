@@ -123,6 +123,15 @@ ForeverChronicleDB = {
 				},
 			},
 			["state"] = {
+				["Loot"] = {
+					["baseline"] = 1791961005,
+					["seen"] = {
+					},
+				},
+				["Mounts"] = {
+					["known"] = {
+					},
+				},
 				["Travel"] = {
 					["known"] = {
 						["map:1413"] = {
@@ -155,6 +164,12 @@ ForeverChronicleDB = {
 						["format"] = 1,
 						["kind"] = "tables",
 					},
+					["records"] = {
+					},
+				},
+				["group"] = {
+					["dropped"] = 0,
+					["nextSeq"] = 1,
 					["records"] = {
 					},
 				},
@@ -262,6 +277,11 @@ ForeverChronicleDB = {
 				["confirmedAt"] = 1791961133,
 				["status"] = "confirmed",
 			},
+			["mounts"] = {
+				["build"] = "70374",
+				["confirmedAt"] = 1791961000,
+				["status"] = "confirmed",
+			},
 			["played_time"] = {
 				["build"] = "70374",
 				["confirmedAt"] = 1791961010,
@@ -300,20 +320,21 @@ ForeverChronicleDB = {
 		},
 		["log"] = {
 			"2026-10-14 08:56:40 [info] capability confirmed: identity", -- [1]
-			"2026-10-14 08:56:40 [info] capability confirmed: professions", -- [2]
-			"2026-10-14 08:56:40 [info] capability confirmed: gear", -- [3]
-			"2026-10-14 08:56:41 [info] capability confirmed: positions", -- [4]
-			"2026-10-14 08:56:50 [info] capability confirmed: played_time", -- [5]
-			"2026-10-14 08:57:53 [info] capability confirmed: quests", -- [6]
-			"2026-10-14 08:58:23 [info] capability confirmed: deaths", -- [7]
-			"2026-10-14 08:58:53 [info] capability confirmed: level_up", -- [8]
-			"2026-10-14 08:58:53 [info] capability confirmed: achievements", -- [9]
-			"2026-10-14 08:58:53 [info] capability confirmed: kills", -- [10]
-			"2026-10-14 08:58:53 [info] capability confirmed: xp", -- [11]
-			"2026-10-14 08:58:53 [info] capability confirmed: jumps", -- [12]
-			"2026-10-14 08:58:53 [info] capability confirmed: fishing", -- [13]
-			"2026-10-14 08:58:58 [info] capability confirmed: screenshots", -- [14]
-			"2026-10-15 09:56:40 [info] capability confirmed: recipes", -- [15]
+			"2026-10-14 08:56:40 [info] capability confirmed: mounts", -- [2]
+			"2026-10-14 08:56:40 [info] capability confirmed: professions", -- [3]
+			"2026-10-14 08:56:40 [info] capability confirmed: gear", -- [4]
+			"2026-10-14 08:56:41 [info] capability confirmed: positions", -- [5]
+			"2026-10-14 08:56:50 [info] capability confirmed: played_time", -- [6]
+			"2026-10-14 08:57:53 [info] capability confirmed: quests", -- [7]
+			"2026-10-14 08:58:23 [info] capability confirmed: deaths", -- [8]
+			"2026-10-14 08:58:53 [info] capability confirmed: level_up", -- [9]
+			"2026-10-14 08:58:53 [info] capability confirmed: achievements", -- [10]
+			"2026-10-14 08:58:53 [info] capability confirmed: kills", -- [11]
+			"2026-10-14 08:58:53 [info] capability confirmed: xp", -- [12]
+			"2026-10-14 08:58:53 [info] capability confirmed: jumps", -- [13]
+			"2026-10-14 08:58:53 [info] capability confirmed: fishing", -- [14]
+			"2026-10-14 08:58:58 [info] capability confirmed: screenshots", -- [15]
+			"2026-10-15 09:56:40 [info] capability confirmed: recipes", -- [16]
 		},
 	},
 	["entrances"] = {
@@ -356,11 +377,20 @@ ForeverChronicleDB = {
 			},
 			["Gear"] = {
 			},
+			["Group"] = {
+			},
+			["Loot"] = {
+				["blueGear"] = true,
+			},
 			["Metrics"] = {
 			},
 			["MinimapButton"] = {
 				["angle"] = 90.0,
 				["show"] = true,
+			},
+			["Moments"] = {
+			},
+			["Mounts"] = {
 			},
 			["Pastimes"] = {
 			},
@@ -386,6 +416,8 @@ ForeverChronicleDB = {
 					["death"] = false,
 					["dungeon"] = true,
 					["level"] = true,
+					["loot"] = true,
+					["mount"] = true,
 					["quest"] = false,
 					["rare"] = true,
 					["zone"] = true,

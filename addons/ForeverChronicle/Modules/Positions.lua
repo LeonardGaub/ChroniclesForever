@@ -7,7 +7,8 @@
 --   time/until: epoch seconds; until is set when a stationary sample was extended (empty otherwise)
 --   x,y:        normalized 0..1 on mapID, 4 decimals; empty when no position is available
 --   flags:      "T" = on a taxi, "J" = first sample after a loading screen (a teleport: not connected to the
---               previous sample by a route line)
+--               previous sample by a route line), "M" = mounted (not on a taxi), "H" / "P" = the jump came from
+--               a hearthstone (or Astral Recall) / another teleport spell the player cast (always with "J")
 --   instanceID: set inside instances, where the client gives no map position (zone-only sample)
 -- Coordinates are never interpolated. Standing still extends the previous sample instead of adding new ones.
 --
@@ -27,6 +28,12 @@ FC.Storage:DefineStream("positions", 100000, "Interface\\Icons\\INV_Boots_05", {
 FC.Storage:DefineStream("routeArchive", 500, "Interface\\Icons\\INV_Misc_Map02")
 
 local MOVE_THRESHOLD = 0.002 -- 0.2 % of the map size
+
+-- Teleport spells: a long cast that ends in a jump to a far place within CAST_WITHIN seconds marks that jump.
+local HEARTH_SPELLS = { [8690] = true, [556] = true } -- Hearthstone, Astral Recall
+local LONG_CAST = 5         -- seconds of casting; teleports take 10
+local CAST_WITHIN = 15      -- seconds between the cast and the first sample at the new place
+local FAR = 0.03            -- map units: farther than any 2 s step on a mount
 
 FC:RegisterCapability("positions", "CAP_POSITIONS", function()
   return C_Map ~= nil and type(C_Map.GetPlayerMapPosition) == "function"
@@ -138,12 +145,15 @@ end
 local function encode(s)
   return string.format("%d,%s,%s,%s,%s,%s,%s", s.time, s.mapID or "",
     s.x and string.format("%.4f", s.x) or "", s.y and string.format("%.4f", s.y) or "",
-    (s.untilTime and s.untilTime ~= s.time) and s.untilTime or "", (s.taxi and "T" or "") .. (s.jump and "J" or ""),
+    (s.untilTime and s.untilTime ~= s.time) and s.untilTime or "",
+    (s.taxi and "T" or "") .. (s.jump and "J" or "") .. (s.mounted and "M" or "") .. (s.cause or ""),
     s.instanceID or "")
 end
 
 local function samePlace(a, b)
-  if a.mapID ~= b.mapID or a.instanceID ~= b.instanceID or a.taxi ~= b.taxi then return false end
+  if a.mapID ~= b.mapID or a.instanceID ~= b.instanceID or a.taxi ~= b.taxi or a.mounted ~= b.mounted then
+    return false
+  end
   if b.instanceID then return true end
   if not (a.x and b.x) then return a.x == b.x end
   return math.abs(a.x - b.x) < MOVE_THRESHOLD and math.abs(a.y - b.y) < MOVE_THRESHOLD
@@ -167,6 +177,7 @@ function Positions:Sample()
 
   local travel = FC:GetModule("Travel")
   s.taxi = travel and travel:IsOnTaxi() or nil
+  s.mounted = not s.taxi and Util.SafeValue("boolean", IsMounted) or nil
 
   -- The first sample after a loading screen starts a new route line, unless the player did not move.
   local afterLoading = self.afterLoading
@@ -179,11 +190,22 @@ function Positions:Sample()
     return
   end
   s.jump = afterLoading and last ~= nil or nil
+  local cast = self.cast
+  if cast and now - cast.at > CAST_WITHIN then cast, self.cast = nil, nil end
+  if cast and last and (afterLoading or self:IsFar(last, s)) then
+    s.cause, s.jump, self.cast = cast.flag, true, nil
+  end
   FC.Storage:AppendRaw("positions", encode(s))
   if s.instanceID then self:LearnEntrance(s.instanceID, last, now) end
   self.last = s
   if s.mapID then self:RecordMap(s.mapID) end
   FC:ConfirmCapability("positions")
+end
+
+-- A step no mount makes in one sample: another map, or far on the same one.
+function Positions:IsFar(a, b)
+  if a.mapID ~= b.mapID or a.instanceID ~= b.instanceID then return true end
+  return a.x ~= nil and b.x ~= nil and math.abs(a.x - b.x) + math.abs(a.y - b.y) > FAR
 end
 
 function Positions:Restart()
@@ -207,6 +229,24 @@ Positions:RegisterEvent("PLAYER_ENTERING_WORLD", function(self)
   sampleSoon(self)
 end)
 Positions:RegisterEvent("LOADING_SCREEN_ENABLED", function(self) self.afterLoading = true end)
+
+-- Teleport spells: UNIT_SPELLCAST_START(unit, castGUID, spellID) notes a long cast, UNIT_SPELLCAST_SUCCEEDED of the
+-- same spell arms the flag for the next sample at a far place (an extra sample right after the cast finds it).
+Positions:RegisterEvent("UNIT_SPELLCAST_START", function(self, _, unit, _, spellID)
+  if Util.Plain(unit) ~= "player" then return end
+  local startMS, endMS = select(4, Util.SafeValues(UnitCastingInfo, "player"))
+  spellID = Util.Plain(spellID)
+  local long = type(startMS) == "number" and type(endMS) == "number" and (endMS - startMS) / 1000 >= LONG_CAST
+  self.longCast = type(spellID) == "number" and (long or HEARTH_SPELLS[spellID]) and spellID or nil
+end)
+Positions:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", function(self, _, unit, _, spellID)
+  if Util.Plain(unit) ~= "player" then return end
+  spellID = Util.Plain(spellID)
+  if type(spellID) ~= "number" or spellID ~= self.longCast then return end
+  self.longCast = nil
+  self.cast = { flag = HEARTH_SPELLS[spellID] and "H" or "P", at = time() }
+  sampleSoon(self)
+end)
 
 -------------------------------------------------------------------------------
 -- Options

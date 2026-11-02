@@ -61,6 +61,17 @@ were written at the time (older entries may describe things that changed later).
    `server-sync on`. The `synchronize*` CVar names are from retail and unconfirmed in Forever. Edit Mode's own
    export/import is the fallback for the layout. Beta addons whose TOC lacks the live Interface number load as out
    of date.
+7. Cinematic tracking (2026-10-30, addon "Unreleased", desktop schema 13), untested in game. Check in a short
+   session: mount and ride a bit (route flag `M`), use the hearthstone (`JH` on the point after it), bind the
+   hearthstone at an inn (Chronik: "Ruhestein gebunden"), die once and come back (hover the death: how), group
+   with a friend for a few minutes (stream `group` on the Einstellungen storage bars), loot a blue item (Chronik
+   "Beute"), `/fj moment Test` (screenshot at once, entry with the text) and the key binding "Moment festhalten".
+   APIs to confirm in Forever: `UnitCastingInfo` timing and `UNIT_SPELLCAST_SUCCEEDED` spell IDs (not secret?),
+   `PLAYER_ALIVE`/`PLAYER_UNGHOST`/`RESURRECT_REQUEST`/`CONFIRM_XP_LOSS`, `C_MountJournal` (or no mount events),
+   `HEARTHSTONE_BOUND` + `GetBindLocation`, group units' names and GUIDs inside dungeons, `C_Container` and
+   `C_Item.GetItemInfoInstant`/`GetItemMaxStackSizeByID`, and whether the moment popup's edit box is found
+   (`StaticPopup` changed in 11.x; Modules/Moments.lua tries `GetEditBox`, `editBox` and `EditBox`).
+   Friends' apps install the new addon only after the TOC version is raised (`setup_addon.update_addon`).
 ## Confirmed client facts
 - Install: `C:\Program Files (x86)\World of Warcraft\_classic_beta_\` (`WowB.exe`, client 1.60.1). TOC Interface 16001.
 - SavedVariables: `WTF\Account\131324136#1\SavedVariables\` plus `.lua.bak`.

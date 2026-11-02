@@ -98,6 +98,22 @@ def valid_session(rec: Any) -> bool:
             and _int(rec.get("startedAt")) is not None)
 
 
+def parse_group_stretch(text: Any) -> tuple[int, int, list[dict[str, str]]] | None:
+    """The addon's group record "start,until,name/class/guid;..." as (start, until, members), or None."""
+    if not isinstance(text, str):
+        return None
+    parts = text.split(",", 2)
+    if len(parts) != 3 or not parts[0].isdigit() or not parts[1].isdigit():
+        return None
+    members = []
+    for member in filter(None, parts[2].split(";")):
+        fields = member.split("/")
+        if len(fields) != 3 or not fields[2].startswith("Player-"):
+            return None
+        members.append({"name": fields[0], "class": fields[1], "guid": fields[2]})
+    return int(parts[0]), int(parts[1]), members
+
+
 def unpack_stream(stream: Any) -> Any:
     """The addon packs streams in the saved file (schema 2, Core/Storage.lua): records = {} and
     packed = {format, kind, chunks}; "lines" chunks hold compact records joined by newlines, "tables" chunks hold
@@ -294,6 +310,13 @@ class SavedVariablesImporter:
                     result.invalid += 1
                     continue
                 self.repo.upsert_position(character_id, point)
+        # Group: one string per stretch with the same group, "start,until,name/class/guid;..." (Modules/Group.lua).
+        for text in as_list(as_dict(streams.get("group")).get("records")):
+            stretch = parse_group_stretch(text)
+            if stretch:
+                self.repo.upsert_group_stretch(character_id, *stretch)
+            else:
+                result.invalid += 1
         # Metrics: one string per minute with a change, "time,xpEarned,kills,money,level" (Modules/Metrics.lua).
         for text in as_list(as_dict(streams.get("metrics")).get("records")):
             try:

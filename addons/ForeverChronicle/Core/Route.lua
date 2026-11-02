@@ -7,7 +7,8 @@
 --   * old points are thinned out, never moved: when the positions stream reaches its cap, the oldest
 --     points lose the samples that lie on a nearly straight line and go to the "routeArchive" stream
 --
--- Point: { time, endTime, mapID, x, y, taxi, jump, instanceID }
+-- Point: { time, endTime, mapID, x, y, taxi, jump, mounted, cause, instanceID }
+--   cause: "H" (hearthstone) or "P" (another teleport spell) on the first point after a teleport the player cast
 
 local ADDON, FC = ...
 local Util = FC.Util
@@ -27,7 +28,8 @@ function Route.Parse(text)
   local t, map, x, y, untilT, flags, inst = text:match("^(%d+),(%d*),([%d%.]*),([%d%.]*),(%d*),(%a*),(%d*)$")
   if not t then return false end
   local p = { time = tonumber(t), mapID = tonumber(map), x = tonumber(x), y = tonumber(y),
-    taxi = flags:find("T", 1, true) ~= nil, jump = flags:find("J", 1, true) ~= nil, instanceID = tonumber(inst) }
+    taxi = flags:find("T", 1, true) ~= nil, jump = flags:find("J", 1, true) ~= nil,
+    mounted = flags:find("M", 1, true) ~= nil, cause = flags:match("[HP]"), instanceID = tonumber(inst) }
   p.endTime = tonumber(untilT) or p.time
   if (p.x == nil) ~= (p.y == nil) or (not p.mapID and not p.instanceID) then return false end
   return p
@@ -268,7 +270,7 @@ function Route.Thin(records)
   for i, item in ipairs(pts) do
     local p, prev = item.p, pts[i - 1]
     if not anchor or not p.x or not prev.p.x or not Route.Connected(prev.p, p)
-        or p.endTime - p.time >= Route.THIN_DWELL then
+        or p.endTime - p.time >= Route.THIN_DWELL or p.mounted ~= prev.p.mounted then
       if prev and prev ~= anchor then keep(prev) end
       keep(item)
     elseif prev ~= anchor then

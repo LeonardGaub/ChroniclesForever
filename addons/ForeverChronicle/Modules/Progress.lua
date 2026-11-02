@@ -42,16 +42,22 @@ FC:RegisterEventType("player_died", {
     if what then return where and string.format(L.EVT_CAUSE_IN, what, where) or what end
     return where and string.format(L.EVT_DIED_IN, where) or L.EVT_DIED
   end,
-  -- Tooltip: the killing blow ("Heroic Strike: 245 damage (37 overkill)").
+  -- Tooltip: the killing blow ("Heroic Strike: 245 damage (37 overkill)") and how the player came back.
   details = function(r)
-    local d = r.data
-    if not d.damage then return nil end
-    local how = d.spell or (not d.environment and L.DEATH_MELEE) or (d.environment and L["DEATH_ENV_" .. d.environment:upper()])
-    local dmg = Util.FormatNumber(d.damage)
-    local line = d.overkill and d.overkill > 0
-      and string.format(L.DEATH_BLOW_OVERKILL, how or "?", dmg, Util.FormatNumber(d.overkill))
-      or string.format(L.DEATH_BLOW, how or "?", dmg)
-    return { line }
+    local d, lines = r.data, {}
+    if d.damage then
+      local how = d.spell or (not d.environment and L.DEATH_MELEE) or (d.environment and L["DEATH_ENV_" .. d.environment:upper()])
+      local dmg = Util.FormatNumber(d.damage)
+      lines[#lines + 1] = d.overkill and d.overkill > 0
+        and string.format(L.DEATH_BLOW_OVERKILL, how or "?", dmg, Util.FormatNumber(d.overkill))
+        or string.format(L.DEATH_BLOW, how or "?", dmg)
+    end
+    if d.revive == "player" and d.reviver then
+      lines[#lines + 1] = string.format(L.DEATH_REVIVED_BY, d.reviver)
+    elseif d.revive then
+      lines[#lines + 1] = L["DEATH_REVIVED_" .. d.revive:upper()]
+    end
+    return #lines > 0 and lines or nil
   end,
 })
 FC:RegisterEventType("achievement_earned", {
@@ -194,11 +200,71 @@ function Progress:FillDeathCause(record, attempt)
 end
 
 Progress:RegisterEvent("PLAYER_DEAD", function(self)
+  self.dead, self.offer, self.healerAt = true, nil, nil
   local record = FC:Record("player_died", {})
   if record then self:FillDeathCause(record, 1) end
   FC:IncrementStat("deaths")
   FC:ConfirmCapability("deaths")
 end)
+
+-- After a death: the release (the ghost appears at the graveyard) and the way back to life, filled into the death's
+-- event: releasedAt, revivedAt, revive = "corpse" (the ghost reached the body) | "spirit_healer" | "player"
+-- (resurrected by reviver) | "self" (soulstone, ankh, reincarnation). The death may be from an earlier session
+-- (logged out as a ghost), so the newest death without revivedAt is looked up in the stream.
+local OPEN_DEATH = 2 * 3600   -- a death older than this is not waited for any more
+local OFFER_VALID = 300       -- seconds a resurrection offer (RESURRECT_REQUEST) counts
+local HEALER_VALID = 60       -- seconds between the spirit healer's question and coming back to life
+
+function Progress:OpenDeath()
+  local records = FC.Storage:GetStream("events").records
+  for i = #records, math.max(1, #records - 200), -1 do
+    local r = records[i]
+    if type(r) == "table" and r.type == "player_died" then
+      if r.data.revivedAt or not r.time or time() - r.time > OPEN_DEATH then return nil end
+      return r
+    end
+  end
+  return nil
+end
+
+function Progress:Revived(how)
+  local death = self:OpenDeath()
+  if not death then return end
+  local now, offer = time(), self.offer
+  if how ~= "spirit_healer" and offer and now - offer.at <= OFFER_VALID then
+    how = "player"
+    death.data.reviver = offer.name
+  end
+  self.offer, self.healerAt, self.dead = nil, nil, false
+  death.data.revivedAt, death.data.revive = now, how
+end
+
+-- Whether the player lies dead or walks as a ghost (PLAYER_ALIVE also fires for the living, at a login).
+Progress:RegisterEvent("PLAYER_ENTERING_WORLD", function(self)
+  self.dead = Util.SafeValue("boolean", UnitIsDeadOrGhost, "player") == true
+end)
+
+-- PLAYER_ALIVE: the player released (now a ghost), or came back before releasing.
+Progress:RegisterEvent("PLAYER_ALIVE", function(self)
+  if not self.dead then return end
+  if Util.SafeValue("boolean", UnitIsGhost, "player") then
+    local death = self:OpenDeath()
+    if death and not death.data.releasedAt then death.data.releasedAt = time() end
+  else
+    self:Revived("self")
+  end
+end)
+-- PLAYER_UNGHOST: the ghost is alive again, at the body or at the spirit healer.
+Progress:RegisterEvent("PLAYER_UNGHOST", function(self)
+  local healer = self.healerAt and time() - self.healerAt <= HEALER_VALID
+  self:Revived(healer and "spirit_healer" or "corpse")
+end)
+Progress:RegisterEvent("RESURRECT_REQUEST", function(self, _, name)
+  name = Util.Plain(name)
+  self.offer = { name = type(name) == "string" and name ~= "" and name or nil, at = time() }
+end)
+-- The spirit healer asks before bringing the ghost back (resurrection sickness).
+Progress:RegisterEvent("CONFIRM_XP_LOSS", function(self) self.healerAt = time() end)
 
 Progress:RegisterEvent("ACHIEVEMENT_EARNED", function(_, _, achievementID, alreadyEarned)
   achievementID = Util.Plain(achievementID)

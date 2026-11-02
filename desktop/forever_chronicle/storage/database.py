@@ -289,6 +289,19 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE positions ADD COLUMN jump INTEGER NOT NULL DEFAULT 0;
     """,
+    # 13: riding ("M") and the cast behind a teleport ("H" hearthstone, "P" another spell) on route points, and who
+    # the player was grouped with (the addon's "group" stream: one row per stretch with the same group)
+    """
+    ALTER TABLE positions ADD COLUMN mounted INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE positions ADD COLUMN cause TEXT;
+    CREATE TABLE group_stretches (
+        character_id   TEXT NOT NULL REFERENCES characters(character_id),
+        started_at     INTEGER NOT NULL,
+        until_at       INTEGER NOT NULL,
+        members_json   TEXT NOT NULL,
+        PRIMARY KEY (character_id, started_at)
+    );
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

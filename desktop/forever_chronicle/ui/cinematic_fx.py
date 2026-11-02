@@ -5,9 +5,11 @@ On the map (scene items):
   brighter and wider in small steps towards the marker, the newest minutes glow. Flight paths are dashed, and
   their dashes move along the line; corpse runs are pale and dotted.
 - MarkerItem: the player, at screen size: a disc in the class colour with a pulsing halo and an arrow in the
-  direction of travel; a flapping gryphon on flight paths and a swirling portal inside dungeons. Dead it is a
-  dim grave mark, released a floating wisp (the ghost). Flying to a teleport's destination it is a bright arcane
-  comet.
+  direction of travel; a flapping gryphon on flight paths and a swirling portal inside dungeons. Mounted it
+  carries a small medallion with the mount's game icon. Dead it is a dim grave mark, released a floating wisp
+  (the ghost). Flying to a teleport's destination it is a bright arcane comet.
+- CompanionItem: a friend from the player's group whose route the app knows: a small disc in their class colour
+  with their name.
 - PinsItem: a pin where each event of the replay happened, once it has happened (screenshots as small
   polaroids), and short bursts on the map at the moment something happens (a teleport: an arcane swirl where the
   player vanishes and a flash where they arrive; a completed quest: the game's yellow question mark pops up and
@@ -613,7 +615,8 @@ class MarkerItem(QGraphicsItem):
         self.setZValue(10)
         self.color = QColor(theme.GOLD)
         self.flyer = "gryphon"       # the flying mount on flight paths (draw_flyer)
-        self.mode = "walk"           # "walk" | "taxi" | "dungeon" | "dead" | "ghost" | "flight"
+        self.mode = "walk"           # "walk" | "mount" | "taxi" | "dungeon" | "dead" | "ghost" | "flight"
+        self.mount_icon: QPixmap | None = None    # the medallion's icon while mounted
         self.angle = 0.0             # direction of travel in degrees, as on screen (0: right, 90: down)
         self.motion = 0.0            # 0..1: how visible the arrow is (only while moving)
         self.moving = False
@@ -674,6 +677,8 @@ class MarkerItem(QGraphicsItem):
             self._grave(painter, pulse)
         else:
             self._walker(painter, pulse)
+            if self.mode == "mount":
+                self._mount_badge(painter)
 
     def _halo(self, painter: QPainter, color: QColor, radius: float, alpha: float) -> None:
         glow = QRadialGradient(QPointF(0, 0), radius)
@@ -705,6 +710,18 @@ class MarkerItem(QGraphicsItem):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(255, 255, 255, 150))
         painter.drawEllipse(QPointF(-2.5, -3), 2.6, 2.6)
+
+    def _mount_badge(self, painter: QPainter) -> None:
+        """Riding: the mount's icon in a small gold-rimmed medallion at the disc's upper right."""
+        center, radius = QPointF(11, -11), 8.0
+        painter.setPen(QPen(QColor(0, 0, 0, 200), 3))
+        painter.setBrush(QColor(20, 16, 10))
+        painter.drawEllipse(center, radius, radius)
+        if self.mount_icon is not None and not self.mount_icon.isNull():
+            draw_round_icon(painter, center, radius - 1, self.mount_icon)
+        painter.setPen(QPen(QColor(theme.GOLD), 1.4))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(center, radius, radius)
 
     def _ghost(self, painter: QPainter, pulse: float, color: QColor = GHOST_COLOR, bob: bool = True) -> None:
         """A floating wisp: a pale flame bobbing on a cold halo, its tail pointing back along the way (in the
@@ -781,6 +798,28 @@ class MarkerItem(QGraphicsItem):
             for k in range(3):
                 start = (spin * (1 if i == 0 else -1.6) + k * 120) * 16
                 painter.drawArc(box, int(start), 70 * 16)
+
+
+class CompanionItem(QGraphicsItem):
+    """A companion from the player's group, at screen size: a small disc in the class colour and the name below."""
+
+    def __init__(self, name: str, color: QColor):
+        super().__init__()
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
+        self.setZValue(9)                            # under the player's marker
+        self.name, self.color = name, color
+        self.font = pixel_font(12, bold=True)
+
+    def boundingRect(self) -> QRectF:
+        return QRectF(-80, -10, 160, 34)
+
+    def paint(self, painter: QPainter, option, widget=None) -> None:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor("black"), 1.6))
+        painter.setBrush(self.color)
+        painter.drawEllipse(QPointF(0, 0), 5.5, 5.5)
+        painter.setFont(self.font)
+        draw_shadowed_text(painter, QRectF(-80, 8, 160, 18), self.name, QPen(self.color))
 
 
 # -- pins and bursts ----------------------------------------------------------------------------------------

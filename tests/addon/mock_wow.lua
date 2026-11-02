@@ -58,7 +58,10 @@ for e in ([[ADDON_LOADED PLAYER_LOGIN PLAYER_ENTERING_WORLD PLAYER_LOGOUT TIME_P
   PARTY_KILL PLAYER_XP_UPDATE PLAYER_TARGET_CHANGED UPDATE_MOUSEOVER_UNIT NAME_PLATE_UNIT_ADDED
   SKILL_LINES_CHANGED CHAT_MSG_SKILL TRADE_SKILL_SHOW TRADE_SKILL_LIST_UPDATE TRADE_SKILL_DATA_SOURCE_CHANGED
   TRADE_SKILL_CLOSE NEW_RECIPE_LEARNED PLAYER_EQUIPMENT_CHANGED ENCOUNTER_START ENCOUNTER_END BOSS_KILL ZONE_CHANGED ZONE_CHANGED_INDOORS
-  PLAYER_REGEN_ENABLED LOOT_OPENED]]):gmatch("%S+") do
+  PLAYER_REGEN_ENABLED LOOT_OPENED LOOT_CLOSED UNIT_SPELLCAST_START UNIT_SPELLCAST_SUCCEEDED PLAYER_ALIVE PLAYER_UNGHOST
+  RESURRECT_REQUEST CONFIRM_XP_LOSS NEW_MOUNT_ADDED COMPANION_LEARNED PLAYER_MOUNT_DISPLAY_CHANGED HEARTHSTONE_BOUND
+  GROUP_ROSTER_UPDATE BAG_UPDATE_DELAYED MERCHANT_SHOW MERCHANT_CLOSED MAIL_SHOW MAIL_CLOSED TRADE_SHOW TRADE_CLOSED
+  AUCTION_HOUSE_SHOW AUCTION_HOUSE_CLOSED BANKFRAME_OPENED BANKFRAME_CLOSED]]):gmatch("%S+") do
   VALID_EVENTS[e] = true
 end
 
@@ -370,6 +373,56 @@ CLASS_ICON_TCOORDS = { HUNTER = { 0, 0.25, 0.25, 0.5 }, MAGE = { 0.25, 0.4960937
   WARRIOR = { 0, 0.25, 0, 0.25 } }
 C_Item = { GetItemQualityByID = function(itemID) return itemID == 4231 and 1 or nil end }
 C_Spell = { GetSpellName = function(id) return id == 2149 and "Handstitched Leather Boots" or nil end }
+
+-- Mounts, casts, death states, the hearthstone.
+function IsMounted() return MOCK.mounted == true end
+-- The cast in progress: { spellID, seconds } (MOCK.casting).
+function UnitCastingInfo(unit)
+  local c = MOCK.casting
+  if unit ~= "player" or not c then return nil end
+  local start = MOCK.now * 1000
+  return "Cast", "", 136000, start, start + c.seconds * 1000, false, "cast-1", false, c.spellID
+end
+function UnitIsGhost() return MOCK.ghost == true end
+function UnitIsDeadOrGhost() return MOCK.ghost == true or MOCK.dead == true end
+function GetBindLocation() return MOCK.bind or "Crossroads" end
+-- Mount journal: MOCK.mountsCollected = { [mountID] = true }.
+MOCK.mountsCollected = {}
+local MOUNTS = { [6] = { "Brown Horse", 458, 132261 }, [14] = { "Timber Wolf", 580, 132224 } }
+C_MountJournal = {
+  GetMountIDs = function() return { 6, 14 } end,
+  GetMountInfoByID = function(id)
+    local m = MOUNTS[id]
+    return m[1], m[2], m[3], false, true, 0, false, false, nil, false, MOCK.mountsCollected[id] == true, id
+  end,
+}
+-- Group: MOCK.group = { { name, realm, class, guid } } (party1..).
+MOCK.group = {}
+function GetNumGroupMembers() return #MOCK.group > 0 and #MOCK.group + 1 or 0 end
+function IsInRaid() return false end
+function UnitIsPlayer(u) return u == "player" or u:find("^party") ~= nil end
+local unitGUID, unitName, unitClass = UnitGUID, UnitName, UnitClass
+local function member(u) local i = u:match("^party(%d)$"); return i and MOCK.group[tonumber(i)] end
+function UnitGUID(u) local m = member(u); if m then return m.guid end return unitGUID(u) end
+function UnitName(u) local m = member(u); if m then return m.name, m.realm end return unitName(u) end
+function UnitClass(u) local m = member(u); if m then return m.class, m.class, 1 end return unitClass(u) end
+-- Bags: MOCK.bags[bag][slot] = { itemID, count, quality, link, icon }; MOCK.items[itemID] = { equipLoc, classID, maxStack }.
+MOCK.bags = { [0] = {} }
+MOCK.items = {}
+C_Container = {
+  GetContainerNumSlots = function(bag) return bag == 0 and 16 or 0 end,
+  GetContainerItemInfo = function(bag, slot)
+    local it = MOCK.bags[bag] and MOCK.bags[bag][slot]
+    if not it then return nil end
+    return { itemID = it.itemID, stackCount = it.count or 1, quality = it.quality, hyperlink = it.link, iconFileID = it.icon }
+  end,
+}
+function GetInventoryItemID(_, slot) return MOCK.equippedIDs and MOCK.equippedIDs[slot] end
+C_Item.GetItemInfoInstant = function(id)
+  local i = MOCK.items[id] or {}
+  return id, "", "", i.equipLoc or "", 134400, i.classID or 15, 0
+end
+C_Item.GetItemMaxStackSizeByID = function(id) return (MOCK.items[id] or {}).maxStack or 1 end
 
 -- Opens / closes the profession window of a skill line.
 function MOCK.openProfession(skillLine)

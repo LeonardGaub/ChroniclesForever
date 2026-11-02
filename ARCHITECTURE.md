@@ -55,7 +55,7 @@ character carry the character's natural key, not the local UUID. `Database.backu
 | Layer | Files | Role |
 |---|---|---|
 | Core | `Core/*.lua` | namespace, module registry, event dispatch, storage, diagnostics, registries, view (which character is shown), route rules, `/fj` |
-| Modules | `Modules/*.lua` | one file per feature: Character, Session, Travel, Positions, Progress, Rares, Pastimes (jumps, fish), Dungeons, Professions, Gear, Metrics, Screenshots (+ the pure ScreenshotQueue) |
+| Modules | `Modules/*.lua` | one file per feature: Character, Session, Travel (zones, hearthstone), Positions, Progress (also how a death ended), Rares, Pastimes (jumps, fish), Dungeons, Mounts, Professions, Gear, Group (who the player played with), Loot (notable items), Metrics, Screenshots (+ the pure ScreenshotQueue), Moments (the player's own) |
 | UI | `UI/*.lua` | Blizzard templates (ButtonFrameTemplate) with icon tabs on the right edge; shared widgets in `UI/Widgets.lua`; one file per page in `UI/Pages/` |
 | Locales | `Locales/*.lua` | `deDE` (default) and `enUS` (fallback) |
 

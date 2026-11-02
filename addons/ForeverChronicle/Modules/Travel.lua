@@ -1,5 +1,6 @@
 -- Journey Forever - Travel module (spec F-005, first part)
--- Known zones per character and "zone discovered" events (first visit since tracking began).
+-- Known zones per character and "zone discovered" events (first visit since tracking began), and "hearth_set"
+-- when the hearthstone is bound to a new place.
 -- A zone counts as discovered after the player has stayed in it for the dwell time, not on a taxi
 -- and not during a loading screen. The zone the character is in at the very first run is known
 -- without an event. Position sampling (the route) is Modules/Positions.lua.
@@ -19,6 +20,11 @@ FC:RegisterEventCategory("exploration", { labelKey = "CAT_EXPLORATION", icon = "
 FC:RegisterEventType("zone_discovered", {
   icon = "Interface\\Icons\\INV_Misc_Map_01", category = "exploration",
   format = function(r) return string.format(L.EVT_ZONE_DISCOVERED, r.data.zone or "?") end,
+})
+
+FC:RegisterEventType("hearth_set", {
+  icon = "Interface\\Icons\\INV_Misc_Rune_01", category = "exploration",
+  format = function(r) return string.format(L.EVT_HEARTH_SET, r.data.place or "?") end,
 })
 
 FC:RegisterStat("zones_discovered", { labelKey = "STAT_ZONES", order = 25, icon = "Interface\\Icons\\INV_Misc_Map_01" })
@@ -103,6 +109,15 @@ Travel:RegisterEvent("PLAYER_ENTERING_WORLD", function(self)
   if not self:MarkInitialZone() then self:ScheduleCheck() end
 end)
 Travel:RegisterEvent("PLAYER_CONTROL_GAINED", function(self) self:ScheduleCheck() end) -- e.g. landing after a flight
+
+-- HEARTHSTONE_BOUND: a new home. Binding again at the same inn is no event.
+Travel:RegisterEvent("HEARTHSTONE_BOUND", function()
+  local place = Util.SafeValue("string", GetBindLocation)
+  local info = FC.char.info
+  if not place or place == info.bindLocation then return end
+  info.bindLocation = place
+  FC:Record("hearth_set", { place = place })
+end)
 
 -- Loading screen state is shared with other modules (screenshots wait for it).
 Travel:RegisterEvent("LOADING_SCREEN_ENABLED", function() FC.loadingScreen = true end)

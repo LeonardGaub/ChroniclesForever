@@ -1,0 +1,5 @@
+<Bindings>
+  <Binding name="JOURNEYFOREVER_MOMENT" header="JOURNEYFOREVER" category="ADDONS">
+    ForeverChronicle_CaptureMoment()
+  </Binding>
+</Bindings>

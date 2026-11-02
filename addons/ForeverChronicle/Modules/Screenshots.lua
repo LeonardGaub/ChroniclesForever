@@ -11,7 +11,7 @@ local Util = FC.Util
 local L = FC.L
 
 -- The triggers players can switch on and off, in the order of the settings and /fjshot. Quest and death start off.
-local TRIGGER_OPTIONS = { "level", "achievement", "rare", "dungeon", "zone", "quest", "death" }
+local TRIGGER_OPTIONS = { "level", "achievement", "rare", "dungeon", "mount", "loot", "zone", "quest", "death" }
 local triggerDefaults = {}
 for _, name in ipairs(TRIGGER_OPTIONS) do triggerDefaults[name] = name ~= "quest" and name ~= "death" end
 
@@ -41,7 +41,8 @@ local POPUP_FRAMES = { "EventToastManagerFrame", "LevelUpDisplay", "BossBanner",
 
 -------------------------------------------------------------------------------
 -- Triggers: which recorded event types request a screenshot. Other modules can add their own.
---   def = { eventType, priority, maxAge, bypassable, identity = function(record) }
+--   def = { eventType, priority, maxAge, bypassable, identity = function(record),
+--           filter = function(record) -> false: no screenshot for this one, delay = seconds (instead of the setting) }
 -- The delay before capturing is the shared "delay" setting.
 -------------------------------------------------------------------------------
 
@@ -69,6 +70,15 @@ Shots:RegisterTrigger("zone", { eventType = "zone_discovered", priority = 4, max
 Shots:RegisterTrigger("quest", { eventType = "quest_completed", priority = 5, maxAge = 60,
   identity = function(r) return "quest:" .. tostring(r.data.questID) end })
 Shots:RegisterTrigger("death", { eventType = "player_died", priority = 6, maxAge = 30 })
+Shots:RegisterTrigger("mount", { eventType = "mount_learned", priority = 2, maxAge = 20, bypassable = true,
+  identity = function(r) return "mount:" .. tostring(r.data.mountID) end })
+-- Loot: epic and better only (rare items are recorded, but would take too many screenshots).
+Shots:RegisterTrigger("loot", { eventType = "item_obtained", priority = 3, maxAge = 20, bypassable = true,
+  filter = function(r) return (r.data.quality or 0) >= 4 end,
+  identity = function(r) return "item:" .. tostring(r.data.item) end })
+-- A moment the player marked (Modules/Moments.lua): at once, whatever the settings say.
+Shots:RegisterTrigger("moment", { eventType = "moment", priority = 1, maxAge = 30, alwaysBypass = true, always = true,
+  delay = 0 })
 
 FC:RegisterCapability("screenshots", "CAP_SCREENSHOTS", function() return type(Screenshot) == "function" end)
 
@@ -113,7 +123,7 @@ function Shots:Request(triggerName, eventIds, record)
   local s = self:GetSettings()
   local req = {
     trigger = triggerName, priority = def.priority, eventIds = eventIds or {},
-    delay = s.delay,
+    delay = def.delay or s.delay,
     maxAge = def.maxAge,
     bypassCooldown = def.alwaysBypass or (def.bypassable and s.bypass) or false,
     identity = record and def.identity and def.identity(record) or nil,
@@ -370,7 +380,7 @@ end
 
 Shots:RegisterMessage("FC_EVENT_RECORDED", function(self, _, record)
   local def = self.triggerByEvent[record.type]
-  if def then self:Request(def.name, { record.id }, record) end
+  if def and (not def.filter or def.filter(record)) then self:Request(def.name, { record.id }, record) end
 end)
 
 Shots:RegisterEvent("SCREENSHOT_SUCCEEDED", function(self)
@@ -427,12 +437,12 @@ for i, name in ipairs(TRIGGER_OPTIONS) do
     get = function() return settings().triggers[name] end, set = function(v) settings().triggers[name] = v end })
 end
 FC:RegisterOption({ section = "screenshots", module = "Screenshots", key = "hideUI", type = "choice",
-  labelKey = "OPT_SHOT_HIDE_UI", tooltipKey = "OPT_SHOT_HIDE_UI_TIP", order = 9, buttonWidth = 82,
+  labelKey = "OPT_SHOT_HIDE_UI", tooltipKey = "OPT_SHOT_HIDE_UI_TIP", order = 20, buttonWidth = 82,
   choices = { { value = "off", labelKey = "OPT_SHOT_HIDE_OFF" }, { value = "all", labelKey = "OPT_SHOT_HIDE_ALL" },
     { value = "popups", labelKey = "OPT_SHOT_HIDE_POPUPS" } },
   onChange = function() Shots:UpdateSnapshots() end })
 FC:RegisterOption({ section = "screenshots", module = "Screenshots", key = "countdown", type = "toggle",
-  labelKey = "OPT_SHOT_COUNTDOWN", tooltipKey = "OPT_SHOT_COUNTDOWN_TIP", order = 10 })
+  labelKey = "OPT_SHOT_COUNTDOWN", tooltipKey = "OPT_SHOT_COUNTDOWN_TIP", order = 21 })
 
 -- A test screenshot with the current delay, countdown and hide settings.
 function Shots:TestShot()
@@ -440,7 +450,7 @@ function Shots:TestShot()
   FC:Print(L.SHOT_TEST_QUEUED)
 end
 FC:RegisterOption({ section = "screenshots", type = "button", labelKey = "SHOT_TEST_BUTTON",
-  tooltipKey = "SHOT_TEST_TIP", order = 11, onClick = function() Shots:TestShot() end })
+  tooltipKey = "SHOT_TEST_TIP", order = 22, onClick = function() Shots:TestShot() end })
 FC:RegisterOption({ section = "screenshots", module = "Screenshots", key = "delay", column = 2, type = "choice",
   labelKey = "OPT_SHOT_DELAY", order = 9,
   choices = { { value = 0, text = "0 s" }, { value = 2, text = "2 s" }, { value = 5, text = "5 s" }, { value = 10, text = "10 s" } } })

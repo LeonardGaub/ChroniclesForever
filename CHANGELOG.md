@@ -6,6 +6,21 @@ then turn "Unreleased" into the uploaded version and date.
 
 ## Unreleased
 
+- Notable loot in the chronicle (new filter "Loot and mounts"). Not every drop, only what is worth telling:
+  every epic item the first time you get it, and blue gear that mattered: from a boss or rare enemy, or put on
+  within an hour of getting it ("New gear"). Blue gear you sell, green and white items, anything that stacks
+  (herbs, cloth, potions), quest items, items taken out of the bank and items you had before are left out. Turn
+  off the blue gear under Settings → Loot to keep only epics. Hover an entry to see where it came from (a boss, a rare enemy, a quest,
+  fishing, crafting, a vendor, the mail, a trade or the auction house). Your first epic takes a screenshot.
+- New mounts appear in the chronicle; the very first one is a highlight and takes a screenshot.
+- "Hearthstone set: Razor Hill" when you bind your hearthstone to a new inn.
+- Deaths now tell how you came back: "Resurrected by Gigel", by the spirit healer, at your body, or by yourself
+  (soulstone, ankh). Hover the entry.
+- Capture a moment: `/fj moment Sunset over Thunder Bluff` takes a screenshot at once and keeps your words with
+  it in the chronicle. You can also bind a key ("Capture a moment" under the AddOns key bindings): it takes the
+  screenshot and then asks for the text.
+- The route remembers when you were mounted and which teleports were your hearthstone or a teleport spell, and
+  who you played with in a group.
 - Ready for the release client: the addon also counts as up to date on game versions 1.60.2, 1.60.3 and 1.61.0.
 - Two new statistics on the overview: "Jumps" and "Fish caught". Only jumps from the ground count (not pressing
   jump in mid-air, swimming up or on a flight path), and every catch from fishing counts as one fish.
