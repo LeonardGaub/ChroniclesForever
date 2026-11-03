@@ -24,9 +24,15 @@ at the time: older entries may describe things that changed or were removed late
   opens in about 1 s, a 15-minute range exports at 720p in 25 s.
 - Same day, at the user's request: buildings (WMO) and a calmer camera over hills. The placement transform was
   fitted to the MODF boxes. The big buildings' LOD 1 skips interior groups, and classic Orgrimmar is all interior,
-  so those come in full where they reach above the ground. 73% of the building textures are not in the local
-  CASC, so buildings are coloured from the minimap. Building floors carry the route (Orgrimmar's floors are 13-93
+  so those come in full where they reach above the ground. 73% of the building textures seemed missing in the
+  local CASC, so buildings were coloured from the minimap at first. Building floors carry the route (Orgrimmar's floors are 13-93
   yd above its terrain). Details in docs/3D_Map_Viewer.md, "As built".
+- Same day: `wow/casc.py` read the first-listed variant of a file (root blocks with content flags), which for most
+  building and ground textures was the uninstalled one. Now it reads the installed variant, and every texture
+  is there. With that: building textures, ground textures as detail on the minimap colour, a camera director
+  (cities from higher up, clear views, cut-away under roofs, shots). Pillow's BLP decoder (pure Python) and the
+  alpha maps' unpacking in a thread starved the drawing thread: a numpy decoder, and worker processes (which needed
+  `__main__.py` guarded).
 
 ### Kino tab replaces the desktop map page (2026-11-02)
 - User decision: the desktop map page lacked screenshot pins and the replay's moments, and the cinematic mode is

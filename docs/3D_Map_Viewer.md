@@ -146,10 +146,10 @@ thread, and the GL upload happens on the GUI thread, a few tiles per frame.
   has no LOD for those groups, while Undercity, caves and mines stay out. The others use their exterior groups
   (all groups when they have none). Only opaque batches are kept, and vertices are merged once their texture
   coordinates are dropped. 3,750 buildings and 821 meshes come to 37 MB (pack 126 MB).
-- **Their look.** 2,595 of 3,572 building textures are not in the local CASC (fetched while playing), so buildings
-  take their colours from the minimap pictures under them (`buildings.py`, via an atlas of the near tiles,
-  `TerrainRenderer.atlas`), with the game's baked vertex shade, darker walls and the sun. Real textures would need
-  the files on every PC.
+- **Their look.** First coloured from the minimap pictures under them, because the textures seemed missing
+  locally. That was a bug in `wow/casc.py`, fixed on the same day: a file can be listed in several root blocks
+  (content flags), and the reader took the first listed, which for most textures was the variant not installed.
+  Now every building and ground texture reads, and buildings are drawn in their own textures (see "Textures").
 - **Floors.** `f_<tx>_<ty>.bin` holds the lowest upward building surface that is not below the ground. What the
   player stands on (`surface_at`, `surface_many`) is that floor where there is one: the route, marker and pins run
   on Orgrimmar's floors (98% of Blind's points, a median 16 yd over the terrain), bridges and decks. Without a
@@ -188,11 +188,13 @@ In cities the 2D camera zooms in to the small city frame, so the drone sits at o
 looks through walls, arches and mesa edges. The marker is always painted on top, but its ring and the route are
 hidden.
 
-What the local client has (sampled): ground textures 2 of 208 (so "real ground textures" is not possible from the
-install), doodad models 1,609 of 1,646 and their skins all, doodad textures 14 of 101, building textures 977 of
-3,572.
+What the local client has: all of it, ground textures, building and doodad textures included. The earlier
+sample said "2 of 208 ground textures" because of the CASC reader's bug (see "Their look").
 
 Next steps, most useful first:
+Done on 2026-11-03: 1 (city camera), 3 (camera shots), building and ground textures (see "Camera director" and
+"Textures" below). Open: 2, 4, 5.
+
 1. **City camera.** In cities and wherever the marker is hidden: higher and steeper (looking down into the
    streets and the canyon), and swinging the yaw towards a clear view. Occlusion test against a baked "roof"
    height map (the highest building surface per grid point, like the floors) plus the terrain: cheap enough per
@@ -204,10 +206,42 @@ Next steps, most useful first:
    level-ups and screenshots (under the overlays), a lower chase camera behind the flyer on flight paths.
 4. **Light.** Sun shadows from terrain and buildings (a shadow map) and soft ambient occlusion: the biggest step
    for depth. Also a sun glint on water and moving clouds' shadows.
-5. **Trees and props (M2).** Models and skins are there, textures mostly not. Leaves are alpha-cut cards, so
-   without their textures they need a drawn leaf mask; coloured from the minimap like the buildings. Experimental.
-6. **Real building textures where present** (27 %), the minimap colour elsewhere: patchy, so only together with
-   a way to get the missing files.
+5. **Trees and props (M2).** Models, skins and textures are all there (MDDF placements in obj0, M2 + skin files).
+   Not started.
+6. ~~Real building textures~~ and ~~ground textures~~: done (see "Textures").
+
+## Camera director (built 2026-11-03)
+
+`ui/stage3d/director.py` films the cinematic on top of the drone's follow:
+- **Cities** (maps.CITIES): at least 320 yd away and 14° steeper, easing in and out.
+- **Clear view:** each step the line of sight to the marker is tested against `TerrainPack.obstacles_many`, the
+  ground plus the roofs (`r_<tx>_<ty>.bin`, the highest building surface per grid point, baked like the floors).
+  When it is blocked, the drone takes the smallest swing (±30, ±60, ±100°) or lift (+10 to +30°) that clears it,
+  and holds it 2.5 s.
+- **Cut-away:** where the marker is under a roof (more than 3 yd of building over it: halls, walkways, overhangs),
+  no view is clear. The buildings then open a cone from the camera to the marker, 16% of the distance wide at the
+  marker, with a dithered soft edge.
+- **Shots:** a first visit to a zone or city pulls back (×1.5) and turns 55° over 5 s. A level-up, screenshot,
+  death or the end title orbits at 9°/s. On flight paths it chases: 30% closer, 10° lower, a 2.2 s swing.
+  Chases, moments and cut-aways centre on the marker. Opening, trips, clouds and credits stay the cinematic's own.
+
+Measured on real city visits: Thunder Bluff's marker hidden by the mesas 60% → 0% and by buildings 21% → 9%,
+all of it under a roof and so cut away. Orgrimmar: from 154 yd to 320 yd. 80% of the frames there are under a
+roof (cut away), and 7% hidden in the open.
+
+## Textures (built 2026-11-03)
+
+Read from the player's install at run time, never from git (`ui/stage3d/textures.py`, `ground.py`). The game files
+are opened in the background; without the game the minimap colours stay.
+- **Buildings:** mesh format 2 carries texture coordinates and a batch per material (opaque and alpha-cut).
+  Each texture is decoded by a worker from its stored mip level at most 256 px (a numpy BLP2 decoder: DXT1/3/5,
+  palette, ARGB; Pillow's is pure Python and held drawing down to 20 fps), uploaded 6 a frame, 420 kept (LRU).
+- **Ground:** each full tile's tex0 (MDID, MCLY, MCAL) becomes a 512 × 512 alpha picture and a 16 × 16 slot index.
+  The textures go into one shared array (128 × 256², with the BLP's own mips). The shader blends the layers as
+  the game does (8 repeats a chunk) and uses them as **detail on the minimap's colour**: divided by their own
+  average, so the minimap's tint and baked shading stay and the textures add grain. The detail fades out between
+  220 and 700 yd. Tiles are parsed in 2 worker processes (`tex0.py`), because the alpha maps' run-length
+  unpacking in a thread held drawing at 20–50 fps. With it in processes the spike streams 188 tiles at vsync.
 
 ## Phase 0 results (spike, 2026-11-03)
 

@@ -83,10 +83,12 @@ were written at the time (older entries may describe things that changed later).
    route and that the replay marker sits on the curve. The desktop app still draws straight lines.
 9. 3D map (2026-11-03, branch `investigate/3d-map-viewer`): try it (Einstellungen → "3D-Karte", then a Kino chapter),
    on this PC and on a weaker laptop; then decide whether to merge it into main (friends get the 126 MB terrain
-   pack with their next `git pull`). Buildings take their colours from the minimap (most building textures are not
-   on the PC), and the route runs on their floors; caves and underground cities are left out. Later phases in
-   docs/3D_Map_Viewer.md: real ground textures, trees and props (M2). Rerun `tools/build_terrain.py` after client
-   patches that change terrain or buildings.
+   pack with their next `git pull`). Buildings and the ground near the camera are drawn in the game's own
+   textures, read from the player's install at run time (none in git); the route runs on building floors; a camera
+   director films cities from higher up, keeps the marker in view (cut-away under roofs) and adds shots. Caves and
+   underground cities (Undercity, Ironforge) are left out. Open ideas in docs/3D_Map_Viewer.md: underground
+   cities, shadows, trees and props (M2). Rerun `tools/build_terrain.py` after client patches that change terrain
+   or buildings.
 ## Confirmed client facts
 - Install: `C:\Program Files (x86)\World of Warcraft\_forever_\` (`Wow.exe`, flavor `wowf`, client 1.60.1). The beta
   (`_classic_beta_\`, `WowB.exe`, TOC Interface 16001) was uninstalled on 2026-10-27.
