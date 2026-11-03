@@ -107,6 +107,41 @@ thread, and the GL upload happens on the GUI thread, a few tiles per frame.
 **Export.** `cinematic_export` records the window with `QWidget.render()`. Phase 0 checks that this captures the
 `QOpenGLWidget` correctly; otherwise the stage renders into a framebuffer object and the recorder reads it back.
 
+## Phase 0 results (spike, 2026-11-03)
+
+Built: `tools/build_terrain.py` (format 1, Kalimdor baked), `domain/terrain.py` with tests (`test_terrain.py`:
+coordinate chain against the probe's `GetWorldPosFromMapPos`, sampling, file format), `ui/stage3d/`
+(`gl.py`, `terrain.py`, `camera.py`, `trail.py`) and the dev window `tools/terrain_spike.py`, run on Blind's
+session of 14.10. (Orgrimmar, Durotar, the Barrens, Stonetalon) from the cloud backup database.
+
+![Spike: leaving Orgrimmar through the gate](images/3d_spike_orgrimmar_gate.jpg)
+
+![Spike: the far view over Durotar and the Barrens with the whole route](images/3d_spike_far_view.jpg)
+
+| Question | Answer |
+|---|---|
+| Bake time and size | Kalimdor: 988 tiles in 106 s, **51 MB** (minimap JPGs are smaller than estimated). Both continents ≈ 95 MB, not 160. |
+| Shared-world scale | Kalimdor 44.79, Eastern Kingdoms 44.60 yd per world map pixel: 0.4 % apart, one common scale works. |
+| Coordinates | Map → world matches the game to < 0.05 yd (probe point in Orgrimmar). The route runs on the roads and through the Orgrimmar gate. |
+| Frame rate (this PC) | Vsync-bound: mean 14.7 ms (68 fps), p95 15–17 ms. One slow frame, the first, at start-up. |
+| Tile streaming | 40 s at 120× through Durotar and the Barrens: 239 tiles streamed, at most 2.0 ms per frame on the GUI thread (p95 0.5 ms), no hitch. |
+| Set-up | 190–225 ms (programs, far mesh, route draped: 3,727 points). |
+| Video export | `QWidget.render()` captures the `QOpenGLWidget` with the QWidget HUD on top (0.5 grey levels mean difference from `grabFramebuffer`). No FBO read-back needed. |
+| Python + GL | PySide6's own classes are enough. Two quirks, wrapped in `gl.py`: uniforms only by location (`gl.uniform`), and `glDrawElements` needs `VoidPtr(0)`, not `0`. |
+
+Learned, to carry into phase 1 and 3:
+
+- **Water must come from the game's liquids (MH2O)**, not a sea plane at z = 0. The plane floods inland ground
+  below sea level, for example Orgrimmar's Cleft of Shadow (−25 yd) under the city. Keep the plane only outside
+  the tiles (open sea).
+- **Alpha:** blending must keep the framebuffer's alpha at 1 (`gl.blend`), because Qt composites the widget as
+  premultiplied. Otherwise semi-transparent parts show false colours.
+- **Marker on the route:** the marker must be placed from the draped route itself. Placing it separately from
+  `Route.glide` left it up to 15 yd off the route's end.
+- Over water, the route lies on the surface (swimming, boats, zeppelins).
+- Not tested yet: a weak laptop, the Eastern Kingdoms, tile seams (normals are computed per tile, and far/near
+  meet with small T-junctions), flights at TaxiPathNode heights.
+
 ## Phases
 
 0. **Spike (milestone 1).** `build_terrain.py` for Kalimdor (it's quick anyway) and `tools/terrain_spike.py`: a
