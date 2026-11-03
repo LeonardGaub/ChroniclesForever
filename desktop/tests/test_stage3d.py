@@ -144,3 +144,18 @@ def test_3d_map_needs_its_terrain_pack(tmp_path, monkeypatch):
     monkeypatch.setattr(terrain, "pack_dir", lambda: tmp_path)
     monkeypatch.setattr(stage, "supported", lambda: True)
     assert not stage.available()
+
+
+def test_the_drone_floats_over_cliffs_instead_of_riding_them():
+    from forever_chronicle.ui.stage3d.camera import CLEARANCE, DroneCamera
+    cliffs = lambda e, n: 150.0 if (e // 100) % 2 else 0.0          # noqa: E731  150 yd cliffs every 100 yd
+    cam = DroneCamera()
+    d, heights = 260.0, []
+    for i in range(600):
+        e = i * 3.0                                                  # walking east over the cliffs
+        cam.follow(1 / 30, (e, 0.0, cliffs(e, 0.0)), d, (e, 0.0, cliffs(e, 0.0)), cliffs, jump=i == 0)
+        eye = cam.eye()
+        heights.append(eye[2])
+        assert eye[2] >= cliffs(eye[0], eye[1]) + CLEARANCE - 60, "never deep in the ground"
+    steps = np.abs(np.diff(heights[30:]))
+    assert steps.max() < 0.03 * d, "no jolts: the height changes by at most 3 % of the distance a frame"
