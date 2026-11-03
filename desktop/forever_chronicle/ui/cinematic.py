@@ -59,6 +59,10 @@
   twice as fast at 8×, half as fast at 2×: a long flight takes longer than a short hop, however the game
   recorded its points. Only screenshots and deaths slow it down; its zones do not count as visits.
 - The video export (ui/cinematic_export.py) runs the same window off screen, frame by frame.
+- 3D map (option "cine_3d", ui/stage3d/stage.py): the real terrain under the replay, filmed by a drone camera.
+  Everything above stays as it is: the 3D stage takes the camera, the route, the marker and the pins from the 2D
+  scene each frame and draws them in 3D (the 2D view stops painting meanwhile). Without the terrain pack or a
+  graphics card for it, or if it fails to start, the replay is 2D.
 - Opening it (the Kino page, the home screen, the Chronik) fades the window in from black (option "ui_motion").
 """
 
@@ -538,6 +542,7 @@ class CinematicWindow(QWidget):
         self.view.setFrameShape(QGraphicsView.Shape.NoFrame)
         self.view.setBackgroundBrush(QColor("black"))
         self.view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.stage3d = self._make_stage3d()
         self.marker = MarkerItem()
         self.marker.color = QColor(self.char_color)
         self.marker.flyer = "wyvern" if char and char.faction == "Horde" else "gryphon"
@@ -595,11 +600,31 @@ class CinematicWindow(QWidget):
         self.timer.setInterval(TICK_MS)
         self.timer.timeout.connect(self._tick)
         # Mouse movement anywhere shows the controls.
-        for widget in (self, self.view, self.view.viewport(), self.controls):
+        for widget in (self, self.view, self.view.viewport(), self.controls) + ((self.stage3d,) if self.stage3d else ()):
             widget.setMouseTracking(True)
             widget.installEventFilter(self)
         self._sync_controls()
         self._render()
+
+    def _make_stage3d(self):
+        """The 3D map over the 2D view, when chosen and possible (None: the replay stays 2D)."""
+        if not self.ctx.config.flag("cine_3d", False):
+            return None
+        from .stage3d import stage
+        if not stage.available():
+            return None
+        widget = stage.CinemaStage3D(self)
+        self.view.viewport().setUpdatesEnabled(False)       # the 3D stage shows the scene instead
+        return widget
+
+    def _drop_stage3d(self) -> None:
+        """Back to the 2D view (the 3D map could not start)."""
+        widget, self.stage3d = self.stage3d, None
+        for w in (widget.items, widget):
+            w.hide()
+            w.deleteLater()
+        self.view.viewport().setUpdatesEnabled(True)
+        self.view.viewport().update()
 
     def _build_controls(self) -> None:
         self.controls = QWidget(self)
@@ -676,6 +701,8 @@ class CinematicWindow(QWidget):
 
     def closeEvent(self, event) -> None:
         self.timer.stop()
+        if self.stage3d is not None:
+            self.stage3d.shutdown()
         self.sound.music.stop()
         self.sound.ambience.want(None)
         self.sound.wind.want(None)
@@ -690,6 +717,9 @@ class CinematicWindow(QWidget):
         r = self.rect()
         for widget in (self.view, self.snapshot, self.clouds, self.cover, self.frame, self.title, self.photo):
             widget.setGeometry(r)
+        if self.stage3d is not None:
+            self.stage3d.setGeometry(r)
+            self.stage3d.items.setGeometry(r)
         if self.credits is not None:
             self.credits.setGeometry(r)
             self.credits.area = self.picture_area()
@@ -861,6 +891,8 @@ class CinematicWindow(QWidget):
             self.controls.raise_()
             self.unsetCursor()
             self.view.viewport().unsetCursor()
+            if self.stage3d is not None:
+                self.stage3d.unsetCursor()
 
     def _age_controls(self, dt: float) -> None:
         if self.controls.isVisible() and self.controls.underMouse():
@@ -877,6 +909,8 @@ class CinematicWindow(QWidget):
             self.controls.hide()
             self.setCursor(Qt.CursorShape.BlankCursor)
             self.view.viewport().setCursor(Qt.CursorShape.BlankCursor)
+            if self.stage3d is not None:
+                self.stage3d.setCursor(Qt.CursorShape.BlankCursor)
 
     # -- playback --------------------------------------------------------------------------
 
@@ -888,6 +922,11 @@ class CinematicWindow(QWidget):
         """One step of real time dt (seconds): animations and overlays, then the replay unless a picture is
         shown or the replay holds (at a death)."""
         self.frame_dt = dt
+        if self.stage3d is not None:
+            if self.stage3d.failed:
+                self._drop_stage3d()
+            else:
+                self.stage3d.step(dt)
         self._age_overlays(dt)
         self._update_grey(dt)
         self._update_light(dt)
@@ -1769,7 +1808,12 @@ class CinematicWindow(QWidget):
     # -- zone changes ----------------------------------------------------------------------
 
     def _take_snapshot(self) -> None:
-        self.snapshot.setPixmap(self.view.viewport().grab())
+        if self.stage3d is not None:
+            picture = QPixmap.fromImage(self.stage3d.grabFramebuffer())
+            picture.setDevicePixelRatio(self.stage3d.devicePixelRatioF())
+            self.snapshot.setPixmap(picture)
+        else:
+            self.snapshot.setPixmap(self.view.viewport().grab())
         self.snapshot.setGeometry(self.view.geometry())
         self.snapshot_age = 0.0
         self.snapshot_effect.setOpacity(1.0)

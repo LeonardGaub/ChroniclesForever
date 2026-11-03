@@ -28,6 +28,15 @@ def slider() -> QSlider:
     return s
 
 
+# Options that are off until chosen (all others are on by default).
+OPTION_DEFAULTS = {"cine_3d": False}
+
+
+def three_d_available() -> bool:
+    """The cinematic's 3D map can run here (terrain pack and graphics card; ui/stage3d/stage.py)."""
+    from ..stage3d import stage
+    return stage.available()
+
 class SettingsPage(Page):
     title_key = "tab.settings"
     scrollable = True
@@ -137,7 +146,7 @@ class SettingsPage(Page):
         colors.addWidget(self.colors)
         colors.addStretch(1)
         cl.addLayout(colors)
-        for key in ("cine_daylight", "cine_credits", "cine_ambience"):
+        for key in ("cine_3d", "cine_daylight", "cine_credits", "cine_ambience"):
             cl.addWidget(self._option(key), 0, Qt.AlignmentFlag.AlignLeft)
         root.addWidget(self.cine_box)
 
@@ -188,7 +197,10 @@ class SettingsPage(Page):
             tip = f"settings.{key}_tip"
             box.setToolTip(tr(tip) if tip in i18n.STRINGS["en"] else "")
             with QSignalBlocker(box):
-                box.setChecked(config.flag(key))
+                box.setChecked(config.flag(key, OPTION_DEFAULTS.get(key, True)))
+            if key == "cine_3d" and not three_d_available():
+                box.setEnabled(False)
+                box.setToolTip(tr("settings.cine_3d_missing"))
         self.effects_label.setText(tr("settings.volume"))
         for name, button in self.test_buttons:
             button.setText(tr(f"settings.test.{name}"))

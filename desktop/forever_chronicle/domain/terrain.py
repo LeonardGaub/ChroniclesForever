@@ -16,6 +16,7 @@ the sea along the coasts, lava) come from the game per tile; off the tiles is op
 from __future__ import annotations
 
 import json
+import math
 import struct
 import zlib
 from dataclasses import dataclass
@@ -124,6 +125,20 @@ class TerrainPack:
         c = self.continents[world]
         return north - c.offset[1], -(east - c.offset[0])
 
+    def map_to_shared(self, ui_map: int, x: float, y: float) -> tuple[float, float] | None:
+        """Any position on a map (world map 947, a continent, a zone) in the shared world, also between its
+        rectangles: there it is carried on from the nearest one (the sea between the continents on the world
+        map, crossed by boats and teleports). None for a map without UiMapAssignment rows or worlds."""
+        rows = [r for r in self.ui_maps.get(ui_map, ()) if int(r[8]) in self.continents]
+        if not rows:
+            return None
+        inside = next((r for r in rows if r[0] - 1e-6 <= x <= r[2] + 1e-6 and r[1] - 1e-6 <= y <= r[3] + 1e-6), None)
+        row = inside or min(rows, key=lambda r: math.hypot(max(r[0] - x, 0, x - r[2]), max(r[1] - y, 0, y - r[3])))
+        u0, v0, u1, v1, x0, y0, x1, y1, world, _ = row
+        wx = x1 - (y - v0) / (v1 - v0) * (x1 - x0)
+        wy = y1 - (x - u0) / (u1 - u0) * (y1 - y0)
+        return self.shared(int(world), wx, wy)
+
     def place(self, ui_map: int, x: float, y: float) -> tuple[float, float, float] | None:
         """A map position in the shared world: (east, north, height of what the player stands or swims on)."""
         pos = self.world_pos(ui_map, x, y)
@@ -209,6 +224,43 @@ class TerrainPack:
         """What a player at a shared position stands or swims on (the sea's surface over the open sea)."""
         world = self.world_at(east, north)
         return SEA_LEVEL if world is None else self.surface_at(world, *self.unshared(world, east, north))
+
+    def surface_many(self, east: np.ndarray, north: np.ndarray, water: bool = True) -> np.ndarray:
+        """surface_shared (water=False: ground_shared) for many shared positions at once."""
+        east, north = np.asarray(east, np.float64), np.asarray(north, np.float64)
+        out = np.full(east.shape, SEA_LEVEL, np.float64)
+        for world, c in self.continents.items():
+            wx, wy = north - c.offset[1], -(east - c.offset[0])
+            fx, fy = 32 - wy / TILE_YARDS, 32 - wx / TILE_YARDS
+            tx, ty = np.floor(fx).astype(np.int64), np.floor(fy).astype(np.int64)
+            keys = tx * 64 + ty
+            for key in np.unique(keys):
+                tile = (int(key // 64), int(key % 64))
+                if tile not in c.tiles:
+                    continue
+                sel = keys == key
+                h = self.heights(world, *tile)
+                n = h.shape[0] - 1
+                col, row = (fx[sel] - tile[0]) * n, (fy[sel] - tile[1]) * n
+                c0 = np.clip(col.astype(np.int64), 0, n - 1)
+                r0 = np.clip(row.astype(np.int64), 0, n - 1)
+                a, b = col - c0, row - r0
+                top = h[r0, c0] * (1 - a) + h[r0, c0 + 1] * a
+                bottom = h[r0 + 1, c0] * (1 - a) + h[r0 + 1, c0 + 1] * a
+                ground = top * (1 - b) + bottom * b
+                if water:
+                    found = self.liquids(world, *tile)
+                    if found is not None:
+                        lh, kinds = found
+                        cc, rr = np.clip((col / n * 128).astype(np.int64), 0, 127), np.clip((row / n * 128).astype(np.int64), 0, 127)
+                        wet = kinds[rr, cc] > 0
+                        corners = np.stack([lh[rr, cc], lh[rr, cc + 1], lh[rr + 1, cc], lh[rr + 1, cc + 1]])
+                        count = np.isfinite(corners).sum(axis=0)
+                        level = np.nansum(corners, axis=0) / np.maximum(count, 1)
+                        wet &= count > 0
+                        ground = np.where(wet, np.maximum(ground, level), ground)
+                out[sel] = ground
+        return out
 
     def overview(self, world: int) -> tuple[np.ndarray, Path]:
         """The continent's far view: 64 x 64 x 17 x 17 heights (NaN off the tiles) and its overview picture."""

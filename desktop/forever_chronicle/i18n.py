@@ -142,6 +142,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "toast.entries": "{n} neue Einträge",
         "settings.cine_daylight": "Tageszeit: Morgenrot, Abenddämmerung und Nacht färben die Karte",
         "settings.cine_daylight_tip": "Nach der Uhrzeit, zu der du gespielt hast (Nacht von 21 bis 6 Uhr).",
+        "settings.cine_3d": "3D-Karte: das echte Gelände unter der Wiedergabe, von einer Kamera-Drohne gefilmt (Vorschau)",
+        "settings.cine_3d_tip": "Berge, Täler, Seen und Meer aus deinem Spiel; Route, Stecknadeln und Figur wie gewohnt. "
+                                "Aus: die gewohnte Karte.",
+        "settings.cine_3d_missing": "Auf diesem PC nicht verfügbar: die Grafikkarte kann es nicht (OpenGL 3.3) oder die "
+                                    "Geländedaten fehlen.",
         "settings.cine_credits": "Abspann am Ende, mit dem, was die Reise ergeben hat",
         "settings.cine_credits_tip": "Spielzeit, Strecke, Flüge, Gebiete, Dungeons, Taten und Tode des Zeitraums.",
         "settings.cine_ambience": "Umgebungsgeräusche der Gebiete und Wind auf Flugrouten",
@@ -744,6 +749,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "toast.entries": "{n} new entries",
         "settings.cine_daylight": "Time of day: dawn, dusk and night tint the map",
         "settings.cine_daylight_tip": "By the time of day you played (night from 9 pm to 6 am).",
+        "settings.cine_3d": "3D map: the real terrain under the replay, filmed by a drone camera (preview)",
+        "settings.cine_3d_tip": "Mountains, valleys, lakes and sea from your game; route, pins and figure as usual. "
+                                "Off: the usual map.",
+        "settings.cine_3d_missing": "Not available on this PC: the graphics card cannot do it (OpenGL 3.3) or the "
+                                    "terrain data is missing.",
         "settings.cine_credits": "End credits with what the journey added up to",
         "settings.cine_credits_tip": "Playtime, distance, flights, zones, dungeons, deeds and deaths of the range.",
         "settings.cine_ambience": "Zone ambience and wind on flight paths",

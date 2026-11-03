@@ -899,12 +899,21 @@ class PinsItem(QGraphicsItem):
         transform = painter.worldTransform()
         painter.save()
         painter.resetTransform()          # pins are drawn at screen size
+        self.paint_at(painter, transform.map)
+        painter.restore()
+
+    def paint_at(self, painter: QPainter, to_screen, stand=None) -> None:
+        """Paints the pins and bursts at screen size where to_screen (scene point -> screen point, or None when not
+        in view) puts them. stand (the 3D map): scene point -> the screen point of the ground under it, where a
+        pin's pole stands."""
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         placed: list[QPointF] = []
         for i in sorted(self.shown):
             pin = self.pins[i]
-            p = transform.map(pin.pos)
+            p = to_screen(pin.pos)
+            if p is None:
+                continue
             same = sum(1 for q in placed if abs(q.x() - p.x()) + abs(q.y() - p.y()) < 6)
             placed.append(QPointF(p))
             if same:
@@ -914,6 +923,9 @@ class PinsItem(QGraphicsItem):
             scale = ease_out_back(self.shown[i].age / PIN_POP)
             if scale <= 0.01:
                 continue
+            foot = stand(pin.pos) if stand is not None else None
+            if foot is not None:
+                self._pole(painter, foot, p, scale)
             painter.save()
             painter.translate(p)
             painter.scale(scale, scale)
@@ -923,8 +935,22 @@ class PinsItem(QGraphicsItem):
                 self._medallion(painter, pin)
             painter.restore()
         for b in self.bursts:
-            self._burst(painter, transform.map(b.pos), b)
-        painter.restore()
+            p = to_screen(b.pos)
+            if p is not None:
+                self._burst(painter, p, b)
+
+    @staticmethod
+    def _pole(painter: QPainter, foot: QPointF, top: QPointF, scale: float) -> None:
+        """A pin's pole from the ground up to it (3D map), a dark staff with a light edge, and its foot's shadow."""
+        top = foot + (top - foot) * min(1.0, scale)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 90))
+        painter.drawEllipse(foot, 5, 2.2)
+        for width, color in ((3.4, QColor(20, 14, 8, 220)), (1.4, with_alpha(TRIM, 230))):
+            pen = QPen(color, width)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            painter.drawLine(foot, top)
 
     @staticmethod
     def _medallion(painter: QPainter, pin: Pin) -> None:

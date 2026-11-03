@@ -137,3 +137,40 @@ def test_shared_positions_find_their_world(tmp_path):
     assert pack.world_at(east + 50000, north) is None
     assert pack.surface_shared(east + 50000, north) == terrain.SEA_LEVEL
     assert not pack.sky_island(1)              # without the world map's rows nothing counts as apart
+
+
+def test_map_positions_reach_the_shared_world_even_between_rectangles(tmp_path):
+    pack = write_pack(tmp_path, {}, offset=(100.0, -50.0))
+    index = json.loads((tmp_path / "index.json").read_text("utf-8"))
+    # A made-up world map: Kalimdor's rectangle in the left half.
+    index["ui_maps"]["947"] = [[0.0, 0.0, 0.5, 1.0, -12800.0, -9600.0, 12266.7, 6933.3, 1, 0]]
+    (tmp_path / "index.json").write_text(json.dumps(index), "utf-8")
+    pack = TerrainPack(tmp_path)
+    inside = pack.map_to_shared(947, 0.25, 0.5)
+    world, wx, wy = pack.world_pos(947, 0.25, 0.5)
+    assert inside == pytest.approx(pack.shared(world, wx, wy))
+    edge, beyond = pack.map_to_shared(947, 0.5, 0.5), pack.map_to_shared(947, 0.6, 0.5)
+    step = (edge[0] - inside[0]) / 0.25                      # yards east per world map share
+    assert beyond[0] == pytest.approx(edge[0] + 0.1 * step)  # carried on east of the rectangle, no jump
+    assert beyond[1] == pytest.approx(edge[1])
+    assert pack.map_to_shared(1454, *PROBE_MAP) == pytest.approx(pack.shared(1, *PROBE_WORLD), abs=0.05)
+    assert pack.map_to_shared(9999, 0.5, 0.5) is None
+
+
+def test_many_positions_sample_like_one(tmp_path):
+    grid = np.add.outer(np.arange(129, dtype=np.float32), np.arange(129, dtype=np.float32))   # a slope
+    write_pack(tmp_path, {(40, 28): grid, (41, 28): grid + 500}, offset=(10.0, 20.0))
+    heights = np.full((129, 129), np.nan, np.float32)
+    heights[:, :65] = 400.0
+    kinds = np.zeros((128, 128), np.uint8)
+    kinds[:, :64] = terrain.WATER                            # a deep lake over the western half
+    pack = write_liquids(tmp_path, 40, 28, heights, kinds)
+    rng = np.random.default_rng(3)
+    e0, n0 = tile_origin(40, 28)
+    east = e0 + 10.0 + rng.uniform(-200, 2 * terrain.TILE_YARDS + 200, 300)
+    north = n0 + 20.0 - rng.uniform(0, terrain.TILE_YARDS, 300)
+    many = pack.surface_many(east, north)
+    one = [pack.surface_shared(e, n) for e, n in zip(east, north)]
+    assert many == pytest.approx(one, abs=1e-3)
+    dry = pack.surface_many(east, north, water=False)
+    assert dry == pytest.approx([pack.ground_shared(e, n) for e, n in zip(east, north)], abs=1e-3)

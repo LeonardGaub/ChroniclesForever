@@ -40,7 +40,7 @@ from forever_chronicle.ui.stage3d import gl  # noqa: E402
 from forever_chronicle.ui.stage3d.camera import DroneCamera  # noqa: E402
 from forever_chronicle.ui.stage3d.terrain import TerrainRenderer  # noqa: E402
 from forever_chronicle.ui.stage3d.look import Look  # noqa: E402
-from forever_chronicle.ui.stage3d.trail import LIFT, Trail, drape  # noqa: E402
+from forever_chronicle.ui.stage3d.trail import LIFT, Trail, drape, flight_heights  # noqa: E402
 from forever_chronicle.ui.theme import class_color  # noqa: E402
 
 SPEEDS = {Qt.Key.Key_1: 10, Qt.Key.Key_2: 30, Qt.Key.Key_3: 60, Qt.Key.Key_4: 120}   # game seconds per second
@@ -72,9 +72,9 @@ class Journey:
 
         def close():
             if len(run) > 1:
-                s = drape(run, self.pack.surface_shared)
+                s = drape(run, self.pack.surface_many)
                 if prev_taxi:
-                    s[:, 3] += TAXI_LIFT
+                    s[:, 3] = flight_heights(s)
                 out.append(s)
 
         prev_taxi = False
@@ -118,7 +118,7 @@ class Stage(QOpenGLWidget):
         self.journey = journey
         self.terrain = TerrainRenderer(journey.pack)
         self.look = Look()
-        self.trail = Trail(color)
+        self.trail = Trail(color, sprite=True)
         self.camera = DroneCamera()
         self.value = journey.timeline.total * at
         self.speed = speed

@@ -61,6 +61,30 @@ class DroneCamera:
         self.distance *= (self.wanted_distance / self.distance) ** smooth(dt, DISTANCE_SECONDS)
         self.ground = ground
 
+    def follow(self, dt: float, target: np.ndarray, distance: float, marker: np.ndarray | None, ground,
+               jump: bool = False) -> None:
+        """Takes the cinematic's camera as it is (its centre and how much it shows, both already smoothed there) and
+        only adds the drone's swing behind the marker's direction of travel."""
+        target = np.asarray(target, np.float64)
+        if jump or self.target is None:
+            self._last = None
+        self.target = target
+        self.distance = self.wanted_distance = distance
+        self.ground = ground
+        if marker is not None:
+            marker = np.asarray(marker, np.float64)
+            if self._last is None:
+                self._last = marker.copy()
+            step = marker - self._last
+            if math.hypot(step[0], step[1]) > MIN_MOVE and not jump:
+                self.yaw += angle_diff(self.yaw, math.atan2(step[1], step[0])) * smooth(dt, YAW_SECONDS)
+                self._last = marker.copy()
+            elif jump:
+                self._last = marker.copy()
+        if self.distance > NORTH_UP_FROM:
+            north_up = min(1.0, (self.distance - NORTH_UP_FROM) / NORTH_UP_FROM)
+            self.yaw += angle_diff(self.yaw, math.pi / 2) * north_up * smooth(dt, 1.0)
+
     def eye(self) -> np.ndarray:
         p = self.pitch()
         back = np.array([-math.cos(self.yaw), -math.sin(self.yaw), 0.0])
