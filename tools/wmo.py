@@ -149,11 +149,13 @@ def encode_mesh(pos: np.ndarray, nrm: np.ndarray, shade: np.ndarray, idx: np.nda
     return (b"FCB1" + struct.pack("<3f3fII", *low, *size, len(pos), len(idx)) + zlib.compress(body, 9))
 
 
-def floors(pack, world: int, step: float) -> dict[tuple[int, int], float]:
+def floors(pack, world: int, step: float, highest: bool = False) -> dict[tuple[int, int], float]:
     """Where the player walks on buildings: for each terrain grid point (global column, row: east / step,
     north / step in true yards) under a building, the lowest upward-facing building surface that is not below
     the ground there (a city's floor, a bridge's deck, a house's ground floor). There is no height in the
-    recorded route, so this is the best guess for where it runs."""
+    recorded route, so this is the best guess for where it runs.
+    highest: the highest building surface there instead, of any facing (the roofs, tower tops, arches: what can
+    stand between the camera and the marker)."""
     b = pack.buildings(world)
     off = np.array([*pack.continents[world].offset, 0.0])
     best: dict[tuple[int, int], float] = {}
@@ -162,9 +164,10 @@ def floors(pack, world: int, step: float) -> dict[tuple[int, int], float]:
         w = pos @ b.linear[i].T + b.shift[i] - off
         tri = idx.reshape(-1, 3)
         A, B, C = w[tri[:, 0]], w[tri[:, 1]], w[tri[:, 2]]
-        n = np.cross(B - A, C - A)
-        up = np.abs(n[:, 2]) > 0.6 * np.maximum(np.linalg.norm(n, axis=1), 1e-9)
-        A, B, C = A[up], B[up], C[up]
+        if not highest:
+            n = np.cross(B - A, C - A)
+            up = np.abs(n[:, 2]) > 0.6 * np.maximum(np.linalg.norm(n, axis=1), 1e-9)
+            A, B, C = A[up], B[up], C[up]
         if not len(A):
             continue
         lo = np.ceil(np.minimum(np.minimum(A, B), C)[:, :2] / step).astype(np.int64)
@@ -190,15 +193,16 @@ def floors(pack, world: int, step: float) -> dict[tuple[int, int], float]:
             continue
         g = np.concatenate(points)
         z = np.concatenate(heights)
-        ground = pack.surface_many(g[:, 0] * step + off[0], g[:, 1] * step + off[1], water=False)
-        keep = z >= ground - 1.0
-        g, z = g[keep], z[keep]
-        order = np.lexsort((z, g[:, 1], g[:, 0]))
+        if not highest:
+            ground = pack.surface_many(g[:, 0] * step + off[0], g[:, 1] * step + off[1], water=False)
+            keep = z >= ground - 1.0
+            g, z = g[keep], z[keep]
+        order = np.lexsort((-z if highest else z, g[:, 1], g[:, 0]))
         g, z = g[order], z[order]
         first = np.ones(len(g), bool)
         first[1:] = (g[1:] != g[:-1]).any(axis=1)
         for (cx, cy), h in zip(map(tuple, g[first]), z[first]):
-            if (cx, cy) not in best or h < best[(cx, cy)]:
+            if (cx, cy) not in best or (h > best[(cx, cy)] if highest else h < best[(cx, cy)]):
                 best[(cx, cy)] = float(h)
     return best
 

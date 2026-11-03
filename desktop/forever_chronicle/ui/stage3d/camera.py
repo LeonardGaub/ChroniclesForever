@@ -43,11 +43,15 @@ class DroneCamera:
         self.ground = None              # (east, north) -> ground height
         self._z: float | None = None    # the looked-at height (smoothed)
         self._floor: float | None = None  # the lowest the camera may go (smoothed)
+        # Set by the director (director.py) each step: steeper, swung aside, a lag of its own for the swing.
+        self.extra_pitch = 0.0
+        self.yaw_offset = 0.0
+        self.yaw_seconds = YAW_SECONDS
 
     def pitch(self) -> float:
         """Looking down: 38 degrees at drone height, steeper the further out, nearly straight down far out."""
         k = min(1.0, max(0.0, math.log10(max(self.distance, 1) / 260.0) / math.log10(40)))
-        return math.radians(38 + 44 * k)
+        return min(math.radians(84), math.radians(38 + 44 * k) + self.extra_pitch)
 
     def jump(self, marker: np.ndarray) -> None:
         self.target = np.array(marker, np.float64)
@@ -90,7 +94,7 @@ class DroneCamera:
                 self._last = marker.copy()
             step = marker - self._last
             if math.hypot(step[0], step[1]) > MIN_MOVE and not jump:
-                self.yaw += angle_diff(self.yaw, math.atan2(step[1], step[0])) * smooth(dt, YAW_SECONDS)
+                self.yaw += angle_diff(self.yaw, math.atan2(step[1], step[0])) * smooth(dt, self.yaw_seconds)
                 self._last = marker.copy()
             elif jump:
                 self._last = marker.copy()
@@ -99,9 +103,21 @@ class DroneCamera:
             self.yaw += angle_diff(self.yaw, math.pi / 2) * north_up * smooth(dt, 1.0)
 
     def _free_eye(self) -> np.ndarray:
+        return self.eye_for(self.yaw_offset, self.extra_pitch)
+
+    def eye_for(self, yaw_offset: float, extra_pitch: float, distance: float | None = None) -> np.ndarray:
+        """Where the camera would be with this swing and pitch (and distance), before keeping it off the ground."""
+        saved, self.extra_pitch = self.extra_pitch, extra_pitch
+        if distance is not None:
+            saved_d, self.distance = self.distance, distance
         p = self.pitch()
-        back = np.array([-math.cos(self.yaw), -math.sin(self.yaw), 0.0])
-        return self.target + self.distance * (math.cos(p) * back + np.array([0, 0, math.sin(p)]))
+        self.extra_pitch = saved
+        d = self.distance
+        if distance is not None:
+            self.distance = saved_d
+        yaw = self.yaw + yaw_offset
+        back = np.array([-math.cos(yaw), -math.sin(yaw), 0.0])
+        return self.target + d * (math.cos(p) * back + np.array([0, 0, math.sin(p)]))
 
     def _follow_floor(self, dt: float) -> None:
         """The lowest the camera may go: CLEARANCE over the highest ground in a patch round it, smoothed."""

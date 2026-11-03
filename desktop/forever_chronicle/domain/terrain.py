@@ -45,6 +45,7 @@ class Continent:
     tiles: dict[tuple[int, int], tuple[float, float]]  # (tx, ty) -> (lowest, highest) ground
     wet: frozenset = frozenset()                       # tiles with liquids
     floors: frozenset = frozenset()                    # tiles under buildings (their floors)
+    roofs: frozenset = frozenset()                     # the same tiles (their roofs)
 
 
 def tile_of(wx: float, wy: float) -> tuple[int, int, float, float]:
@@ -158,10 +159,13 @@ class TerrainPack:
             tiles = {(t[0], t[1]): (t[2], t[3]) for t in c["tiles"]}
             wet = frozenset((t[0], t[1]) for t in c["tiles"] if len(t) > 4 and t[4])
             floors = frozenset(tuple(f) for f in c.get("floors", ()))
-            self.continents[c["map_id"]] = Continent(name, c["map_id"], tuple(c["offset"]), tiles, wet, floors)
+            roofs = frozenset(tuple(f) for f in c.get("roofs", ()))
+            self.continents[c["map_id"]] = Continent(name, c["map_id"], tuple(c["offset"]), tiles, wet, floors,
+                                                     roofs)
         self._heights = lru_cache(maxsize=96)(self._load_heights)
         self._liquids = lru_cache(maxsize=96)(self._load_liquids)
         self._floors = lru_cache(maxsize=96)(self._load_floors)
+        self._roofs = lru_cache(maxsize=96)(lambda w, x, y: self._load_floors(w, x, y, "r"))
         self._buildings: dict[int, Buildings] = {}
 
     @classmethod
@@ -231,11 +235,11 @@ class TerrainPack:
     def liquids(self, world: int, tx: int, ty: int) -> tuple[np.ndarray, np.ndarray] | None:
         return self._liquids(world, tx, ty)
 
-    def _load_floors(self, world: int, tx: int, ty: int) -> np.ndarray | None:
+    def _load_floors(self, world: int, tx: int, ty: int, kind: str = "f") -> np.ndarray | None:
         c = self.continents.get(world)
-        if c is None or (tx, ty) not in c.floors:
+        if c is None or (tx, ty) not in (c.floors if kind == "f" else c.roofs):
             return None
-        data = (self.root / c.name / f"f_{tx}_{ty}.bin").read_bytes()
+        data = (self.root / c.name / f"{kind}_{tx}_{ty}.bin").read_bytes()
         if data[:4] != b"FCF1":
             raise ValueError("not a terrain floor file")
         return np.frombuffer(zlib.decompress(data[4:]), "<f2").reshape(129, 129).astype(np.float32)
@@ -361,6 +365,27 @@ class TerrainPack:
     def building_mesh(self, fdid: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """A building's mesh: positions (model space), normals, shade (0..1) and triangle indices."""
         return decode_mesh((self.root / "buildings" / f"{fdid}.bin").read_bytes())
+
+    def obstacles_many(self, east: np.ndarray, north: np.ndarray) -> np.ndarray:
+        """The highest of the ground and the buildings' roofs at many shared positions: what a line of sight must
+        pass over."""
+        east, north = np.asarray(east, np.float64), np.asarray(north, np.float64)
+        out = self.surface_many(east, north, water=False)
+        for world, c in self.continents.items():
+            if not c.roofs:
+                continue
+            wx, wy = north - c.offset[1], -(east - c.offset[0])
+            fx, fy = 32 - wy / TILE_YARDS, 32 - wx / TILE_YARDS
+            tx, ty = np.floor(fx).astype(np.int64), np.floor(fy).astype(np.int64)
+            keys = tx * 64 + ty
+            for key in np.unique(keys):
+                tile = (int(key // 64), int(key % 64))
+                if tile not in c.roofs:
+                    continue
+                sel = keys == key
+                level = sample_floor(self._roofs(world, *tile), (fx[sel] - tile[0]) * 128, (fy[sel] - tile[1]) * 128)
+                out[sel] = np.where(np.isfinite(level), np.maximum(out[sel], level), out[sel])
+        return out
 
     def overview(self, world: int) -> tuple[np.ndarray, Path]:
         """The continent's far view: 64 x 64 x 17 x 17 heights (NaN off the tiles) and its overview picture."""

@@ -55,10 +55,28 @@ uniform sampler2D u_far_map;
 uniform vec4 u_far_rect;        // west, north, width, height (yards)
 uniform vec3 u_sun;
 uniform float u_light;
+uniform vec3 u_cut_from;        // the cut-away (director.py): a cone from the camera to the marker ...
+uniform vec3 u_cut_to;
+uniform float u_cut_radius;     // ... this wide at the marker; 0: none
 uniform vec3 u_ambient;
 uniform vec3 u_deep;
 out vec4 o_color;
+float cut_away(vec3 p) {
+    // 1 inside the cone between the camera and the marker (it opens the roofs over a covered marker), with a
+    // dithered soft edge.
+    if (u_cut_radius <= 0.0) return 0.0;
+    vec3 axis = u_cut_to - u_cut_from;
+    float t = dot(p - u_cut_from, axis) / dot(axis, axis);
+    if (t <= 0.0 || t >= 0.985) return 0.0;
+    float r = u_cut_radius * (0.35 + 0.65 * t);
+    float off = length(p - (u_cut_from + axis * t));
+    return 1.0 - smoothstep(r * 0.75, r, off);
+}
+float dither(vec2 frag) {
+    return fract(52.9829189 * fract(dot(frag, vec2(0.06711056, 0.00583715))));
+}
 void main() {
+    if (cut_away(v_pos) > dither(gl_FragCoord.xy)) discard;
     vec2 a = vec2(v_pos.x - u_atlas_rect.x, u_atlas_rect.y - v_pos.y) / u_atlas_rect.z;
     vec4 c = vec4(0.0);
     if (u_atlas_rect.w > 0.5 && a.x >= 0.0 && a.y >= 0.0 && a.x <= 1.0 && a.y <= 1.0)
@@ -142,7 +160,8 @@ class BuildingRenderer:
             self.meshes.pop(fdid).destroy()
             del self.used[fdid]
 
-    def draw(self, vp, eye, look: Look, now: float) -> None:
+    def draw(self, vp, eye, look: Look, now: float, cut=None) -> None:
+        """cut: (from, to, radius at the marker) of the cut-away, or None."""
         layer = self.terrain.active
         if not self.visible or layer is None or layer.world != self.world:
             self.drawn = 0
@@ -153,6 +172,12 @@ class BuildingRenderer:
         gl.uniform(p, "u_vp", gl.qmatrix(vp))
         self.terrain._common(p, eye, look, layer, far=False)
         gl.uniform(p, "u_sun", *[float(v) for v in look.sun])
+        if cut is not None and cut[2] > 0:
+            gl.uniform(p, "u_cut_from", *[float(v) for v in cut[0]])
+            gl.uniform(p, "u_cut_to", *[float(v) for v in cut[1]])
+            gl.uniform(p, "u_cut_radius", float(cut[2]))
+        else:
+            gl.uniform(p, "u_cut_radius", 0.0)
         gl.uniform(p, "u_ambient", *look.ambient)
         gl.uniform(p, "u_deep", *[look.deep * v for v in look.water])
         atlas = self.terrain.atlas(now)

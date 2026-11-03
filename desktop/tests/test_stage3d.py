@@ -183,3 +183,86 @@ def test_the_marker_is_the_head_of_the_ribbon_and_leaves_a_standstill_with_it(ap
     halfway = s._route_point(90.0)
     assert np.allclose(halfway[:2], (pa + pb) / 2, atol=1.0), "it leaves when the standstill ends, as the marker"
     assert s._route_point(500.0) is None
+
+
+class _Title:
+    def isVisible(self):
+        return False
+
+
+def _cinema(zone, mode="walk"):
+    from types import SimpleNamespace
+    from forever_chronicle.domain import maps
+    return SimpleNamespace(intro=None, voyage=None, sky_trip=None, credits=None, ended=False, view_map=maps.WORLD,
+                           zone_now=zone, marker=SimpleNamespace(mode=mode), photo_on=False, hold=0.0, title=_Title())
+
+
+class _Wall:
+    """A wall 200 yd high just south of the marker, between it and a camera looking north."""
+
+    def obstacles_many(self, east, north):
+        east, north = np.asarray(east), np.asarray(north)
+        return np.where((np.abs(east) < 40) & (north < -30) & (north > -80), 200.0, 0.0)
+
+
+def test_the_director_swings_the_drone_to_a_clear_view_and_back():
+    import math
+    from forever_chronicle.ui.stage3d.camera import DroneCamera
+    from forever_chronicle.ui.stage3d.director import CameraDirector
+    cam, director = DroneCamera(), CameraDirector()
+    cam.yaw = math.pi / 2
+    marker = np.array([0.0, 0.0, 1.5])
+    cam.follow(1 / 30, marker, 260.0, marker, lambda e, n: 0.0, jump=True)
+    director.seen.add(1413)
+    for _ in range(90):
+        director.direct(1 / 30, _cinema(1413), cam, _Wall(), marker, 260.0)
+    assert director.wanted != (0.0, 0.0), "the wall hides the marker: the drone takes another view"
+    assert director._clear(_Wall(), [cam.eye()], marker)[0], "and from there it sees the marker"
+
+    class Open:
+        def obstacles_many(self, east, north):
+            return np.zeros(len(np.asarray(east)))
+    for _ in range(200):
+        director.direct(1 / 30, _cinema(1413), cam, Open(), marker, 260.0)
+    assert director.wanted == (0.0, 0.0) and abs(cam.yaw_offset) < 0.02, "once the view is free it swings back"
+
+
+def test_the_director_reveals_a_place_once_and_films_cities_from_higher_up():
+    from forever_chronicle.domain import maps
+    from forever_chronicle.ui.stage3d.camera import DroneCamera
+    from forever_chronicle.ui.stage3d.director import CITY_MIN, CameraDirector
+
+    class Open:
+        def obstacles_many(self, east, north):
+            return np.zeros(len(np.asarray(east)))
+    cam, director = DroneCamera(), CameraDirector()
+    marker = np.array([0.0, 0.0, 1.5])
+    cam.follow(1 / 30, marker, 150.0, marker, lambda e, n: 0.0, jump=True)
+    director.direct(1 / 30, _cinema(1454), cam, Open(), marker, 150.0)
+    assert director.reveal is not None, "the first time in Orgrimmar: the reveal"
+    for _ in range(300):
+        d = director.direct(1 / 30, _cinema(1454), cam, Open(), marker, 150.0)
+    assert director.reveal is None and d >= CITY_MIN * 0.98 and cam.extra_pitch > 0.2, "cities from higher up"
+    director.seen.add(1413)                                    # the Barrens were seen before
+    director.direct(1 / 30, _cinema(1413), cam, Open(), marker, 150.0)
+    director.direct(1 / 30, _cinema(1454), cam, Open(), marker, 150.0)
+    assert director.reveal is None, "back in Orgrimmar: no second reveal"
+    assert 1454 in maps.CITIES
+
+
+def test_a_covered_marker_opens_the_cut_away():
+    from forever_chronicle.ui.stage3d.camera import DroneCamera
+    from forever_chronicle.ui.stage3d.director import CameraDirector
+
+    class Roof:
+        def obstacles_many(self, east, north):
+            return np.full(len(np.asarray(east)), 30.0)        # a hall's roof over everything
+    cam, director = DroneCamera(), CameraDirector()
+    marker = np.array([0.0, 0.0, 1.5])
+    cam.follow(1 / 30, marker, 260.0, marker, lambda e, n: 0.0, jump=True)
+    director.seen.add(1413)
+    assert director.cut_away(cam.eye(), marker, 260.0) is None
+    for _ in range(60):
+        director.direct(1 / 30, _cinema(1413), cam, Roof(), marker, 260.0)
+    cut = director.cut_away(cam.eye(), marker, 260.0)
+    assert director.covered and cut is not None and cut[2] > 0.9 * 0.16 * 260.0

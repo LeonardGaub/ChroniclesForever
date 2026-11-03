@@ -29,6 +29,8 @@ Pack layout (format 1, read by forever_chronicle/domain/terrain.py):
 - buildings/<fdid>.bin: a building's mesh, shared by all its placements ("FCB1", wmo.encode_mesh).
 - <continent>/f_<tx>_<ty>.bin, only for tiles under buildings: "FCF1", then zlib of 129 x 129 float16 heights of
   the lowest building surface the player could walk on (wmo.floors), NaN where none; listed in index.json.
+- <continent>/r_<tx>_<ty>.bin: the same for the highest building surface (the roofs: what can hide the marker
+  from the camera); listed in index.json.
 Worlds that the world map does not show (Zephras Isle) are placed far from the continents in the shared world.
 """
 
@@ -334,14 +336,15 @@ def bake_buildings(storage: casc.Casc, name: str, world: int, wdt: int, out: Pat
     return changed
 
 
-def bake_floors(world: int, name: str, out: Path) -> list[list[int]]:
-    """The world's building floors per tile (wmo.floors); returns the tiles that have some."""
+def bake_floors(world: int, name: str, out: Path, highest: bool = False) -> list[list[int]]:
+    """The world's building floors per tile (wmo.floors; highest: the roofs); returns the tiles that have some."""
     import wmo
     from forever_chronicle.domain.terrain import TerrainPack
     started = time.time()
     pack = TerrainPack(out)
     step = TILE_YARDS / 128
-    found = wmo.floors(pack, world, step)
+    found = wmo.floors(pack, world, step, highest)
+    kind = "r" if highest else "f"
     tiles: dict[tuple[int, int], np.ndarray] = {}
     for (gx, gy), h in found.items():
         # global column gx = east / step, row gy = north / step; tile (tx, ty) column c = gx - (tx - 32) * 128,
@@ -351,14 +354,15 @@ def bake_floors(world: int, name: str, out: Path) -> list[list[int]]:
                 c, r = gx - (tx - 32) * 128, (32 - ty) * 128 - gy
                 if 0 <= c <= 128 and 0 <= r <= 128:
                     grid = tiles.setdefault((tx, ty), np.full((GRID, GRID), np.nan, np.float32))
-                    grid[r, c] = h if np.isnan(grid[r, c]) else min(grid[r, c], h)
+                    grid[r, c] = h if np.isnan(grid[r, c]) else (max if highest else min)(grid[r, c], h)
     folder = out / name
-    for old in folder.glob("f_*.bin"):
+    for old in folder.glob(f"{kind}_*.bin"):
         if tuple(int(v) for v in old.stem[2:].split("_")) not in tiles:
             old.unlink()
     for (tx, ty), grid in tiles.items():
-        write_if_changed(folder / f"f_{tx}_{ty}.bin", b"FCF1" + zlib.compress(grid.astype("<f2").tobytes(), 9))
-    print(f"  {name}: floors on {len(tiles)} tiles ({len(found)} points), {time.time() - started:.0f} s")
+        write_if_changed(folder / f"{kind}_{tx}_{ty}.bin", b"FCF1" + zlib.compress(grid.astype("<f2").tobytes(), 9))
+    what = "roofs" if highest else "floors"
+    print(f"  {name}: {what} on {len(tiles)} tiles ({len(found)} points), {time.time() - started:.0f} s")
     return sorted([int(tx), int(ty)] for tx, ty in tiles)
 
 
@@ -402,6 +406,7 @@ def main() -> None:
     write_if_changed(index_path, json.dumps(index, separators=(",", ":")).encode("utf-8"))
     for name in args.continents.split(","):
         continents[name]["floors"] = bake_floors(CONTINENTS[name], name, args.out)
+        continents[name]["roofs"] = bake_floors(CONTINENTS[name], name, args.out, highest=True)
     if set(args.continents.split(",")) >= set(CONTINENTS):     # every world baked: drop meshes no one places
         for path in (args.out / "buildings").glob("*.bin"):
             if not meshes.get(int(path.stem)):

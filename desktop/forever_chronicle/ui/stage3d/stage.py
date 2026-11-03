@@ -31,6 +31,7 @@ from ...domain.terrain import TerrainPack
 from ..cinematic_fx import GHOST_COLOR
 from . import gl
 from .camera import FOV, DroneCamera
+from .director import CameraDirector
 from .sky import look_for
 from .buildings import BuildingRenderer
 from .terrain import TerrainRenderer
@@ -101,6 +102,7 @@ class CinemaStage3D(QOpenGLWidget):
         self.buildings = BuildingRenderer(self.pack, self.terrain)
         self.trail = Trail(QColor(window.char_color))
         self.camera = DroneCamera()
+        self.director = CameraDirector()
         self._dt = 0.0                    # real time stepped since the last picture (the cinematic's clock)
         self._places: dict = {}           # scene points placed in 3D (pins, companions): (map, x, y) -> point
         self.ready = False
@@ -128,6 +130,10 @@ class CinemaStage3D(QOpenGLWidget):
 
     def ground(self, east: float, north: float) -> float:
         return float(self.pack.surface_many(np.array([east]), np.array([north]))[0])
+
+    def over(self, east: float, north: float) -> float:
+        """What the camera must stay above: the ground or a building's roof."""
+        return float(self.pack.obstacles_many(np.array([east]), np.array([north]))[0])
 
     def project(self, point) -> QPointF | None:
         """A 3D point on the widget (logical pixels); None behind the camera."""
@@ -293,13 +299,18 @@ class CinemaStage3D(QOpenGLWidget):
         # The 2D camera keeps the marker near the middle, not in it; the drone keeps the same share of its own
         # (smaller) picture, so the marker stays in view.
         m2 = self.shared(w.marker.pos()) if w.marker.isVisible() else None
+        marker = self._marker_point(d)
         if m2 is not None:
+            # ... and right on the marker while the director wants it centred (a chase, a moment, a cut-away)
+            k *= 1 - self.director.centre
+            if marker is not None:
+                m2 = (m2[0] + (marker[0] - m2[0]) * self.director.centre, m2[1] + (marker[1] - m2[1]) * self.director.centre)
             c3 = (m2[0] + (c3[0] - m2[0]) * k, m2[1] + (c3[1] - m2[1]) * k)
         target = np.array([c3[0], c3[1], self.ground(*c3)])
         jump = self._last_target is None or np.linalg.norm(target[:2] - self._last_target[:2]) > JUMP * d
         self._last_target = target
-        marker = self._marker_point(d)
-        self.camera.follow(min(0.25, dt), target, d, marker, self.ground, jump=jump)
+        self.camera.follow(min(0.25, dt), target, d, marker, self.over, jump=jump)
+        d = self.director.direct(min(0.25, dt), w, self.camera, self.pack, marker, d)
         vp, inv_vp, eye = self.camera.matrices(self.width() / max(1, self.height()))
         self.vp = vp
         hour = daylight.hour_of(w.t) if w.daylight else None
@@ -330,7 +341,8 @@ class CinemaStage3D(QOpenGLWidget):
         self.buildings.update(target[0], target[1], d)
         now = time.perf_counter()
         self.terrain.draw_sky(inv_vp, look)
-        self.terrain.draw(vp, eye, look, now, after_ground=lambda: self.buildings.draw(vp, eye, look, now))
+        cut = self.director.cut_away(eye, marker, d)
+        self.terrain.draw(vp, eye, look, now, after_ground=lambda: self.buildings.draw(vp, eye, look, now, cut))
         walking = marker is not None and w.marker.mode in ("walk", "mount", "dead")
         self.trail.draw(vp, w.t - w.start, d, marker if walking else None, (pw, ph), look.grey,
                         (time.perf_counter() * 0.8) % 1.0, QColor(w.char_color), dt)
