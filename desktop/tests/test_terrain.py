@@ -90,3 +90,50 @@ def test_real_pack_puts_orgrimmar_on_the_ground():
     east, north, z = pack.place(1454, *PROBE_MAP)
     low, high = pack.continents[1].tiles[(40, 28)]
     assert low <= z <= high and -60 < z < 100     # the Cleft of Shadow, a ravine a little below sea level
+
+
+def write_liquids(root, tx, ty, heights, kinds):
+    (root / "kalimdor" / f"w_{tx}_{ty}.bin").write_bytes(
+        b"FCW1" + zlib.compress(heights.astype("<f2").tobytes() + kinds.astype(np.uint8).tobytes()))
+    index = json.loads((root / "index.json").read_text("utf-8"))
+    for t in index["continents"]["kalimdor"]["tiles"]:
+        if (t[0], t[1]) == (tx, ty):
+            t.append(1)
+    (root / "index.json").write_text(json.dumps(index), "utf-8")
+    return TerrainPack(root)
+
+
+def test_liquids_lift_the_player_to_their_surface(tmp_path):
+    grid = np.full((129, 129), -12.0, np.float32)            # a lake bed under water at 5 yd
+    write_pack(tmp_path, {(40, 28): grid})
+    heights = np.full((129, 129), np.nan, np.float32)
+    heights[:65, :] = 5.0
+    kinds = np.zeros((128, 128), np.uint8)
+    kinds[:64, :] = terrain.WATER                            # the northern half is a lake
+    pack = write_liquids(tmp_path, 40, 28, heights, kinds)
+    east0, north0 = tile_origin(40, 28)
+    wet = (north0 - terrain.TILE_YARDS * 0.25, -(east0 + 100))
+    dry = (north0 - terrain.TILE_YARDS * 0.75, -(east0 + 100))
+    assert pack.water_at(1, *wet) == pytest.approx(5.0)
+    assert pack.surface_at(1, *wet) == pytest.approx(5.0)
+    assert pack.water_at(1, *dry) is None
+    assert pack.surface_at(1, *dry) == pytest.approx(-12.0)
+    assert pack.water_at(1, 0.0, 0.0) == terrain.SEA_LEVEL    # off the tiles: the open sea
+    assert pack.surface_at(1, 0.0, 0.0) == terrain.SEA_LEVEL
+
+
+def test_dry_tiles_have_no_liquid_file(tmp_path):
+    pack = write_pack(tmp_path, {(40, 28): np.zeros((129, 129), np.float32)})
+    assert pack.liquids(1, 40, 28) is None
+    heights, kinds = pack.overview_liquids(1)                # no overview file yet: all dry
+    assert np.isnan(heights).all() and not kinds.any()
+
+
+def test_shared_positions_find_their_world(tmp_path):
+    pack = write_pack(tmp_path, {(40, 28): np.full((129, 129), 30.0, np.float32)}, offset=(0.0, 0.0))
+    east, north = pack.shared(1, *PROBE_WORLD)
+    assert pack.world_at(east, north) == 1
+    assert pack.ground_shared(east, north) == pytest.approx(30.0)
+    assert pack.world_at(east + 50000, north) is None
+    assert pack.surface_shared(east + 50000, north) == terrain.SEA_LEVEL
+    assert not pack.sky_island(1)              # without the world map's rows nothing counts as apart

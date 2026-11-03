@@ -4,7 +4,7 @@ one real session over the baked terrain (tools/build_terrain.py), with the route
     desktop\\.venv\\Scripts\\python tools\\terrain_spike.py [--db chronicle.db] [--character Blind] [--session ID]
                                                          [--at 0.3] [--speed 30] [--snap out.png --after 4]
 
-Without --session it takes the character's session with the most points on the baked continent. --snap renders
+Without --session it takes the character's session with the most placed points. --snap renders
 off screen for --after seconds and saves the window (QWidget.render, as the video export records it) and the
 GL framebuffer next to it, then quits.
 
@@ -39,29 +39,28 @@ from forever_chronicle.storage.repository import Repository  # noqa: E402
 from forever_chronicle.ui.stage3d import gl  # noqa: E402
 from forever_chronicle.ui.stage3d.camera import DroneCamera  # noqa: E402
 from forever_chronicle.ui.stage3d.terrain import TerrainRenderer  # noqa: E402
-from forever_chronicle.ui.stage3d.trail import LIFT, SEA_LEVEL, Trail, drape  # noqa: E402
+from forever_chronicle.ui.stage3d.look import Look  # noqa: E402
+from forever_chronicle.ui.stage3d.trail import LIFT, Trail, drape  # noqa: E402
 from forever_chronicle.ui.theme import class_color  # noqa: E402
 
 SPEEDS = {Qt.Key.Key_1: 10, Qt.Key.Key_2: 30, Qt.Key.Key_3: 60, Qt.Key.Key_4: 120}   # game seconds per second
 TAXI_LIFT = 45.0
-SUN = np.array([-0.45, 0.55, 0.70]) / np.linalg.norm([-0.45, 0.55, 0.70])
-HORIZON, ZENITH, WATER = (0.80, 0.86, 0.92), (0.32, 0.50, 0.78), (0.10, 0.27, 0.36)
 
 
 class Journey:
-    """One session of the route, placed in the shared 3D world of one continent."""
+    """One session of the route, placed in the shared 3D world."""
 
-    def __init__(self, route: Route, pack: TerrainPack, world: int, start: int, end: int):
-        self.route, self.pack, self.world = route, pack, world
+    def __init__(self, route: Route, pack: TerrainPack, start: int, end: int):
+        self.route, self.pack = route, pack
         self.start, self.end = start, end
         self.timeline = route.timeline(start, end)
 
     def ground(self, east: float, north: float) -> float:
-        return self.pack.height_at(self.world, *self.pack.unshared(self.world, east, north))
+        return self.pack.ground_shared(east, north)
 
     def place(self, map_id, x, y):
         pos = self.pack.world_pos(map_id, x, y) if map_id is not None and x is not None else None
-        if pos is None or pos[0] != self.world:
+        if pos is None or pos[0] not in self.pack.continents:
             return None
         return self.pack.shared(*pos)
 
@@ -73,7 +72,7 @@ class Journey:
 
         def close():
             if len(run) > 1:
-                s = drape(run, self.ground)
+                s = drape(run, self.pack.surface_shared)
                 if prev_taxi:
                     s[:, 3] += TAXI_LIFT
                 out.append(s)
@@ -109,7 +108,7 @@ class Journey:
         here = self.place(p.map_id, p.x, p.y) if p else None
         if here is None:
             return None
-        z = max(self.ground(*here), SEA_LEVEL) + LIFT + (TAXI_LIFT if p.taxi else 0.0)
+        z = self.pack.surface_shared(*here) + LIFT + (TAXI_LIFT if p.taxi else 0.0)
         return np.array([here[0], here[1], z])
 
 
@@ -117,7 +116,8 @@ class Stage(QOpenGLWidget):
     def __init__(self, journey: Journey, color: QColor, at: float, speed: int, parent=None):
         super().__init__(parent)
         self.journey = journey
-        self.terrain = TerrainRenderer(journey.pack, journey.world)
+        self.terrain = TerrainRenderer(journey.pack)
+        self.look = Look()
         self.trail = Trail(color)
         self.camera = DroneCamera()
         self.value = journey.timeline.total * at
@@ -170,14 +170,15 @@ class Stage(QOpenGLWidget):
         ratio = self.devicePixelRatioF()
         w, h = int(self.width() * ratio), int(self.height() * ratio)
         f.glViewport(0, 0, w, h)
-        f.glClearColor(*HORIZON, 1.0)
+        f.glClearColor(*self.look.horizon, 1.0)
         f.glClear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
         if self.camera.target is None:
             return
         vp, inv_vp, eye = self.camera.matrices(w / max(1, h))
-        haze = 1.0 / (self.camera.distance * 10 + 4000)
-        self.terrain.draw_sky(inv_vp, HORIZON, ZENITH, self.grey)
-        self.terrain.draw(vp, eye, SUN, HORIZON, haze, self.grey, WATER)
+        self.look.haze = 1.0 / (self.camera.distance * 10 + 4000)
+        self.look.grey = self.grey
+        self.terrain.draw_sky(inv_vp, self.look)
+        self.terrain.draw(vp, eye, self.look, time.perf_counter())
         pulse = (time.perf_counter() * 0.8) % 1.0
         self.trail.draw(vp, self.t - self.journey.start, self.camera.distance, marker, (w, h), self.grey, pulse)
 
@@ -280,7 +281,6 @@ def main() -> None:
     ap.add_argument("--db", type=Path, default=AppConfig.load().database_path)
     ap.add_argument("--character", default="Blind")
     ap.add_argument("--session")
-    ap.add_argument("--world", type=int, default=1, help="1 Kalimdor, 0 Eastern Kingdoms")
     ap.add_argument("--at", type=float, default=0.0, help="start this share into the session")
     ap.add_argument("--speed", type=int, default=30)
     ap.add_argument("--distance", type=float, default=260.0)
@@ -298,14 +298,12 @@ def main() -> None:
     app = QApplication(sys.argv)
 
     pack = TerrainPack()
-    if args.world not in pack.continents:
-        raise SystemExit(f"world {args.world} is not baked (tools/build_terrain.py)")
     repo = Repository(Database(args.db).conn)
     char = next((c for c in repo.list_characters() if c.name == args.character), None)
     if char is None:
         raise SystemExit(f"no character {args.character}")
     route = Route.load(repo, char.character_id)
-    journey_of = lambda a, b: Journey(route, pack, args.world, a, b)  # noqa: E731
+    journey_of = lambda a, b: Journey(route, pack, a, b)  # noqa: E731
     if args.session:
         s = next(s for s in repo.sessions(char.character_id) if s["session_id"] == args.session)
         start, end = s["started_at"], s["ended_at"]

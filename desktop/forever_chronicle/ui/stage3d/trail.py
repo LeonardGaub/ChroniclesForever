@@ -19,8 +19,7 @@ from . import gl
 from .terrain import texture
 
 DRAPE_STEP = 6.0     # yards between draped points along the route
-LIFT = 1.5           # yards above the ground
-SEA_LEVEL = 0.0      # over water the route lies on the surface (swimming, boats, zeppelins)
+LIFT = 1.5           # yards above the ground (or the water: swimming, boats, zeppelins)
 
 RIBBON_VS = """
 in vec3 a_pos;
@@ -113,20 +112,19 @@ void main() {
 """
 
 
-def drape(points: list[tuple[float, float, float]], ground, step: float = DRAPE_STEP):
-    """(t, east, north) points of one connected stretch, filled in every `step` yards and set on the ground (or the
-    sea, where the ground is under it): (t, east, north, z) rows."""
-    surface = lambda e, n: max(ground(e, n), SEA_LEVEL) + LIFT  # noqa: E731
+def drape(points: list[tuple[float, float, float]], surface, step: float = DRAPE_STEP):
+    """(t, east, north) points of one connected stretch, filled in every `step` yards and set on what the player
+    stands or swims on (surface: (east, north) -> height): (t, east, north, z) rows."""
     rows = []
     for (t0, e0, n0), (t1, e1, n1) in zip(points, points[1:]):
         n = max(1, int(math.hypot(e1 - e0, n1 - n0) / step))
         for i in range(n):
             f = i / n
             e, nn = e0 + (e1 - e0) * f, n0 + (n1 - n0) * f
-            rows.append((t0 + (t1 - t0) * f, e, nn, surface(e, nn)))
+            rows.append((t0 + (t1 - t0) * f, e, nn, surface(e, nn) + LIFT))
     if points:
         t, e, n = points[-1]
-        rows.append((t, e, n, surface(e, n)))
+        rows.append((t, e, n, surface(e, n) + LIFT))
     return np.array(rows, np.float64)
 
 
