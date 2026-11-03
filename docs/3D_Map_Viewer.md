@@ -1,6 +1,8 @@
 # 3D map for the cinematic mode (plan)
 
-Status: planned on 2026-11-03, branch `investigate/3d-map-viewer`. Nothing is built yet.
+Status (2026-11-03): phases 0-4 built on branch `investigate/3d-map-viewer`. The option "3D-Karte" (Einstellungen,
+off by default) shows the cinematic over the real terrain. It isn't merged into main yet and not yet reviewed by the
+user in the app. See "As built" for where the build differs from the plan.
 
 The cinematic mode gets a second stage under the same replay: the real terrain of Kalimdor and the Eastern
 Kingdoms in 3D, filmed by a drone camera that follows the player. Everything else in the cinematic stays as it
@@ -106,6 +108,38 @@ thread, and the GL upload happens on the GUI thread, a few tiles per frame.
 
 **Export.** `cinematic_export` records the window with `QWidget.render()`. Phase 0 checks that this captures the
 `QOpenGLWidget` correctly; otherwise the stage renders into a framebuffer object and the recorder reads it back.
+
+## As built (2026-11-03)
+
+- **No Stage protocol, a mirror instead.** Phase 2 planned to move the 2,000-line cinematic behind a `Stage`
+  interface. Instead the 3D stage (`ui/stage3d/stage.py`) mirrors the 2D scene. `CinematicWindow` keeps
+  running everything in its QGraphicsScene and calls `stage3d.step(dt)` each step. The stage reads the view's centre
+  and scale, the marker, `route_item.segs`, the pins and the companions, and converts scene points with
+  `TerrainPack.map_to_shared`, which is exact through the game's own world map rows and carried on between the
+  continents. The 2D view stops painting meanwhile. The 2D replay is unchanged, and new cinematic behaviour shows up
+  in 3D without a second implementation.
+- **The 2D items are painted, not rebuilt.** The marker, pins, bursts, companions and a trip's line are the 2D
+  items' own paint code, at screen size, where the 3D picture shows their places. Pins get a pole down to the
+  ground (`PinsItem.paint_at`), and the marker's arrow turns with the drone's view. They are painted on a
+  transparent widget over the GL widget (`ItemsLayer`), because `QWidget.render` (the video export) leaves out
+  QPainter output from inside `paintGL`.
+- **Camera.** The drone shows `drone_share` of what the 2D picture shows: about a third close up, up to all of it
+  far out (opening, credits, trips across the world). It keeps the 2D camera's offset from the marker at the same
+  share, so the marker stays in view. The yaw swings behind the direction of travel and turns north-up far out.
+- **Flights** fly 45 yd over the highest ground within 300 yd of their course, smoothed. Taxi path nodes weren't
+  needed.
+- **Water** is the game's liquids per tile (MH2O). The open sea is drawn only off the tiles; the minimap's black open
+  sea gets the sea floor's colour, and round Zephras Isle it is void over a sea of clouds.
+- **Fallback:** without the pack, without OpenGL 3.3, or if GL fails to start, the replay stays or goes back to 2D.
+
+Not done or not checked yet:
+- The user hasn't seen it in the app; not tried on a weaker laptop.
+- Occlusion: the 2D items are always on top. A pin behind a hill still shows; the marker always showing is
+  intended.
+- Tile seams: normals are per tile, and near and far meshes meet with small T-junctions. Faint lines can show at tile
+  edges.
+- Caves, bridges, buildings: no heights of their own until the WMO phase. The X-ray pass shows the hidden route,
+  but the marker stays on the ground over Undercity and Ironforge (the floor heights from the plan aren't built).
 
 ## Phase 0 results (spike, 2026-11-03)
 

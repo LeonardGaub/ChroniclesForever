@@ -29,6 +29,10 @@ were written at the time (older entries may describe things that changed later).
   sichern" (F5); "Aus der Cloud wiederherstellen …" brings copies back, and a banner says when my other PC has
   newer addon data. Every other player folder in the cloud is a friend, shown in the desktop app only. Cloud folder
   and name are set on the Import page (taken over from the old sync on first start).
+- 3D map in the cinematic mode (2026-11-03, branch `investigate/3d-map-viewer`, docs/3D_Map_Viewer.md): option
+  "3D-Karte" under Einstellungen, off by default. The real terrain from the game (pack in
+  `desktop/forever_chronicle/terrain/`, 88 MB, `tools/build_terrain.py`) under the replay, filmed by a drone
+  camera; everything else in the cinematic stays. Not merged into main yet.
 - Tests: `tests/addon` (`npm test`: queue tests and phases 1-15, writes the fixtures) first, then `desktop`
   (`pytest`). All pass.
 
@@ -76,6 +80,12 @@ were written at the time (older entries may describe things that changed later).
    the gear-worn record, which needs an event per gear change. Also new: the in-game map draws the route as curves
    from zoom 1.5 on (`Route.CurvePoint`, `UI/MapCanvas.lua`); check in game that zooming stays smooth on a long
    route and that the replay marker sits on the curve. The desktop app still draws straight lines.
+9. 3D map (2026-11-03, branch `investigate/3d-map-viewer`): try it (Einstellungen → "3D-Karte", then a Kino chapter),
+   on this PC and on a weaker laptop; then decide whether to merge it into main (friends get the 88 MB terrain pack
+   with their next `git pull`). Known limits of v1 (terrain only): buildings, bridges and caves have no height of
+   their own (the marker stays on the ground under them), cities are the minimap pictures on the ground. Later
+   phases in docs/3D_Map_Viewer.md: real ground textures, buildings (WMO), trees and props (M2). Rerun
+   `tools/build_terrain.py` after client patches that change terrain.
 ## Confirmed client facts
 - Install: `C:\Program Files (x86)\World of Warcraft\_forever_\` (`Wow.exe`, flavor `wowf`, client 1.60.1). The beta
   (`_classic_beta_\`, `WowB.exe`, TOC Interface 16001) was uninstalled on 2026-10-27.

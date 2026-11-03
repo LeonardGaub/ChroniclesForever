@@ -4,6 +4,25 @@ The session notes that used to be the "History" section of `NEXT_STEPS.md`, newe
 at the time: older entries may describe things that changed or were removed later. The current state is in
 `NEXT_STEPS.md`.
 
+### 3D map for the cinematic mode (2026-11-03)
+- Planned with the user (14 decisions, docs/3D_Map_Viewer.md) and built on branch `investigate/3d-map-viewer`
+  (worktree `WowAddon-3d`): a 3D mode of the cinematic (option "cine_3d", off by default), terrain only for now.
+- Data: `tools/build_terrain.py` reads the WDT/ADT files from CASC (Map.db2 for the WDTs): 129 x 129 heights and
+  the 512 px minimap per tile, the MH2O liquids (vertex format from the block size; kind from LiquidType's
+  SoundBank, field 3), overviews for the far view. Kalimdor 988 tiles, Eastern Kingdoms 736, Zephras Isle 72:
+  88 MB. The z of `UnitPosition` is always 0, so every height comes from the terrain.
+- Coordinates: map position → world yards through UiMapAssignment (matches the probe's `GetWorldPosFromMapPos`
+  to 0.05 yd); both continents in one shared world at the world map's layout (their scales differ by 0.4 %).
+- Spike first (`tools/terrain_spike.py`), then the cinematic. Instead of moving the cinematic behind a stage
+  interface (the plan's phase 2), the 3D stage mirrors the 2D scene each step: no change to the 2D replay.
+- Found on the way: PySide6 needs `VoidPtr(0)` for `glDrawElements` and uniforms by location; blending must keep
+  the framebuffer's alpha at 1 (Qt composites it premultiplied); a sea plane at z = 0 floods inland ground below
+  sea level (Orgrimmar), so the sea comes from the liquids on the tiles; QPainter inside `paintGL` is left out of
+  `QWidget.render` (the export), so the 2D items are painted on a widget above the GL one; the minimap paints the
+  open sea black (and the void round Zephras Isle).
+- Measured on the user's PC: vsync-bound (about 68 fps), tile streaming at most 2-3 ms a frame, a whole journey
+  opens in about 1 s, a 15-minute range exports at 720p in 25 s.
+
 ### Kino tab replaces the desktop map page (2026-11-02)
 - User decision: the desktop map page lacked screenshot pins and the replay's moments, and the cinematic mode is
   always better; the addon's map is the place to browse the route. `ui/pages/map_page.py` is gone, with its
