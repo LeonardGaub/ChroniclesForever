@@ -403,6 +403,7 @@ def main() -> None:
     for name in args.continents.split(","):
         bake_buildings(storage, name, CONTINENTS[name], wdts[CONTINENTS[name]], args.out, meshes)
         continents[name]["buildings"] = True
+        continents[name]["wdt"] = wdts[CONTINENTS[name]]
     write_if_changed(index_path, json.dumps(index, separators=(",", ":")).encode("utf-8"))
     for name in args.continents.split(","):
         continents[name]["floors"] = bake_floors(CONTINENTS[name], name, args.out)

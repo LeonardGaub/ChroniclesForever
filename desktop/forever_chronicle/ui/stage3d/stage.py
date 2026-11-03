@@ -34,6 +34,7 @@ from .camera import FOV, DroneCamera
 from .director import CameraDirector
 from .sky import look_for
 from .buildings import BuildingRenderer
+from .ground import GroundSplat
 from .textures import GameTextures
 from .terrain import TerrainRenderer
 from .trail import GHOST, LIFT, TAXI, WALK, Trail, drape, flight_heights
@@ -109,6 +110,7 @@ class CinemaStage3D(QOpenGLWidget):
         self.terrain = TerrainRenderer(self.pack)
         self.textures = GameTextures(lambda: _game_files(window))
         self.buildings = BuildingRenderer(self.pack, self.terrain, self.textures)
+        self.terrain.splat = GroundSplat(self.textures)
         self.trail = Trail(QColor(window.char_color))
         self.camera = DroneCamera()
         self.director = CameraDirector()

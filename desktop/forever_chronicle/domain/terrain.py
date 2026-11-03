@@ -46,6 +46,7 @@ class Continent:
     wet: frozenset = frozenset()                       # tiles with liquids
     floors: frozenset = frozenset()                    # tiles under buildings (their floors)
     roofs: frozenset = frozenset()                     # the same tiles (their roofs)
+    wdt: int | None = None                             # the world's WDT in the game files (its tiles' tex0 files)
 
 
 def tile_of(wx: float, wy: float) -> tuple[int, int, float, float]:
@@ -167,7 +168,7 @@ class TerrainPack:
             floors = frozenset(tuple(f) for f in c.get("floors", ()))
             roofs = frozenset(tuple(f) for f in c.get("roofs", ()))
             self.continents[c["map_id"]] = Continent(name, c["map_id"], tuple(c["offset"]), tiles, wet, floors,
-                                                     roofs)
+                                                     roofs, c.get("wdt"))
         self._heights = lru_cache(maxsize=96)(self._load_heights)
         self._liquids = lru_cache(maxsize=96)(self._load_liquids)
         self._floors = lru_cache(maxsize=96)(self._load_floors)

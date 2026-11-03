@@ -116,6 +116,23 @@ def decode_blp(data: bytes, max_px: int = MAX_PX) -> np.ndarray | None:
     return None
 
 
+def decode_mips(data: bytes, size: int) -> list[np.ndarray] | None:
+    """A square BLP2 texture's mip levels from size x size down to 1 x 1 (as the file stores them, the smallest
+    made by halving), or None when it is not size-able that way."""
+    first = decode_blp(data, size)
+    if first is None or first.shape[0] != size or first.shape[1] != size:
+        return None
+    levels, w = [first], size
+    while w > 1:
+        w //= 2
+        level = decode_blp(data, w)
+        if level is None or level.shape[:2] != (w, w):
+            prev = levels[-1].astype(np.uint16)
+            level = ((prev[0::2, 0::2] + prev[1::2, 0::2] + prev[0::2, 1::2] + prev[1::2, 1::2]) // 4).astype(np.uint8)
+        levels.append(np.ascontiguousarray(level))
+    return levels
+
+
 def decode(storage, fdid: int) -> QImage | None:
     """A texture file as an RGBA picture at most MAX_PX wide, None when it cannot be read."""
     try:

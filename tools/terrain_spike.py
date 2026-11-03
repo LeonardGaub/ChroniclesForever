@@ -39,6 +39,7 @@ from forever_chronicle.storage.repository import Repository  # noqa: E402
 from forever_chronicle.ui.stage3d import gl  # noqa: E402
 from forever_chronicle.ui.stage3d.buildings import BuildingRenderer  # noqa: E402
 from forever_chronicle.ui.stage3d.camera import DroneCamera  # noqa: E402
+from forever_chronicle.ui.stage3d.ground import GroundSplat  # noqa: E402
 from forever_chronicle.ui.stage3d.textures import GameTextures  # noqa: E402
 from forever_chronicle.ui.stage3d.terrain import TerrainRenderer  # noqa: E402
 from forever_chronicle.ui.stage3d.look import Look  # noqa: E402
@@ -47,6 +48,7 @@ from forever_chronicle.ui.theme import class_color  # noqa: E402
 
 SPEEDS = {Qt.Key.Key_1: 10, Qt.Key.Key_2: 30, Qt.Key.Key_3: 60, Qt.Key.Key_4: 120}   # game seconds per second
 TAXI_LIFT = 45.0
+PLAIN = False                    # --plain: the minimap pictures only
 
 
 def open_game_files():
@@ -128,6 +130,7 @@ class Stage(QOpenGLWidget):
         self.terrain = TerrainRenderer(journey.pack)
         self.textures = GameTextures(open_game_files)
         self.buildings = BuildingRenderer(journey.pack, self.terrain, self.textures)
+        self.terrain.splat = None if PLAIN else GroundSplat(self.textures)
         self.look = Look()
         self.trail = Trail(color, sprite=True)
         self.camera = DroneCamera()
@@ -238,7 +241,9 @@ class SpikeWindow(QWidget):
         self.hud.setText(
             f"{datetime.fromtimestamp(s.t):%d.%m. %H:%M:%S}  ·  {zone}{'  ·  Flugroute' if p and p.taxi else ''}\n"
             f"{self._fps:.0f} fps  ·  {len(s.terrain.near)} tiles near, {len(s.terrain.loading)} loading  ·  "
-            f"{s.speed}× ·  {s.buildings.drawn} buildings  ·  camera {s.camera.distance:.0f} yd{'  ·  paused' if s.paused else ''}\n"
+            f"{s.speed}× ·  {s.buildings.drawn} buildings  ·  "
+            f"{len(s.terrain.splat.tiles) if s.terrain.splat else 0} splats, "
+            f"{len(s.terrain.splat.ready) if s.terrain.splat else 0} ground textures  ·  camera {s.camera.distance:.0f} yd{'  ·  paused' if s.paused else ''}\n"
             "Space pause · 1-4 speed · wheel distance · ←/→ 5 min · G spirit world · P picture · Esc")
         self.hud.adjustSize()
 
@@ -315,9 +320,12 @@ def main() -> None:
     ap.add_argument("--distance", type=float, default=260.0)
     ap.add_argument("--snap", type=Path)
     ap.add_argument("--after", type=float, default=4.0)
+    ap.add_argument("--plain", action="store_true", help="without the game's ground textures")
     ap.add_argument("--look", help="hold the view over MAP,X,Y[,HEADING] (uiMapID, map position, heading in degrees: "
                                    "0 east, 90 north)")
     args = ap.parse_args()
+    global PLAIN
+    PLAIN = args.plain
 
     fmt = QSurfaceFormat()
     fmt.setVersion(3, 3)

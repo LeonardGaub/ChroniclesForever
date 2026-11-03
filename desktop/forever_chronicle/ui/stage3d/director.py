@@ -60,8 +60,8 @@ class CameraDirector:
         self.covered = False
 
     def neutral(self, w) -> bool:
-        return (w.intro is not None or w.voyage is not None or w.sky_trip is not None or w.credits is not None
-                or w.ended)
+        # (the end title without credits stays directed: the city's height, the slow orbit under the title)
+        return w.intro is not None or w.voyage is not None or w.sky_trip is not None or w.credits is not None
 
     def direct(self, dt: float, w, camera, pack, marker, distance: float) -> float:
         """Sets the camera's extra pitch, swing and swing lag for the cinematic's state now; returns the distance

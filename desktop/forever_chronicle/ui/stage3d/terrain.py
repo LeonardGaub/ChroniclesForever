@@ -31,6 +31,8 @@ WIDE_RADIUS = 3           # ... 7 x 7 when the camera is higher (it sees more), 
 WIDE_FROM, HIGH_FROM = 450.0, 4000.0   # ... and only 3 x 3 from HIGH_FROM on (the far meshes are enough there)
 UPLOADS_PER_FRAME = 2
 NEAR_UNIT = 4             # texture unit of the near tiles' mask
+SPLAT_UNITS = (7, 8, 9)   # the ground's own textures: alpha picture, slot index, texture array
+SPLAT_REACH = (220.0, 700.0)   # yards: their full detail up to, the minimap alone from
 SKIRT = 30.0              # yards a full tile's edge hangs down
 ATLAS_TILES, ATLAS_PX = 9, 192   # the atlas of the minimap pictures round the camera (buildings take their colours
 ATLAS_EVERY = 0.4         # from it): tiles across, pixels a tile; made again at most this often (seconds)
@@ -108,10 +110,44 @@ uniform float u_light;
 uniform vec3 u_ambient;
 uniform vec3 u_deep;
 uniform int u_void;
+uniform int u_splat;                     // 1: the tile's own ground textures (ground.py) are bound
+uniform sampler2DArray u_layers;
+uniform sampler2D u_alpha;
+uniform sampler2D u_index;
+uniform vec2 u_splat_reach;              // full detail up to x yards, the minimap alone from y on
+const float REPEAT = 8.0;                // a ground texture repeats this often across a chunk
+vec4 layer(float slot, vec2 d, float w) {
+    if (w <= 0.001 || slot > 254.5) return vec4(0.0);
+    return vec4(texture(u_layers, vec3(d, slot)).rgb, 1.0) * w;
+}
+vec4 layer_mean(float slot, float w) {
+    if (w <= 0.001 || slot > 254.5) return vec4(0.0);
+    return vec4(textureLod(u_layers, vec3(0.5, 0.5, slot), 12.0).rgb, 1.0) * w;
+}
 out vec4 o_color;
 void main() {
     if (under_near(v_pos)) discard;
     vec3 color = texture(u_tex, v_uv).rgb;
+    if (u_splat == 1) {
+        // The game's ground textures as detail on the minimap's colour: blended as the game blends the chunk's
+        // layers, divided by their own average, so the minimap's tint and shading stay and the textures add their
+        // grain; fading out with distance.
+        float near = 1.0 - smoothstep(u_splat_reach.x, u_splat_reach.y, length(v_pos - u_eye));
+        if (near > 0.0) {
+            vec2 t = clamp(v_uv, 0.0, 0.99999);
+            vec4 slots = texelFetch(u_index, ivec2(floor(t * 16.0)), 0) * 255.0;
+            vec3 a = texture(u_alpha, t).rgb;
+            float w0 = max(0.0, 1.0 - (a.r + a.g + a.b));
+            vec2 d = t * 16.0 * REPEAT;
+            vec4 sum = layer(slots.x, d, w0) + layer(slots.y, d, a.r) + layer(slots.z, d, a.g) + layer(slots.w, d, a.b);
+            vec4 mean = layer_mean(slots.x, w0) + layer_mean(slots.y, a.r) + layer_mean(slots.z, a.g)
+                      + layer_mean(slots.w, a.b);
+            if (sum.a > 0.05 && mean.a > 0.05) {
+                vec3 detail = clamp((sum.rgb / sum.a) / max(mean.rgb / mean.a, vec3(0.04)), 0.35, 2.2);
+                color = mix(color, color * detail, near * min(1.0, sum.a));
+            }
+        }
+    }
     if (dot(color, vec3(1.0)) < 0.09) {                    // the minimap's black open sea, or no tile here;
         if (u_void == 1) discard;                          // round an island in the sky: nothing (the clouds)
         color = u_deep;
@@ -438,6 +474,7 @@ class TerrainRenderer:
         self.layers = [_Layer(pack, w) for w in (worlds if worlds is not None else list(pack.continents))]
         self.pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="terrain")
         self.uploaded = 0             # tiles uploaded so far (statistics)
+        self.splat = None             # the ground's own textures (ground.GroundSplat), set by the stage
         self.active: _Layer | None = None
 
     @property
@@ -456,6 +493,8 @@ class TerrainRenderer:
         self.sea_prog = gl.program(SEA_VS, SEA_FS)
         self.sky_prog = gl.program(SKY_VS, SKY_FS)
         self.tile_indices = gl.IndexOnly(skirt_indices(129, 129))
+        if self.splat is not None:
+            self.splat.initialize()
         for layer in self.layers:
             layer.initialize(self.ground, self.liquid)
         r = 400000.0
@@ -485,6 +524,10 @@ class TerrainRenderer:
         layer = self.layer_at(east, north) or self.active
         if layer is not self.active and self.active is not None:
             self.active.destroy()
+            if self.splat is not None:
+                for key in [k for k in self.splat.tiles if k[0] == self.active.world] + \
+                           [k for k in self.splat.loading if k[0] == self.active.world]:
+                    self.splat.drop(key)
             for f in self.active.loading.values():
                 f.cancel()
             self.active.loading.clear()
@@ -510,10 +553,14 @@ class TerrainRenderer:
             mesh = gl.Mesh(self.ground, verts, {"a_h": 1, "a_n": 3, "a_cr": 2}, shared_indices=self.tile_indices)
             wmesh = None if water is None else gl.Mesh(self.liquid, water[0], {"a_h": 1, "a_kind": 1}, indices=water[1])
             layer.near[key] = _Tile(key, mesh, texture(image), layer.origin(key), wmesh, small)
+            if self.splat is not None:
+                self.splat.want((layer.world, *key), layer.world, self.pack.continents[layer.world].wdt)
             uploads += 1
             self.uploaded += 1
         for key in [k for k in layer.near if max(abs(k[0] - cx), abs(k[1] - cy)) > radius + 1]:
             layer.near.pop(key).destroy()
+            if self.splat is not None:
+                self.splat.drop((layer.world, *key))
         self.centre = (cx, cy)
 
     # -- drawing --------------------------------------------------------------------------------------------
@@ -598,10 +645,23 @@ class TerrainRenderer:
             gl.uniform(p, "u_step", float(TILE_YARDS / 128))
             gl.uniform(p, "u_cols", 129)
             gl.uniform(p, "u_uv_scale", 1 / 128, 1 / 128)
+            splat = self.splat
+            if splat is not None and splat.array is not None:
+                splat.pump()
+                splat.array.bind(SPLAT_UNITS[2])
+                gl.uniform(p, "u_layers", SPLAT_UNITS[2])
+                gl.uniform(p, "u_alpha", SPLAT_UNITS[0])
+                gl.uniform(p, "u_index", SPLAT_UNITS[1])
+                gl.uniform(p, "u_splat_reach", *SPLAT_REACH)
             for tile in self.active.near.values():
                 gl.uniform(p, "u_origin", *tile.origin)
                 tile.tex.bind(0)
+                if splat is not None:
+                    splat.want((self.active.world, *tile.key), self.active.world, self.active.continent.wdt)
+                on = splat is not None and splat.bind((self.active.world, *tile.key), *SPLAT_UNITS[:2])
+                gl.uniform(p, "u_splat", int(on))
                 tile.mesh.draw()
+            gl.uniform(p, "u_splat", 0)
         for layer in self.layers:
             self._common(p, eye, look, layer, far=True)
             gl.uniform(p, "u_origin", *layer.far_origin)
@@ -674,5 +734,7 @@ class TerrainRenderer:
 
     def shutdown(self) -> None:
         self.pool.shutdown(wait=False, cancel_futures=True)
+        if self.splat is not None:
+            self.splat.shutdown()
         for layer in self.layers:
             layer.destroy()
