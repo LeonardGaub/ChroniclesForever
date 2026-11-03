@@ -30,7 +30,8 @@ KEEP_RADIUS = 3           # loaded tiles further away are dropped
 UPLOADS_PER_FRAME = 2
 MAX_NEAR = 49
 SEA_FLOOR = -40.0         # far mesh height where the world has no tile
-CLOUDS_BELOW = 260.0      # the sea of clouds lies this far under an island in the sky
+CLOUDS_BELOW = 600.0      # the sea of clouds lies this far under an island in the sky's usual ground (its rocky
+                          # underside reaches down into it)
 SKY_ZONE = 12000.0        # round an island in the sky there is no sea, only clouds
 SEA, FLOOR, CLOUDS = 0, 1, 2
 
@@ -99,11 +100,15 @@ uniform vec3 u_sun;
 uniform float u_light;
 uniform vec3 u_ambient;
 uniform vec3 u_deep;
+uniform int u_void;
 out vec4 o_color;
 void main() {
     if (under_near(v_pos)) discard;
     vec3 color = texture(u_tex, v_uv).rgb;
-    if (dot(color, vec3(1.0)) < 0.09) color = u_deep;     // the minimap's black open sea, or no tile here
+    if (dot(color, vec3(1.0)) < 0.09) {                    // the minimap's black open sea, or no tile here;
+        if (u_void == 1) discard;                          // round an island in the sky: nothing (the clouds)
+        color = u_deep;
+    }
     float diffuse = max(dot(normalize(v_n), u_sun), 0.0);
     color *= u_ambient + u_light * 0.55 * diffuse;
     o_color = vec4(finish(color, v_pos), 1.0);
@@ -327,11 +332,15 @@ class _Layer:
                 here = target[r:r + 17, c:c + 17]
                 target[r:r + 17, c:c + 17] = np.where(np.isnan(here), block, here)
             kinds[r:r + 16, c:c + 16] = w_kinds[ty, tx]
-        grid = np.where(np.isnan(grid), SEA_FLOOR, grid)
+        missing = np.isnan(grid)
+        grid = np.where(missing, SEA_FLOOR, grid)
         self.cols = grid.shape[1]
         self.step = TILE_YARDS / 16
-        self.far = gl.Mesh(ground, vertices(grid, self.step), {"a_h": 1, "a_n": 3},
-                           indices=gl.grid_indices(*grid.shape))
+        indices = gl.grid_indices(*grid.shape)
+        if self.sky_island:             # it floats: no ground where it has no tiles
+            hole = missing.ravel()
+            indices = indices.reshape(-1, 3)[~hole[indices.reshape(-1, 3)].any(axis=1)].ravel()
+        self.far = gl.Mesh(ground, vertices(grid, self.step), {"a_h": 1, "a_n": 3}, indices=indices)
         liquids = liquid_mesh(water, kinds)
         self.far_water = None if liquids is None else gl.Mesh(liquid, liquids[0], {"a_h": 1, "a_kind": 1},
                                                               indices=liquids[1])
@@ -347,7 +356,8 @@ class _Layer:
         e0, n0 = tile_origin(self.tx0, self.ty0)
         self.far_origin = (e0 + self.continent.offset[0], n0 + self.continent.offset[1])
         if self.sky_island:
-            low = min(lo for lo, _ in self.continent.tiles.values())
+            lows = sorted(lo for lo, _ in self.continent.tiles.values())
+            low = lows[len(lows) // 2]
             e1, n1 = tile_origin(max(txs) + 1, max(tys) + 1)
             self.centre = ((self.far_origin[0] + e1 + self.continent.offset[0]) / 2,
                            (self.far_origin[1] + n1 + self.continent.offset[1]) / 2)
@@ -463,6 +473,7 @@ class TerrainRenderer:
             gl.uniform(prog, f"u_near[{i}]", tx, ty)
         if layer is not None:
             gl.uniform(prog, "u_offset", *[float(v) for v in layer.continent.offset])
+        gl.uniform(prog, "u_void", int(layer is not None and layer.sky_island))
 
     def draw_sky(self, inv_vp, look: Look) -> None:
         f = gl.functions()

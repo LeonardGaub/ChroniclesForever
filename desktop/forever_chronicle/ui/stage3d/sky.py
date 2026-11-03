@@ -43,8 +43,8 @@ def look_for(hour: float | None, light: tuple[float, float, float], grey: float,
     horizon = (DAY_HORIZON * (1 - warm) + WARM_HORIZON * warm) * (1 - night) + NIGHT_HORIZON * night
     zenith = DAY_ZENITH * (1 - night) + NIGHT_ZENITH * night
     sun_color = MOON if not day else SUN_DAY * (1 - low) + SUN_LOW * low
-    sunlight = (1 - night) * (0.55 + 0.45 * (1 - low)) if day else 0.25 * night
-    ambient = rgb * (0.62 - 0.18 * night)
+    sunlight = (1 - night) * (0.55 + 0.45 * (1 - low)) if day else 0.35 * night
+    ambient = rgb * (0.62 - 0.04 * night)      # as light as the 2D night's tint: readable, cold and blue
     return Look(horizon=tuple(horizon), zenith=tuple(zenith), sun=sun, sun_color=tuple(sun_color),
                 light=max(0.2, sunlight), ambient=tuple(ambient), stars=night, haze=1.0 / (distance * 10 + 4000),
                 grey=grey, water=tuple(WATER * (0.45 + 0.55 * (1 - night))))
