@@ -1,6 +1,6 @@
 # 3D map for the cinematic mode (plan)
 
-Status (2026-11-03): phases 0-4 built on branch `investigate/3d-map-viewer`. The option "3D-Karte" (Einstellungen,
+Status (2026-11-03): phases 0-4 and the buildings phase built on branch `investigate/3d-map-viewer`. The option "3D-Karte" (Einstellungen,
 off by default) shows the cinematic over the real terrain. It isn't merged into main yet and not yet reviewed by the
 user in the app. See "As built" for where the build differs from the plan.
 
@@ -132,14 +132,34 @@ thread, and the GL upload happens on the GUI thread, a few tiles per frame.
   sea gets the sea floor's colour, and round Zephras Isle it is void over a sea of clouds.
 - **Fallback:** without the pack, without OpenGL 3.3, or if GL fails to start, the replay stays or goes back to 2D.
 
+- **Buildings (WMO), the user's next request the same day.** `tools/wmo.py` reads the placements (obj0 MODF). The
+  transform was fitted to the stored boxes of 1,524 placements (0.65 yd mean error): placement x = model y,
+  placement z = model x, model z up; rotations Y, X, Z. It also reads the meshes. The big buildings use their LOD 1
+  groups plus those of their interior groups that reach above the ground: classic Orgrimmar is all "interior" and
+  has no LOD for those groups, while Undercity, caves and mines stay out. The others use their exterior groups
+  (all groups when they have none). Only opaque batches are kept, and vertices are merged once their texture
+  coordinates are dropped. 3,750 buildings and 821 meshes come to 37 MB (pack 126 MB).
+- **Their look.** 2,595 of 3,572 building textures are not in the local CASC (fetched while playing), so buildings
+  take their colours from the minimap pictures under them (`buildings.py`, via an atlas of the near tiles,
+  `TerrainRenderer.atlas`), with the game's baked vertex shade, darker walls and the sun. Real textures would need
+  the files on every PC.
+- **Floors.** `f_<tx>_<ty>.bin` holds the lowest upward building surface that is not below the ground. What the
+  player stands on (`surface_at`, `surface_many`) is that floor where there is one: the route, marker and pins run
+  on Orgrimmar's floors (98% of Blind's points, a median 16 yd over the terrain), bridges and decks. Without a
+  height in the record this is a guess: under a bridge or a canopy the route goes up onto it.
+- **The camera over hills.** The looked-at height follows the ground slowly, and the clearance is judged over a
+  patch round the camera, rising fast and sinking slowly. Blind's hilly session: the largest step per frame fell
+  from 8.7% to 2.3% of the camera distance, and what is left is the cinematic's own zooms.
+
 Not done or not checked yet:
 - The user hasn't seen it in the app; not tried on a weaker laptop.
 - Occlusion: the 2D items are always on top. A pin behind a hill still shows; the marker always showing is
   intended.
 - Tile seams: near tiles hang a 30 yd skirt from their edges, so the gaps where they meet the coarser far mesh are
   covered. Normals are still per tile, so lighting can change slightly at a tile edge.
-- Caves, bridges, buildings: no heights of their own until the WMO phase. The X-ray pass shows the hidden route,
-  but the marker stays on the ground over Undercity and Ironforge (the floor heights from the plan aren't built).
+- Caves and underground cities (Undercity, Ironforge's halls) are left out; there the marker stays on the
+  surface above, and the X-ray pass shows the hidden route.
+- No trees or props (M2), and no building textures (see above).
 
 ## Phase 0 results (spike, 2026-11-03)
 
