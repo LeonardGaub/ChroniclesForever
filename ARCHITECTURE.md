@@ -55,7 +55,7 @@ character carry the character's natural key, not the local UUID. `Database.backu
 | Layer | Files | Role |
 |---|---|---|
 | Core | `Core/*.lua` | namespace, module registry, event dispatch, storage, diagnostics, registries, view (which character is shown), route rules, `/fj` |
-| Modules | `Modules/*.lua` | one file per feature: Character, Session, Travel (zones, hearthstone), Positions, Progress (also how a death ended), Rares, Pastimes (jumps, fish), Dungeons, Mounts, Professions, Gear, Group (who the player played with), Loot (notable items), Metrics, Screenshots (+ the pure ScreenshotQueue), Moments (the player's own) |
+| Modules | `Modules/*.lua` | one file per feature: Character, Session, Travel (zones, hearthstone), Positions, Progress (also how a death ended, the level-up snapshot), Kills (each kill's XP and enemy name), Rares, Pastimes (jumps, fish), Dungeons, Mounts, Professions, Gear, Group (who the player played with), Loot (notable items), Metrics, Screenshots (+ the pure ScreenshotQueue), Moments (the player's own) |
 | UI | `UI/*.lua` | Blizzard templates (ButtonFrameTemplate) with icon tabs on the right edge; shared widgets in `UI/Widgets.lua`; one file per page in `UI/Pages/` |
 | Locales | `Locales/*.lua` | `deDE` (default) and `enUS` (fallback) |
 
@@ -136,8 +136,10 @@ Desktop: `domain/route.py` handles projection, segments and time lookup (pure, t
 `wow/map_art.py` finds map images in one place: `forever_chronicle/maps/<uiMapID>.jpg`, kept in git. They come from the game client itself: `tools/extract_maps.py` reads the local install (`desktop/forever_chronicle/wow/casc.py`, `tools/db2.py`) and draws each map
 fully explored, as the game does. Rerun it after a client patch; Forever reworked several zones (Mulgore,
 Stormwind, Eastern Plaguelands, ...), so the Classic images do not fit everywhere.
-`ui/pages/map_page.py` is the map tab. All art uses the 1002×668 world-map canvas that game coordinates are
-normalized to, which was verified against real Phase 0 coordinates.
+The desktop has no map tab of its own (removed 2026-11-02): `ui/pages/cinema.py` (the Kino tab) shows the whole
+journey on the seamless world map (`ui/journey_art.py`) and lists the sessions as chapters to play in the cinematic
+mode (`ui/cinematic.py`). All art uses the 1002×668 world-map canvas that game coordinates are normalized to,
+which was verified against real Phase 0 coordinates.
 
 ### Adding an in-game page
 Create `UI/Pages/MyPage.lua` with `FC.UI:RegisterPage({ id, labelKey, icon, order, Create = fn, Refresh = fn })` and

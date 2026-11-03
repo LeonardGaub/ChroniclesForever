@@ -1,7 +1,8 @@
 -- Journey Forever - Route
 -- Reads the compact "positions" stream into points (cached, updated incrementally) and provides the route
 -- rules shared with the desktop app (spec F-005):
---   * coordinates are never interpolated; lines only connect consecutive recorded points
+--   * coordinates are never interpolated; lines only connect consecutive recorded points (the in-game map
+--     draws them as curves through those points when zoomed in, Route.CurvePoint; nothing stored changes)
 --   * a time gap, a map change, a taxi change, a teleport or an instance point ends a segment
 --   * a time lookup returns the point covering that time, else the nearest recorded point
 --   * old points are thinned out, never moved: when the positions stream reaches its cap, the oldest
@@ -343,14 +344,47 @@ end
 -- Where a replay shows the player at time t: like PointAt, but between two points joined by a route line the
 -- marker moves along that line instead of jumping from sample to sample. The line itself only connects
 -- recorded points, so the marker never leaves the drawn route (and thinned stretches replay as before).
+-- curve: { before, a, b, after, f } for a map that draws the line as a curve (Route.CurvePoint): the line's
+-- points, their connected neighbours (nil where the line starts or ends) and how far along it the marker is.
 function Route.Glide(points, t)
   local i = lastAtOrBefore(points, t)
   local a, b = points[i], points[i + 1]
   if a and b and a.x and b.x and t > a.endTime and t < b.time and Route.Connected(a, b) then
     local x, y = glideAt(a, b, t)
-    return { time = t, endTime = t, mapID = a.mapID, x = x, y = y, taxi = a.taxi }
+    local before, after = points[i - 1], points[i + 2]
+    local curve = {
+      before = before and before.x and Route.Connected(before, a) and before or nil, a = a, b = b,
+      after = after and after.x and Route.Connected(b, after) and after or nil,
+      f = b.time > a.endTime and math.min(1, (t - a.endTime) / (b.time - a.endTime)) or 0,
+    }
+    return { time = t, endTime = t, mapID = a.mapID, x = x, y = y, taxi = a.taxi, curve = curve }
   end
   return Route.PointAt(points, t)
+end
+
+-- The point at f (0 to 1) on the curve from (x1, y1) to (x2, y2) that passes through every route point: a
+-- centripetal Catmull-Rom spline, which makes no loops or overshoots where a short line meets a long one.
+-- (x0, y0) and (x3, y3) are the neighbouring points; pass the line's own end for a missing neighbour. Only for
+-- drawing: the map draws a line as a few short pieces along it and the replay marker follows the same curve.
+local EPSILON = 1e-9
+
+function Route.CurvePoint(x0, y0, x1, y1, x2, y2, x3, y3, f)
+  local d12 = math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+  if d12 < EPSILON then return x1, y1 end
+  local d01 = math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2)
+  local d23 = math.sqrt((x3 - x2) ^ 2 + (y3 - y2) ^ 2)
+  -- A missing neighbour (or one on the same spot): the line's other end, mirrored.
+  if d01 < EPSILON then x0, y0, d01 = 2 * x1 - x2, 2 * y1 - y2, d12 end
+  if d23 < EPSILON then x3, y3, d23 = 2 * x2 - x1, 2 * y2 - y1, d12 end
+  local t01, t12, t23 = math.sqrt(d01), math.sqrt(d12), math.sqrt(d23)
+  -- Tangents at both ends, then the cubic Hermite curve between them.
+  local m1x = (x2 - x1) + t12 * ((x1 - x0) / t01 - (x2 - x0) / (t01 + t12))
+  local m1y = (y2 - y1) + t12 * ((y1 - y0) / t01 - (y2 - y0) / (t01 + t12))
+  local m2x = (x2 - x1) + t12 * ((x3 - x2) / t23 - (x3 - x1) / (t12 + t23))
+  local m2y = (y2 - y1) + t12 * ((y3 - y2) / t23 - (y3 - y1) / (t12 + t23))
+  local f2, f3 = f * f, f * f * f
+  local h1, h2, h3, h4 = 2 * f3 - 3 * f2 + 1, f3 - 2 * f2 + f, -2 * f3 + 3 * f2, f3 - f2
+  return h1 * x1 + h2 * m1x + h3 * x2 + h4 * m2x, h1 * y1 + h2 * m1y + h3 * y2 + h4 * m2y
 end
 
 -------------------------------------------------------------------------------

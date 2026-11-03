@@ -148,6 +148,7 @@ ForeverChronicleDB = {
 				["jumps"] = 2,
 				["kills"] = 2,
 				["played_total"] = 74113,
+				["quest_xp"] = 2550,
 				["quests_completed"] = 1,
 				["screenshots"] = 1,
 				["sessions"] = 2,
@@ -159,7 +160,7 @@ ForeverChronicleDB = {
 					["nextSeq"] = 7,
 					["packed"] = {
 						["chunks"] = {
-							"{data={level=22,},id=\"6acf27a80002b2df060c0c9ee0\",location={mapID=1413,quality=\"exact\",subzone=\"Crossroads\",x=0.4403,y=0.5913,zone=\"The Barrens\",},seq=1,serverTime=1791961000,session=\"6acf27a800018512d60ea397e0\",time=1791961000,type=\"session_started\",},{data={money=0,questID=3513,title=\"The Runaway Shipment\",xp=2550,},id=\"6acf27f10003b07eb608567de0\",location={mapID=1413,quality=\"exact\",subzone=\"Crossroads\",x=0.4403,y=0.5913,zone=\"The Barrens\",},seq=2,serverTime=1791961073,session=\"6acf27a800018512d60ea397e0\",time=1791961073,type=\"quest_completed\",},{data={damage=412,killer=\"Taragaman the Hungerer\",npcID=11520,overkill=37,spell=\"Uppercut\",spellID=10966,},id=\"6acf280f000426dde600c8f4e8\",location={instanceID=389,quality=\"zone_only\",zone=\"Ragefire Chasm\",},seq=3,serverTime=1791961103,session=\"6acf27a800018512d60ea397e0\",time=1791961103,type=\"player_died\",},{data={level=23,},id=\"6acf282d000539efcd04990a98\",location={mapID=1413,quality=\"exact\",subzone=\"Crossroads\",x=0.4403,y=0.5913,zone=\"The Barrens\",},seq=4,serverTime=1791961133,session=\"6acf27a800018512d60ea397e0\",time=1791961133,type=\"level_up\",},{data={achievementID=6,icon=236565,name=\"Level 10\",points=10,},id=\"6acf282d0006ff3d8c0b5dcfc0\",location={mapID=1413,quality=\"exact\",subzone=\"Crossroads\",x=0.4403,y=0.5913,zone=\"The Barrens\",},seq=5,serverTime=1791961133,session=\"6acf27a800018512d60ea397e0\",time=1791961133,type=\"achievement_earned\",},{id=\"6ad087380002b2df060c0c9ee0\",type=\"session_started\",time=1792051000,serverTime=1792051000,session=\"6ad0873800018512d60ea397e0\",data={level=22,},location={zone=\"The Barrens\",subzone=\"Crossroads\",mapID=1413,y=0.5913,x=0.4403,quality=\"exact\",},seq=6,},", -- [1]
+							"{data={level=22,},id=\"6acf27a80002b2df060c0c9ee0\",location={mapID=1413,quality=\"exact\",subzone=\"Crossroads\",x=0.4403,y=0.5913,zone=\"The Barrens\",},seq=1,serverTime=1791961000,session=\"6acf27a800018512d60ea397e0\",time=1791961000,type=\"session_started\",},{data={money=0,questID=3513,title=\"The Runaway Shipment\",xp=2550,},id=\"6acf27f10003b07eb608567de0\",location={mapID=1413,quality=\"exact\",subzone=\"Crossroads\",x=0.4403,y=0.5913,zone=\"The Barrens\",},seq=2,serverTime=1791961073,session=\"6acf27a800018512d60ea397e0\",time=1791961073,type=\"quest_completed\",},{data={damage=412,killer=\"Taragaman the Hungerer\",npcID=11520,overkill=37,spell=\"Uppercut\",spellID=10966,},id=\"6acf280f000426dde600c8f4e8\",location={instanceID=389,quality=\"zone_only\",zone=\"Ragefire Chasm\",},seq=3,serverTime=1791961103,session=\"6acf27a800018512d60ea397e0\",time=1791961103,type=\"player_died\",},{data={gear={\"item:4385::::::::22:::::\",[16]=\"item:2099::::::::22:::::\",},level=23,levelPlayed=7697,money=123456,playedTotal=74236,professions={Cooking=\"13/75\",[\"First Aid\"]=\"23/75\",Herbalism=\"59/150\",Leatherworking=\"126/150\",},stats={deaths=1,played_total=74113,quest_xp=2550,quests_completed=1,sessions=1,},},id=\"6acf282d000539efcd04990a98\",location={mapID=1413,quality=\"exact\",subzone=\"Crossroads\",x=0.4403,y=0.5913,zone=\"The Barrens\",},seq=4,serverTime=1791961133,session=\"6acf27a800018512d60ea397e0\",time=1791961133,type=\"level_up\",},{data={achievementID=6,icon=236565,name=\"Level 10\",points=10,},id=\"6acf282d0006ff3d8c0b5dcfc0\",location={mapID=1413,quality=\"exact\",subzone=\"Crossroads\",x=0.4403,y=0.5913,zone=\"The Barrens\",},seq=5,serverTime=1791961133,session=\"6acf27a800018512d60ea397e0\",time=1791961133,type=\"achievement_earned\",},{id=\"6ad087380002b2df060c0c9ee0\",type=\"session_started\",time=1792051000,serverTime=1792051000,session=\"6ad0873800018512d60ea397e0\",data={level=22,},location={zone=\"The Barrens\",subzone=\"Crossroads\",mapID=1413,y=0.5913,x=0.4403,quality=\"exact\",},seq=6,},", -- [1]
 						},
 						["format"] = 1,
 						["kind"] = "tables",
@@ -168,6 +169,12 @@ ForeverChronicleDB = {
 					},
 				},
 				["group"] = {
+					["dropped"] = 0,
+					["nextSeq"] = 1,
+					["records"] = {
+					},
+				},
+				["kills"] = {
 					["dropped"] = 0,
 					["nextSeq"] = 1,
 					["records"] = {
@@ -378,6 +385,8 @@ ForeverChronicleDB = {
 			["Gear"] = {
 			},
 			["Group"] = {
+			},
+			["Kills"] = {
 			},
 			["Loot"] = {
 				["blueGear"] = true,

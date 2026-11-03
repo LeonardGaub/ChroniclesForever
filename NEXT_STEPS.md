@@ -11,8 +11,10 @@ were written at the time (older entries may describe things that changed later).
   desktop app installs a newer main addon from the repository at start (WoW closed) and deletes the companion folder.
 - Addon window tabs: Übersicht, Chronik (screenshots shown with their entries), Karte, Berufe, Einstellungen,
   Diagnose. Slash commands `/fj` and `/fjshot`.
-- Desktop app: starts on the home screen (Start). Tabs at the bottom: Start, Übersicht, Chronik, Galerie, Karte
-  (with the cinematic mode), Berufe; the gear menu next to them opens Import, Einstellungen (sound), Diagnose.
+- Desktop app: starts on the home screen (Start). Tabs at the bottom: Start, Übersicht, Chronik, Galerie, Kino
+  (the way into the cinematic mode: the whole journey and its chapters), Berufe; the gear menu next to them opens
+  Import, Einstellungen (sound, route colours), Diagnose. The desktop's map page was removed on 2026-11-02 (user
+  decision): the addon's map is the place to browse the route.
   Start it with `desktop/Forever Chronicle.bat`; without a dev venv (friends' clones) `Journey Forever starten.bat`
   in the repository root sets up Python, installs the addon and starts the app. The user is moving away from the
   desktop app: fixes and features go into the addon, except features that need the screenshot files (cinematic
@@ -43,24 +45,16 @@ were written at the time (older entries may describe things that changed later).
    damage, overkill) in the `player_died` event. Unverified in Forever: whether the recap exists there and is
    readable (not secret). After the next death, check the Chronik entry; if it still says "Gestorben in ...",
    the recap is missing or hidden.
-6. Release (2026-11-04), prepared on 2026-10-24: the live client's product flavor and folder were unknown, so the
-   desktop app (`wow/paths.py`) and the CASC tools accept any client whose `.build.info` version
-   is 1.60 or newer (Classic Era is 1.15) and prefer a live client over the beta (a saved beta folder moves to the
-   live client next to it). A folder the user picks counts whatever its flavor. The TOCs list Interface 16001,
-   16002, 16003 and 16100. The live client was installed on 2026-10-27: `_forever_\`, flavor `wowf` (now in
-   `FOREVER_FLAVORS`), version 1.60.1.70634; at release check its Interface number (1.60.1 suggests 16001). Before
-   deleting the beta folder: copy `_classic_beta_\Screenshots` out (30 screenshot records link there; the cloud has
-   only 1920 px copies of 23) and run the settings port. `tools/build_world_map.py --openmap` still defaults to
-   the beta folder's OpenMap; the other CASC tools find the install as the app does (`--install` to choose,
-   `tools/db2.py`).
-   Settings port (`tools/port_settings.py`, built 2026-10-24, dry run unless `--apply`, WoW closed, backups in
-   `<live>\PortBackup\`): `account` (keybinds, macros, interface settings, Edit Mode, other addons and their
-   SavedVariables, Config.wtf without portal/login/cache lines), then log in once with each new character and
-   `characters --map OLD=NEW`. Unverified: whether the first login keeps the copied `-cache` files or replaces them
-   with the server's (Blizzard syncs bindings/macros/settings); if replaced, `server-sync off`, copy again, log in,
-   `server-sync on`. The `synchronize*` CVar names are from retail and unconfirmed in Forever. Edit Mode's own
-   export/import is the fallback for the layout. Beta addons whose TOC lacks the live Interface number load as out
-   of date.
+6. Release (2026-11-04): the live client is installed (2026-10-27: `_forever_\`, flavor `wowf` in
+   `FOREVER_FLAVORS`, version 1.60.1.70634); the desktop app and the CASC tools also accept any client whose
+   `.build.info` version is 1.60 or newer. The TOCs list Interface 16001, 16002, 16003 and 16100; at release check
+   the live Interface number (1.60.1 suggests 16001). The beta was uninstalled on 2026-10-27 after its screenshots
+   were copied to `_forever_\Screenshots` (app links moved there) and to the cloud, and the account settings and 23
+   addons were ported (`tools/port_settings.py account`, backups in `_forever_\PortBackup\`). Its WTF folder is
+   gone, so per-character settings can no longer be ported. Unverified: whether the first live login keeps the
+   copied `-cache` files or replaces them with Blizzard's server copies; if keybinds are gone, set them again in game
+   (`port_settings.py server-sync off|on` only helps while a source exists). Battle.net left about 1 GB in
+   `_classic_beta_\` (no WTF, no `.flavor.info`); the user may delete it.
 7. Cinematic tracking (2026-10-30, addon "Unreleased", desktop schema 13), untested in game. Check in a short
    session: mount and ride a bit (route flag `M`), use the hearthstone (`JH` on the point after it), bind the
    hearthstone at an inn (Chronik: "Ruhestein gebunden"), die once and come back (hover the death: how), group
@@ -72,8 +66,19 @@ were written at the time (older entries may describe things that changed later).
    `C_Item.GetItemInfoInstant`/`GetItemMaxStackSizeByID`, and whether the moment popup's edit box is found
    (`StaticPopup` changed in 11.x; Modules/Moments.lua tries `GetEditBox`, `editBox` and `EditBox`).
    Friends' apps install the new addon only after the TOC version is raised (`setup_addon.update_addon`).
+8. Kills and level-up snapshots (2026-11-02, addon "Unreleased", data only: nothing shows them yet, the desktop
+   app ignores the `kills` stream). Ideas taken from the Road to Sixty addon (rewritten, not copied: it has no
+   licence). Check in game: kill a few enemies, `/reload`, and look for the `kills` bar under Einstellungen (storage);
+   after the next level-up the `level_up` event in the saved file should hold `stats`, `money`, `gear`,
+   `professions`, `playedTotal` and `levelPlayed`. Unverified: whether `CHAT_MSG_COMBAT_XP_GAIN` text is readable
+   (not secret) in Forever, in instances too, and whether German clients use `COMBATLOG_XPGAIN_EXHAUSTION1` for the
+   rested bonus. Still missing for the "records" (slowest level, nemesis, most killed, best session, ...): only
+   the gear-worn record, which needs an event per gear change. Also new: the in-game map draws the route as curves
+   from zoom 1.5 on (`Route.CurvePoint`, `UI/MapCanvas.lua`); check in game that zooming stays smooth on a long
+   route and that the replay marker sits on the curve. The desktop app still draws straight lines.
 ## Confirmed client facts
-- Install: `C:\Program Files (x86)\World of Warcraft\_classic_beta_\` (`WowB.exe`, client 1.60.1). TOC Interface 16001.
+- Install: `C:\Program Files (x86)\World of Warcraft\_forever_\` (`Wow.exe`, flavor `wowf`, client 1.60.1). The beta
+  (`_classic_beta_\`, `WowB.exe`, TOC Interface 16001) was uninstalled on 2026-10-27.
 - SavedVariables: `WTF\Account\131324136#1\SavedVariables\` plus `.lua.bak`.
 
 ## Decisions made

@@ -140,6 +140,51 @@ function Util.Fold(s)
   return (string.lower(s):gsub("\195[\132\150\156]", UMLAUTS))
 end
 
+-- A matcher for messages built from one of the client's format strings (COMBATLOG_XPGAIN_FIRSTPERSON, ...), so it
+-- works in every client language: matcher(msg) returns the arguments in argument order (%d as a number, anything
+-- else as text), or nil when msg does not start like the format. Numbered arguments ("%1$s stirbt, Ihr bekommt
+-- %2$d Erfahrung.") may come in any order. A format that is not a string never matches.
+function Util.FormatMatcher(format)
+  if type(format) ~= "string" then return function() return nil end end
+  local pattern, slots, i = { "^" }, {}, 1
+  while i <= #format do
+    local c = format:sub(i, i)
+    if c == "%" and format:sub(i + 1, i + 1) == "%" then
+      pattern[#pattern + 1] = "%%"
+      i = i + 2
+    elseif c == "%" then
+      local pos, conv, stop = format:match("^(%d*%$?)[-+ #0-9.]*([a-zA-Z])()", i + 1)
+      if not conv then
+        pattern[#pattern + 1] = "%%"
+        i = i + 1
+      else
+        local numeric = conv == "d" or conv == "i" or conv == "u"
+        pattern[#pattern + 1] = numeric and "(%d+)" or "(.-)"
+        slots[#slots + 1] = { index = pos:find("%$") and tonumber(pos:match("%d+")) or #slots + 1, numeric = numeric }
+        i = stop
+      end
+    else
+      pattern[#pattern + 1] = c:find("[%^%$%(%)%.%[%]%*%+%-%?]") and "%" .. c or c
+      i = i + 1
+    end
+  end
+  -- A text argument at the very end would match nothing with "(.-)": let it take the rest.
+  if pattern[#pattern] == "(.-)" then pattern[#pattern] = "(.+)" end
+  pattern = table.concat(pattern)
+  return function(msg)
+    if type(msg) ~= "string" then return nil end
+    local captures = { msg:match(pattern) }
+    if captures[1] == nil then return nil end
+    local args, n = {}, 0
+    for k, slot in ipairs(slots) do
+      local v = captures[k]
+      args[slot.index] = slot.numeric and tonumber(v) or v
+      n = math.max(n, slot.index)
+    end
+    return unpack(args, 1, n)
+  end
+end
+
 -- Binary search in a list sorted ascending: the index of the last element that is <= value (0 if none).
 -- field: compare element[field] instead of the element itself.
 function Util.BinarySearch(list, value, field)

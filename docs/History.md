@@ -4,6 +4,38 @@ The session notes that used to be the "History" section of `NEXT_STEPS.md`, newe
 at the time: older entries may describe things that changed or were removed later. The current state is in
 `NEXT_STEPS.md`.
 
+### Kino tab replaces the desktop map page (2026-11-02)
+- User decision: the desktop map page lacked screenshot pins and the replay's moments, and the cinematic mode is
+  always better; the addon's map is the place to browse the route. `ui/pages/map_page.py` is gone, with its
+  tests (the route projection and dungeon-entrance tests stay in `tests/test_map.py`).
+- New Kino tab (`ui/pages/cinema.py`): a banner with the whole journey on the seamless world map
+  (`ui/journey_art.py`, route colours, the current spot glowing), the character's title and "▶ Die ganze Reise" /
+  "⤓ Video"; below it every session with route points as a numbered chapter (main zone, day, time, length, levels,
+  quests, deaths, first screenshot). Selecting chapters lights their route up on the banner; double-click or Enter
+  plays them, several together play as one.
+- The route colour choice moved to Einstellungen → Kino-Modus. The Chronik's "▶ Ab hier" (or Enter) plays the chosen
+  moment from 30 s before it to the end of its session (it replaced "selecting an event moves the map",
+  `AppContext.focus_time` is gone). The home screen's card is "Kino" with the journey picture.
+- The cinematic window fades in when opened (option "ui_motion").
+
+### Kills and level-up snapshots, data only (2026-11-02)
+- The user compared the Road to Sixty addon (installed in `_forever_`, all rights reserved: ideas only) and asked
+  for its data, without showing it yet: smoother route lines, a snapshot at each level-up, records, kills with XP
+  and name.
+- `Modules/Kills.lua`: compact stream `kills` (`time,xp,rested,name`, cap 50,000) from `CHAT_MSG_COMBAT_XP_GAIN`,
+  matched with `Util.FormatMatcher` against the client's `COMBATLOG_XPGAIN_FIRSTPERSON` (numbered arguments of other
+  languages handled). Stats `kill_xp`, `rested_xp`; Progress adds `quest_xp`, `quest_money`. None is registered,
+  so nothing shows them.
+- `level_up` data: `stats` (copy), `money`, `gear` (slot -> item string), `professions` (name -> "rank/max"), and
+  from Session `playedTotal`, `levelPlayed`. Session's PLAYER_LEVEL_UP handler runs before Progress's (TOC order)
+  and keeps the finished level's time for the event.
+- Records need no further data except the gear-worn one (an event per gear change).
+- Smoother lines (the user said yes afterwards): from zoom 1.5 the in-game map draws each route line as pieces of a
+  centripetal Catmull-Rom curve through the drawn points (`Route.CurvePoint`, one piece per 4 screen pixels, at
+  most 12), only while every point is drawn and the pieces fit the 5,000-line budget, else straight as before.
+  `Route.Glide` names the line it glides on (`curve`), and the canvas moves the marker along the same pieces
+  (`Canvas:PlaceMarker`, also after each redraw). Stored points never change; the desktop app stays straight.
+
 ### Cinematic tracking: facts instead of guesses (2026-10-30)
 - User picked from a brainstorm: record why a teleport happened, how a death ended, riding, the group (with
   friends walking along in the cinematic), a hearthstone toast, notable loot with a clear trash/loot rule, and a

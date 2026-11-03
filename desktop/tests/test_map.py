@@ -4,9 +4,8 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QBuffer, QIODevice, QRectF  # noqa: E402
+from PySide6.QtCore import QBuffer, QIODevice, QSize  # noqa: E402
 from PySide6.QtGui import QColor, QImage  # noqa: E402
-from PySide6.QtWidgets import QGraphicsPathItem  # noqa: E402
 
 from forever_chronicle.domain.route import GAP_SECONDS, Route  # noqa: E402
 from forever_chronicle.importing.sv_importer import SavedVariablesImporter  # noqa: E402
@@ -117,70 +116,96 @@ def test_map_images_come_from_one_folder(tmp_path):
     assert find_art(9999) is None and find_art(None) is None
 
 
-def test_map_page_replay_and_timeline_focus(ctx, imported, tmp_path):
+def test_cinema_page_chapters_and_play(ctx, imported, tmp_path):
+    """The Kino tab replaced the map page (user decision 2026-11-02): the journey, its chapters, and the way into
+    the cinematic mode."""
     from forever_chronicle.ui.main_window import MainWindow
+    from forever_chronicle.ui.cards import DATA
 
-    (tmp_path / "maps").mkdir()
-    (tmp_path / "maps" / "1413.jpg").write_bytes(_jpeg_bytes())
     window = MainWindow(ctx)
-    page = next(p for p in window.pages if p.title_key == "tab.map")
+    page = window.page("tab.cinema")
+    assert window.page("tab.map") is None, "the map page is gone"
     window.show_page(page)
+    cid = window.current_character_id()
+    sessions = ctx.repo.sessions(cid)
+    assert page.chapters and len(page.chapters) <= len(sessions)
+    assert [c.number for c in page.chapters] == list(range(1, len(page.chapters) + 1))
+    entries = page.list.entries()
+    assert len(entries) == len(page.chapters) and entries[0].data(DATA)[0] == page.chapters[-1].start  # newest first
+    assert not page.play_chosen.isEnabled() and page.banner.span is None
+    assert page.banner.texts[1] == "Die Reise von Blind"
 
-    assert page.route and page.view_map == 1413
-    assert page.map_select.count() == 2                      # The Barrens and its continent
-    assert page._art_notice is None, "artwork found"
-    start = page.current_t
-    page._toggle_play()
-    for _ in range(5):
-        page._tick()
-    assert page.current_t > start and page.marker.isVisible()
-    page._toggle_play()
-
-    page.map_select.setCurrentIndex(1)                         # continent view
-    assert page.view_map == 1414 and page._art_notice      # no Kalimdor artwork in this test -> schematic
-    page.map_select.setCurrentIndex(0)
-
-    # Selecting the death (in Ragefire Chasm, no position) in the timeline moves the map there.
-    timeline = next(p for p in window.pages if p.title_key == "tab.timeline")
-    window.show_page(timeline)
-    from forever_chronicle.ui.cards import DATA, TITLE
-    death = next(item for item in timeline.list.entries() if "Getötet von" in item.data(TITLE))
-    death_time = death.data(DATA)[0]
-    timeline.list.setCurrentItem(death)
-    window.show_page(page)
-    assert page.current_t == death_time
+    page.list.setCurrentItem(entries[0])
+    chosen = entries[0].data(DATA)
+    assert page.play_chosen.isEnabled() and page.banner.span == chosen
+    cinematic = page.play_selected()
+    assert cinematic is not None and (cinematic.start, cinematic.end) == chosen
+    cinematic.close()
+    if len(entries) > 1:            # several chapters play as one, from the first start to the last end
+        entries[1].setSelected(True)
+        span = page.selected_span()
+        assert span == (entries[1].data(DATA)[0], chosen[1]) and "2" in page.play_chosen.text()
+    whole = page.play_all()
+    route = Route.load(ctx.repo, cid)
+    assert whole.start == route.start
+    whole.close()
     window.close()
 
 
-def test_map_page_on_the_seamless_world_map(ctx, imported, tmp_path):
-    """With the seamless world map every map is a place on it, as in cinematic mode (user request 2026-10-26)."""
-    from forever_chronicle.domain import maps
-    from forever_chronicle.ui.pages.map_page import MapPage
+def test_cinema_banner_on_the_world_map(ctx, imported, tmp_path, app):
+    """The banner paints the whole journey on the world map and lights up the chosen chapter."""
+    from forever_chronicle.ui import journey_art
+    from forever_chronicle.ui.pages.cinema import CinemaPage
 
     (tmp_path / "maps" / "world").mkdir(parents=True)
     (tmp_path / "maps" / "world" / "base.jpg").write_bytes(_jpeg_bytes())
-    (tmp_path / "maps" / "1413.jpg").write_bytes(_jpeg_bytes("#775533"))
-    page = MapPage(ctx)
-    page.resize(900, 600)
+    page = CinemaPage(ctx)
+    page.resize(1100, 700)
     page.character_id = ctx.repo.list_characters()[0].character_id
     page.refresh()
+    page.banner.resize(1100, 320)
+    page.banner._rebuild()
+    route = Route.load(ctx.repo, page.character_id)
+    area = journey_art.bounds(route)
+    assert area is not None and page.banner.layer is not None and page.banner.marker is not None
+    assert 0 <= page.banner.marker.x() <= 1100 and 0 <= page.banner.marker.y() <= 320
+    whole = page.banner.marker
+    page.list.setCurrentItem(page.list.entries()[-1])          # the oldest chapter ends elsewhere
+    assert page.banner.span is not None and page.banner.lit is not None
+    page.banner.grab()                                          # paints without errors
+    page.list.clearSelection()
+    assert page.banner.span is None and page.banner.marker == whole
+    home_picture = journey_art.picture(route, page.banner.colors, QSize(420, 236))
+    assert home_picture is not None and home_picture.width() == 420
 
-    assert page.view_map == 1413 and page.scene_map == maps.WORLD and page.world is not None
-    assert page.world.base is not None and page._art_notice is None
-    assert page.map_select.findData(maps.WORLD) >= 0                  # Azeroth itself to pick
-    barrens = page.view.area
-    assert barrens != QRectF(0, 0, maps.ART_WIDTH, maps.ART_HEIGHT)    # the view shows the Barrens' place
-    world = page.world
-    page.map_select.setCurrentIndex(page.map_select.findData(1414))
-    assert page.view_map == 1414 and page.world is world, "picking a map only moves the view"
-    assert page.view.area.contains(barrens.center())
-    page._toggle_play()
-    for _ in range(5):
-        page._tick()
-    page._toggle_play()
-    assert page.marker.isVisible()
-    segments = [item for item in page.view.scene().items() if isinstance(item, QGraphicsPathItem)]
-    assert segments, "the route is drawn on the world map"
+
+def test_chronicle_plays_from_the_chosen_moment(ctx, imported):
+    from forever_chronicle.ui.cards import DATA, TITLE
+    from forever_chronicle.ui.main_window import MainWindow
+
+    window = MainWindow(ctx)
+    timeline = window.page("tab.timeline")
+    window.show_page(timeline)
+    assert not timeline.play_here.isEnabled()
+    death = next(item for item in timeline.list.entries() if "Getötet von" in item.data(TITLE))
+    timeline.list.setCurrentItem(death)
+    assert timeline.play_here.isEnabled()
+    cinematic = timeline.play_selected()
+    t = death.data(DATA)[0]
+    assert cinematic.start <= t < cinematic.end and t - cinematic.start <= 30
+    cinematic.close()
+    window.close()
+
+
+def test_route_colours_are_chosen_in_the_settings(ctx, app):
+    from forever_chronicle.ui.pages.settings import SettingsPage
+
+    page = SettingsPage(ctx)
+    page.refresh()
+    assert page.colors.currentData() == ctx.map_colors == "level"
+    page.colors.setCurrentIndex(page.colors.findData("session"))
+    assert ctx.map_colors == "session"
+
 
 def test_continent_points_open_the_zone():
     """The client reports only the continent between zones; the map still shows the zone (user request)."""
@@ -222,18 +247,3 @@ def test_import_entrances(db, sv_data):
         "bad": {"mapID": 1, "x": 0.1, "y": 0.1}, "5": {"mapID": 1, "x": 3, "y": 0.1}}
     SavedVariablesImporter(db).import_data(sv_data, "fixture")
     assert Repository(db.conn).entrances() == {389: (1454, 0.5195, 0.4911), 2999: (1458, 0.7256, 0.113)}
-
-
-def test_map_page_shows_dungeon_death_at_entrance(ctx, sv_data):
-    """The fixture's death in Ragefire Chasm (instance 389) is pinned at the entrance once it is known."""
-    from forever_chronicle.ui.pages.map_page import MapPage
-    sv_data["ForeverChronicleDB"]["entrances"] = {"389": {"mapID": 1413, "x": 0.45, "y": 0.6, "source": "walked"}}
-    ctx.importer.import_data(sv_data, "fixture")
-    page = MapPage(ctx)
-    page.character_id = ctx.repo.list_characters()[0].character_id
-    page.refresh()
-    death = next(e for e in ctx.repo.events(page.character_id) if e.event_type == "player_died")
-    assert death.instance_id == 389 and death.map_id is None
-    assert page.view_map == 1413
-    tips = [item.toolTip() for item in page.view.scene().items() if item.toolTip()]
-    assert any("Ragefire" in tip for tip in tips), tips

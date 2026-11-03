@@ -106,6 +106,7 @@ QPushButton {{ color: {GOLD}; border: 1px solid #c9a24a; border-radius: 3px; pad
 QPushButton:hover {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #b52424, stop:1 #6e1414); }}
 QPushButton:pressed {{ background: #4a0b0b; }}
 QPushButton:disabled {{ color: {MUTED}; border-color: {BORDER}; background: #2a2018; }}
+QPushButton#HeroPlay {{ font-size: 14pt; padding: 9px 26px; min-height: 22px; }}   /* the Kino page's big play */
 
 QListWidget, QTableWidget {{ background: {PANEL_ALT}; alternate-background-color: {PANEL}; border: 1px solid {BORDER};
                              selection-background-color: {SELECT}; selection-color: #ffffff; outline: 0; }}

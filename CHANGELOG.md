@@ -6,6 +6,14 @@ then turn "Unreleased" into the uploaded version and date.
 
 ## Unreleased
 
+- Screenshots with "Keep popups": the pet bar, other action bars, the target's frame and similar parts of the
+  interface no longer stay visible when they happen to appear right after the event (a pet summoned, a new
+  target); only the event's popup does.
+- Map: zoomed in, the route is drawn as smooth curves through the recorded points instead of straight corners,
+  and the replay marker follows the curve.
+- Groundwork for future statistics, nothing new to see yet: every kill that gives experience is noted with its
+  experience and the enemy's name, and each level-up keeps what you had at that moment (statistics, gold, gear,
+  professions and the time played on the level).
 - Notable loot in the chronicle (new filter "Loot and mounts"). Not every drop, only what is worth telling:
   every epic item the first time you get it, and blue gear that mattered: from a boss or rare enemy, or put on
   within an hour of getting it ("New gear"). Blue gear you sell, green and white items, anything that stacks

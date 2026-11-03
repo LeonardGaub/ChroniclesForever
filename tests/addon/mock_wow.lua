@@ -61,7 +61,7 @@ for e in ([[ADDON_LOADED PLAYER_LOGIN PLAYER_ENTERING_WORLD PLAYER_LOGOUT TIME_P
   PLAYER_REGEN_ENABLED LOOT_OPENED LOOT_CLOSED UNIT_SPELLCAST_START UNIT_SPELLCAST_SUCCEEDED PLAYER_ALIVE PLAYER_UNGHOST
   RESURRECT_REQUEST CONFIRM_XP_LOSS NEW_MOUNT_ADDED COMPANION_LEARNED PLAYER_MOUNT_DISPLAY_CHANGED HEARTHSTONE_BOUND
   GROUP_ROSTER_UPDATE BAG_UPDATE_DELAYED MERCHANT_SHOW MERCHANT_CLOSED MAIL_SHOW MAIL_CLOSED TRADE_SHOW TRADE_CLOSED
-  AUCTION_HOUSE_SHOW AUCTION_HOUSE_CLOSED BANKFRAME_OPENED BANKFRAME_CLOSED]]):gmatch("%S+") do
+  AUCTION_HOUSE_SHOW AUCTION_HOUSE_CLOSED BANKFRAME_OPENED BANKFRAME_CLOSED CHAT_MSG_COMBAT_XP_GAIN]]):gmatch("%S+") do
   VALID_EVENTS[e] = true
 end
 
@@ -86,6 +86,15 @@ local function newRegion()
   r.GetAlpha = function(self) return rawget(self, "alpha") or 1 end
   r.SetIgnoreParentAlpha = function(self, v) self.ignoreParentAlpha = v end
   r.IsIgnoringParentAlpha = function(self) return rawget(self, "ignoreParentAlpha") == true end
+  -- Where lines and anchored regions are (the offsets only)
+  r.SetStartPoint = function(self, _, _, x, y) self.from = { x, y } end
+  r.SetEndPoint = function(self, _, _, x, y) self.to = { x, y } end
+  r.SetPoint = function(self, ...)
+    local n = select("#", ...)
+    if n < 4 then return end
+    local x, y = select(n - 1, ...)
+    if type(x) == "number" and type(y) == "number" then self.at = { x, y } end
+  end
   return setmetatable(r, regionMT)
 end
 
@@ -234,6 +243,9 @@ function UnitXP() return MOCK.xp or 1000 end
 function UnitXPMax() return MOCK.xpMax or 5000 end
 function GetXPExhaustion() return 2500 end
 function GetMoney() return 123456 end
+-- The client's experience messages (GlobalStrings, English client)
+COMBATLOG_XPGAIN_FIRSTPERSON = "%s dies, you gain %d experience."
+COMBATLOG_XPGAIN_EXHAUSTION1 = "%s dies, you gain %d experience. (%s exp %s bonus)"
 function GetCoinTextureString(m) return tostring(m) .. "c" end
 local SLOT_IDS = { HeadSlot = 1, NeckSlot = 2, ShoulderSlot = 3, ShirtSlot = 4, ChestSlot = 5, WaistSlot = 6,
   LegsSlot = 7, FeetSlot = 8, WristSlot = 9, HandsSlot = 10, Finger0Slot = 11, Finger1Slot = 12, Trinket0Slot = 13,

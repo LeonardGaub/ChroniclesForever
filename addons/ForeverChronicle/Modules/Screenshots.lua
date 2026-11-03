@@ -38,6 +38,16 @@ local SNAPSHOT_EVERY = 1            -- "popups": seconds between snapshots of th
 -- Frames that show an event's popup (level-up banner, toasts). Others are found as frames that appeared
 -- right after the event.
 local POPUP_FRAMES = { "EventToastManagerFrame", "LevelUpDisplay", "BossBanner", "ObjectiveTrackerTopBannerFrame" }
+-- Frames that come and go with play, not with an event (the pet bar when a pet is summoned, the target's frame):
+-- never taken for a popup, even when they appear right after the event. Action bars are known by their names.
+local NOT_POPUPS = {}
+for _, name in ipairs({ "PetFrame", "TargetFrame", "TargetFrameToT", "FocusFrame", "PartyFrame",
+  "CompactRaidFrameContainer", "CompactPartyFrame", "PlayerCastingBarFrame", "CastingBarFrame",
+  "OverlayPlayerCastingBarFrame", "PetCastingBarFrame", "BuffFrame", "DebuffFrame", "TemporaryEnchantFrame",
+  "MirrorTimerContainer", "MirrorTimer1", "MirrorTimer2", "MirrorTimer3", "ExtraActionButton1",
+  "ZoneAbilityFrame", "MainMenuBarVehicleLeaveButton", "TotemFrame" }) do
+  NOT_POPUPS[name] = true
+end
 
 -------------------------------------------------------------------------------
 -- Triggers: which recorded event types request a screenshot. Other modules can add their own.
@@ -248,8 +258,22 @@ function Shots:UpdateSnapshots()
   self.snapshotTicker = FC:NewTicker(SNAPSHOT_EVERY, take)
 end
 
+local function frameName(frame)
+  local ok, name = pcall(frame.GetName, frame)
+  return ok and name or "unnamed frame"
+end
+
+-- Action bars (the pet bar, the stance bar, the extra bars) and the frames in NOT_POPUPS.
+local function playFrame(frame)
+  local name = frameName(frame)
+  if type(name) ~= "string" then return false end
+  return NOT_POPUPS[name] or name:find("ActionBar") ~= nil or name:find("^MultiBar") ~= nil
+    or name:find("Bar$") ~= nil or name:find("BarFrame$") ~= nil
+end
+
 -- Popup frames visible now that were not visible in the baseline snapshot: the known ones (they may sit deeper
--- than UIParent's children), plus any child of UIParent that appeared. Without a baseline, known ones only.
+-- than UIParent's children), plus any child of UIParent that appeared, unless it comes and goes with play
+-- (playFrame). Without a baseline, known ones only.
 function Shots:FindPopups(baseline)
   local found, seen = {}, {}
   for _, name in ipairs(POPUP_FRAMES) do
@@ -260,15 +284,12 @@ function Shots:FindPopups(baseline)
   end
   if baseline then
     for frame in pairs(self:VisibleFrames()) do
-      if not baseline[frame] and not seen[frame] then found[#found + 1], seen[frame] = frame, true end
+      if not baseline[frame] and not seen[frame] and not playFrame(frame) then
+        found[#found + 1], seen[frame] = frame, true
+      end
     end
   end
   return found
-end
-
-local function frameName(frame)
-  local ok, name = pcall(frame.GetName, frame)
-  return ok and name or "unnamed frame"
 end
 
 -- While a request waits: once its popup shows, the screenshot is taken POPUP_SETTLE seconds later (sooner

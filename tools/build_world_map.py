@@ -42,7 +42,7 @@ sys.path[:0] = [str(ROOT / "desktop"), str(ROOT / "tools")]
 from db2 import UI_MAP_ASSIGNMENT, find_install, open_install, table  # noqa: E402
 from forever_chronicle.wow.map_art import BASE_PX, TILE_MARGIN, TILE_PX, TILE_UNITS  # noqa: E402
 
-DEFAULT_OPENMAP = Path(r"C:\Program Files (x86)\World of Warcraft\_classic_beta_\Interface\AddOns\OpenMap")
+DEFAULT_OPENMAP = Path(r"C:\Program Files (x86)\World of Warcraft\_forever_\Interface\AddOns\OpenMap")
 WORLD_ART = ROOT / "desktop" / "forever_chronicle" / "maps" / "947.jpg"
 WORLD_W, WORLD_H = 1002, 668
 # The continents' names on the world art that reach past the coastal band (world units, measured on 947.jpg):

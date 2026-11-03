@@ -4,7 +4,7 @@
   camera dives straight to where it begins; a jump on the timeline skips it.
 - The route is painted up to the current moment: older parts thin and dim, the last 15 minutes brighter
   towards the marker, the newest minutes glowing; flight paths dashed with moving dashes. Its colours follow
-  the map page's choice (by level, by session, one colour), as in the addon (domain/route_colors.py).
+  the choice in the settings (by level, by session, one colour), as in the addon (domain/route_colors.py).
 - The marker shows the player in the class colour with an arrow in the direction of travel, a gryphon on flight
   paths and a portal inside dungeons. Each event leaves a pin on the map; screenshots leave a small polaroid.
 - The camera follows the player calmly and zooms a little on its own: out on flight paths and fast stretches, in
@@ -53,9 +53,13 @@
   passing through zones quickly keeps the one playing; the change is a slow crossfade.
 - Flight paths: at take-off the faction's mount calls (gryphon or wind rider) and its wings beat with the marker's
   (softer after the first beats); the wind rises under the ambience while flying and dies away after landing,
-  where a glide is heard after a longer flight. A short flight (at speed, a flight lasts a moment) is one call and
-  one gust: the wind blows at least WIND_HOLD seconds and the landing is left out; connecting flights call once.
+  where a glide is heard after a longer flight. A short flight (a hop of a minute or two) is one call and one gust:
+  the wind blows at least WIND_HOLD seconds and the landing is left out; connecting flights call once.
+  Every flight is flown at one steady speed along its course, FLIGHT_SPEED world map pixels a second at 4×,
+  twice as fast at 8×, half as fast at 2×: a long flight takes longer than a short hop, however the game
+  recorded its points. Only screenshots and deaths slow it down; its zones do not count as visits.
 - The video export (ui/cinematic_export.py) runs the same window off screen, frame by frame.
+- Opening it (the Kino page, the home screen, the Chronik) fades the window in from black (option "ui_motion").
 """
 
 from __future__ import annotations
@@ -66,7 +70,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QElapsedTimer, QEvent, QPointF, QRectF, QSize, Qt, QTimer
+from PySide6.QtCore import QEasingCurve, QElapsedTimer, QEvent, QPointF, QPropertyAnimation, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (QGraphicsOpacityEffect, QGraphicsPathItem, QGraphicsScene, QGraphicsView, QHBoxLayout,
                                QLabel, QPushButton, QToolTip, QWidget)
@@ -82,7 +86,7 @@ from ..domain.route_colors import RouteColors, zone_colors
 from ..i18n import format_datetime, format_duration, tr
 from ..wow import game_sounds, zone_music
 from ..wow.map_art import find_art
-from . import icons, theme, world_art
+from . import icons, motion, theme, world_art
 from .world_art import WorldArt
 from .cinematic_credits import CreditsOverlay
 from .cinematic_hud import XpBar
@@ -93,7 +97,8 @@ from .screenshots import load_thumbnail
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
 TICK_MS = 33
-BASE_SPEED = 60            # game seconds per real second at 1x (as on the map page)
+BASE_SPEED = 60            # game seconds per real second at 1x
+OPEN_FADE_MS = 650         # the window fading in when opened
 SPEEDS = (1, 2, 4, 10)
 ZOOM = 2.4                 # camera zoom relative to the whole map
 FOLLOW_SECONDS = 0.45      # time constant of the camera following the marker
@@ -128,6 +133,9 @@ ZONE_MIN_SPEED = 1         # visits, but never below this speed (×), and not fo
 ZONE_BLIP = 30             # game seconds; a step into a zone and back is part of the visit around it
 ZONE_AHEAD = 0.6           # real seconds of look-ahead, so the replay is slow already when the next zone comes
 ZONE_EASE_IN, ZONE_EASE_OUT = 0.25, 0.9   # time constants of slowing down for a short visit / speeding up after
+FLIGHT_SPEED = 40.0        # world map pixels per real second a flight path covers at FLIGHT_AT× (scales with the
+FLIGHT_AT = 4              # chosen speed); a flight the world map cannot measure takes FLIGHT_SECONDS there
+FLIGHT_SECONDS = 3.0
 DEATH_COLOR = QColor("#ff3333")
 # Trips to the other continent (boat, zeppelin, portal), shown on the world map.
 VOYAGE_OUT, VOYAGE_TRAVEL, VOYAGE_IN = 1.0, 1.8, 1.0   # out to the world map, across the sea, into the zone
@@ -160,6 +168,43 @@ AMBIENCE_UNDER_WIND = 0.35  # the ambience's share while the wind blows
 WIND_HOLD = 1.6            # real seconds the wind blows at least: a short flight is one gust
 CALL_GAP = 6.0             # real seconds after a landing in which a take-off is not called again (connecting flights)
 LAND_AFTER = 2.0           # real seconds a flight lasts at least before its landing is heard
+
+
+@dataclass
+class _FlightPath:
+    """A flight on flight paths, from its first taxi point to the first point after landing: the distance flown
+    (world map pixels) at each time the route changes its course, so the replay can fly it at one speed whatever
+    the recorded points' spacing."""
+    times: list[float]
+    distances: list[float]      # rising (equal while the route holds a point)
+
+    @property
+    def begin(self) -> float:
+        return self.times[0]
+
+    @property
+    def end(self) -> float:
+        return self.times[-1]
+
+    @property
+    def length(self) -> float:
+        return self.distances[-1]
+
+    def distance_at(self, t: float) -> float:
+        i = min(max(0, bisect.bisect_right(self.times, t) - 1), len(self.times) - 2)
+        a, b = self.times[i], self.times[i + 1]
+        f = clamp((t - a) / (b - a)) if b > a else 1.0
+        return self.distances[i] + (self.distances[i + 1] - self.distances[i]) * f
+
+    def time_at(self, d: float) -> float:
+        """The time the flight has come d far (the latest one, so holds on a point are passed at once)."""
+        i = bisect.bisect_right(self.distances, d) - 1
+        if i < 0:
+            return self.begin
+        if i >= len(self.times) - 1:
+            return self.end
+        d0, d1 = self.distances[i], self.distances[i + 1]
+        return self.times[i] + (self.times[i + 1] - self.times[i]) * (d - d0) / (d1 - d0)
 
 
 @dataclass
@@ -417,6 +462,8 @@ class CinematicWindow(QWidget):
         self.cue_index = bisect.bisect_left(self.cue_times, self.t)
         self.zone_visits = self._zone_visits()
         self.zone_visit_starts = [a for a, _, _ in self.zone_visits]
+        self.flights = self._flight_paths()
+        self.flight_starts = [f.begin for f in self.flights]
         self.zone_share = 1.0               # share of the chosen speed short zone visits allow (smoothed)
         self._update_zone_share(0.0, now=True)
         self.paused = False
@@ -877,7 +924,12 @@ class CinematicWindow(QWidget):
         self.ramp += dt
         self._update_zone_share(dt)
         before = self.t
-        t = self.t + self.speed * BASE_SPEED * dt * self.pace()
+        flight = self._flight_at(self.t)
+        if flight is not None:
+            flown = FLIGHT_SPEED * self.speed / FLIGHT_AT * dt * self.pace(flight)   # world map pixels
+            t = flight.time_at(flight.distance_at(self.t) + flown)
+        else:
+            t = self.t + self.speed * BASE_SPEED * dt * self.pace()
         t = self._skip_gap(t)
         t = self._skip_still(t)
         while self.cue_index < len(self.cues) and self.cues[self.cue_index].time <= t:
@@ -904,16 +956,22 @@ class CinematicWindow(QWidget):
         if self.ended:
             self._finish()
 
-    def pace(self) -> float:
+    def pace(self, flight: _FlightPath | None = None) -> float:
         """Share of the chosen speed: slower shortly before a screenshot or a death, back to full speed after
-        one; slower through short zone visits; much faster through a standstill ("fast" mode)."""
-        factor = min(1.0, SLOW_MIN + (1 - SLOW_MIN) * self.ramp / RAMP_SECONDS, self.zone_share)
-        if self.still_mode == "fast" and self._still_at(self.t) is not None:
-            factor *= STILL_FASTER
+        one; slower through short zone visits; much faster through a standstill ("fast" mode). On a flight
+        (share of its own steady speed) only screenshots and deaths count."""
+        factor = min(1.0, SLOW_MIN + (1 - SLOW_MIN) * self.ramp / RAMP_SECONDS)
+        rate = self.speed * BASE_SPEED                      # game seconds per real second at full speed
+        if flight is None:
+            factor = min(factor, self.zone_share)
+            if self.still_mode == "fast" and self._still_at(self.t) is not None:
+                factor *= STILL_FASTER
+        else:
+            rate = (flight.end - flight.begin) / flight.length * FLIGHT_SPEED * self.speed / FLIGHT_AT
         upcoming = next((c for c in self.cues[self.cue_index:]
                          if c.kind == "screenshot" or c.event_type == "player_died"), None)
         if upcoming is not None:
-            window = self.speed * BASE_SPEED * SLOW_SECONDS   # game time covered in SLOW_SECONDS at full speed
+            window = rate * SLOW_SECONDS                    # game time covered in SLOW_SECONDS at full speed
             distance = upcoming.time - self.t
             if distance < window:
                 factor = min(factor, SLOW_MIN + (1 - SLOW_MIN) * max(0.0, distance) / window)
@@ -930,6 +988,8 @@ class CinematicWindow(QWidget):
         entrance_views: dict[int, int | None] = {}
         visits: list[list] = []             # [place, start, end]
         for p in route.points_in(self.start, self.end):
+            if p.taxi:
+                continue                    # flying over zones is no visit (flights have their own pace)
             if p.instance_id is not None:
                 if p.instance_id not in entrance_views:
                     entrance_views[p.instance_id] = route.view_for(p)
@@ -961,9 +1021,49 @@ class CinematicWindow(QWidget):
         return [(v[1], v[2], math.inf if played(v) < ZONE_BLIP else max(floor, played(v) / ZONE_SECONDS))
                 for v in merged]
 
+    def _flight_paths(self) -> list[_FlightPath]:
+        """The flights on flight paths in the range, each from its first taxi point to the next point after its
+        last, measured on the world map as the replay shows it (route.glide). A flight it cannot measure is
+        flown evenly in time, FLIGHT_SECONDS long at FLIGHT_AT×."""
+        points = list(self.route.points_in(self.start, self.end))
+        flights: list[_FlightPath] = []
+        i = 0
+        while i < len(points):
+            if not points[i].taxi:
+                i += 1
+                continue
+            first, to = i, points[i].end
+            while i + 1 < len(points) and points[i + 1].taxi and points[i + 1].time - to <= GAP_SKIP:
+                i += 1
+                to = points[i].end
+            if i + 1 < len(points) and points[i + 1].time - to <= GAP_SKIP:
+                to = points[i + 1].time
+            begin = points[first].time
+            times = sorted({float(t) for p in points[first:i + 2] for t in (p.time, p.end) if begin <= t <= to}
+                           | {float(begin), float(to)})
+            flights.append(self._measure_flight(times))
+            i += 1
+        return flights
+
+    def _measure_flight(self, times: list[float]) -> _FlightPath:
+        spots = [self.route.glide(t, maps.WORLD) for t in times]
+        xys = [self.route.project(*s, maps.WORLD) if s else None for s in spots]
+        if len(times) < 2 or None in xys:
+            return _FlightPath([times[0], max(times[-1], times[0] + 1)], [0.0, FLIGHT_SPEED * FLIGHT_SECONDS])
+        distances = [0.0]
+        for a, b in zip(xys, xys[1:]):
+            distances.append(distances[-1] + math.hypot((b[0] - a[0]) * W, (b[1] - a[1]) * H))
+        if distances[-1] <= 0:
+            distances[-1] = FLIGHT_SPEED * FLIGHT_SECONDS
+        return _FlightPath(times, distances)
+
+    def _flight_at(self, t: float) -> _FlightPath | None:
+        i = bisect.bisect_right(self.flight_starts, t) - 1
+        return self.flights[i] if i >= 0 and t < self.flights[i].end else None
+
     def _update_zone_share(self, dt: float, now: bool = False) -> None:
-        """Lets the share of the chosen speed drift towards what the visits now and just ahead allow: down
-        quickly before a short visit, back up gently after it (at once after a jump or a new speed)."""
+        """Lets the share of the chosen speed drift towards what the visits now and just ahead allow (down
+        quickly before a short visit, back up gently after it); at once after a jump or a new speed."""
         rate = self.speed * BASE_SPEED
         horizon = self.t + rate * ZONE_AHEAD
         cap = math.inf
@@ -1919,7 +2019,15 @@ def keep_open(window: QWidget) -> QWidget:
 
 
 def open_cinematic(ctx, character_id: str, start: int, end: int, speed: int = 4) -> CinematicWindow:
-    """The cinematic mode for [start, end] in full screen, coloured as chosen on the map page."""
+    """The cinematic mode for [start, end] in full screen, coloured as chosen in the settings; it fades in."""
     window = keep_open(CinematicWindow(ctx, character_id, start, end, speed, ctx.map_colors))
+    if motion.enabled(ctx.config):
+        window.setWindowOpacity(0.0)
+        fade = QPropertyAnimation(window, b"windowOpacity", window)
+        fade.setDuration(OPEN_FADE_MS)
+        fade.setStartValue(0.0)
+        fade.setEndValue(1.0)
+        fade.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        fade.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
     window.showFullScreen()
     return window

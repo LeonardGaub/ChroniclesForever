@@ -88,23 +88,5 @@ def test_pictures_fall_back_to_the_type_icon(monkeypatch):
     assert icons.event_small(event("something_new")) is None   # unknown types keep their symbol
 
 
-def test_map_pin_tooltip_and_hover(monkeypatch):
-    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtCore import QEvent
-    from PySide6.QtWidgets import QApplication, QGraphicsSceneHoverEvent
-    from forever_chronicle.ui import icons
-    from forever_chronicle.ui.pages.map_page import EventPin, event_tooltip
-    QApplication.instance() or QApplication([])
-    quest = event("quest_completed", {"title": "Fish & <Chips>"})
-    quest.zone_name, quest.subzone_name, quest.occurred_at = "Mulgore", "Bloodhoof Village", 1_760_000_000
-    tip = event_tooltip(quest)
-    assert "inv_misc_note_01.png" in tip and "Fish &amp; &lt;Chips&gt;" in tip and "Bloodhoof Village, Mulgore" in tip
-    pin = EventPin(icons.event_pin(quest), 5)
-    pin.hoverEnterEvent(QGraphicsSceneHoverEvent(QEvent.Type.GraphicsSceneHoverEnter))
-    assert pin.scale() == EventPin.HOVER_SCALE and pin.zValue() == 6
-    pin.hoverLeaveEvent(QGraphicsSceneHoverEvent(QEvent.Type.GraphicsSceneHoverLeave))
-    assert pin.scale() == 1 and pin.zValue() == 5
-
-
 def test_bundled_folder_is_in_the_package():
     assert game_icons.BUNDLED == Path(game_icons.__file__).resolve().parents[1] / "icons"

@@ -642,6 +642,20 @@ function page:ShowNotice(text)
   end
 end
 
+-- The route line the marker glides along (Route.Glide's curve) on the shown map, for the canvas to keep the
+-- marker on the curve it draws: { x0, y0, x1, y1, x2, y2, x3, y3, f }, a missing neighbour as the line's end.
+function page:MarkerCurve(curve)
+  if not curve then return nil end
+  local x1, y1 = Route.Project(curve.a, self.viewMap)
+  local x2, y2 = Route.Project(curve.b, self.viewMap)
+  if not (x1 and x2) then return nil end
+  local x0, y0 = x1, y1
+  if curve.before then x0, y0 = Route.Project(curve.before, self.viewMap) end
+  local x3, y3 = x2, y2
+  if curve.after then x3, y3 = Route.Project(curve.after, self.viewMap) end
+  return { x0 or x1, y0 or y1, x1, y1, x2, y2, x3 or x2, y3 or y2, curve.f }
+end
+
 function page:UpdateMarker()
   if not self.current or #self.points == 0 then return end
   if self.timeline then
@@ -678,7 +692,7 @@ function page:UpdateMarker()
     self:Redraw()
     x, y = Route.Project(shown, self.viewMap)
   end
-  self.canvas:SetMarker(x, y)
+  self.canvas:SetMarker(x, y, x and self:MarkerCurve(shown.curve))
   if x then
     self:ShowNotice(instanceName and string.format(L.MAP_INSTANCE_ENTRANCE, instanceName) or self.artNotice)
   else

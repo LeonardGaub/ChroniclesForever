@@ -4,7 +4,8 @@ the screenshot taken for it. Milestones carry a gold bar, deaths a red one. Data
 
 Clicking a thumbnail (or double-clicking the entry) opens the picture in the viewer (ui/screenshots.py).
 Screenshots without an entry (test screenshots) are entries of their own. The filter "With screenshot" shows only
-entries with a screenshot. Selecting an entry moves the map to that moment.
+entries with a screenshot. "▶ Ab hier" (or Enter) plays the chosen moment in the cinematic mode, from shortly
+before it to the end of its session.
 """
 
 from __future__ import annotations
@@ -12,17 +13,21 @@ from __future__ import annotations
 import time
 
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLineEdit, QVBoxLayout
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout
 
 from ...domain import event_types
+from ...domain.route import Route
 from ...i18n import format_day, tr
 from .. import icons, theme
 from ..cards import DATA, ICON_SIZE, CardList, placeholder_pixmap
 from ..screenshots import (ScreenshotFolderButton, ScreenshotViewer, Shot, ThumbnailLoader, file_exists, make_shot,
                            open_viewer)
 from ..widgets import Page, muted
+from .home import session_range
 
 SHOTS = "__screenshots__"  # type filter entry: only entries with a screenshot
+LEAD = 30                  # seconds the replay starts before the chosen moment
 
 
 class TimelinePage(Page):
@@ -47,6 +52,10 @@ class TimelinePage(Page):
         bar.addWidget(self.search, 1)
         bar.addWidget(self.count)
         bar.addWidget(self.open_folder)
+        self.play_here = QPushButton()
+        self.play_here.clicked.connect(self.play_selected)
+        self.play_here.setEnabled(False)
+        bar.addWidget(self.play_here)
         root.addLayout(bar)
 
         self.list = CardList(thumbs=True)
@@ -60,6 +69,8 @@ class TimelinePage(Page):
 
     def refresh(self) -> None:
         self.search.setPlaceholderText(tr("timeline.search"))
+        self.play_here.setText(tr("timeline.play_here"))
+        self.play_here.setToolTip(tr("timeline.play_here_tip"))
         self.open_folder.refresh()
         current = self.type_filter.currentData()
         self.type_filter.blockSignals(True)
@@ -156,11 +167,32 @@ class TimelinePage(Page):
             item.setToolTip(tr("screenshot.missing_tip", stamp=shot["file_stamp"] or "?"))
 
     def _row_selected(self, row: int) -> None:
-        """Selecting an event moves the map to that moment (spec F-010)."""
-        item = self.list.item(row) if row >= 0 else None
+        self.play_here.setEnabled(self._selected_time() is not None)
+
+    def _selected_time(self) -> int | None:
+        item = self.list.currentItem()
         data = item.data(DATA) if item else None
-        if data and data[0] and self.character_id:
-            self.ctx.focus_time.emit(self.character_id, int(data[0]))
+        return int(data[0]) if data and data[0] else None
+
+    def play_selected(self):
+        """The chosen moment in the cinematic mode, from LEAD seconds before it to the end of its session."""
+        from ..cinematic import open_cinematic
+        t = self._selected_time()
+        if t is None or not self.character_id:
+            return None
+        route = Route.load(self.ctx.repo, self.character_id)
+        start, end = t - LEAD, t + 3600
+        session = next((s for s in self.ctx.repo.sessions(self.character_id) if s["started_at"] <= t), None)
+        if session is not None:
+            first, last = session_range(session, route)
+            start, end = max(first, t - LEAD), max(last, t + 60)
+        return open_cinematic(self.ctx, self.character_id, start, end)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and self.play_here.isEnabled():
+            self.play_selected()
+            return
+        super().keyPressEvent(event)
 
     def open_screenshot(self, row: int) -> ScreenshotViewer | None:
         item = self.list.item(row)

@@ -191,10 +191,22 @@ Session:RegisterEvent("PLAYER_ENTERING_WORLD", "OnEnteringWorld")
 Session:RegisterEvent("PLAYER_LOGOUT", "OnLogout")
 Session:RegisterEvent("TIME_PLAYED_MSG", "OnTimePlayed")
 Session:RegisterEvent("PLAYER_LEVEL_UP", function(self)
-  -- "Played on this level" starts again.
+  -- "Played on this level" starts again. The finished level's time goes into the level_up event (below).
   local s = self.current
   if s and s.playedTotal then
-    s.playedTotal = self:GetPlayedTotal()
+    self.finishedLevel = { total = self:GetPlayedTotal(), level = self:GetPlayedLevel(), at = time() }
+    s.playedTotal = self.finishedLevel.total
     s.playedLevel, s.playedAt = 0, time()
   end
+end)
+
+-- The level-up snapshot's time played: playedTotal and levelPlayed (seconds on the level just finished, as the
+-- server counts them). Only known when the server's played time arrived in this session.
+Session:RegisterMessage("FC_EVENT_RECORDED", function(self, _, record)
+  local finished = self.finishedLevel
+  if record.type ~= "level_up" or not finished then return end
+  self.finishedLevel = nil
+  if math.abs(time() - finished.at) > 5 then return end -- a level-up that came without its own event
+  record.data.playedTotal = math.floor(finished.total)
+  record.data.levelPlayed = finished.level and math.floor(finished.level) or nil
 end)

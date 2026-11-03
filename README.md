@@ -6,7 +6,7 @@ A personal adventure history for **World of Warcraft: Forever** (Blizzard's Clas
   quests, deaths, achievements, discovered zones, routes, professions and recipes, and automatic screenshots. It has its own window (`/fj`) with
   Übersicht, Chronik, Karte (route replay on the game's map), Berufe, Einstellungen and Diagnose tabs.
 - **Desktop app** (`desktop/`, Python 3.12 + PySide6): imports the addon's SavedVariables into SQLite and keeps
-  the full history. It shows statistics, the chronicle, the route map on the game's own map images, professions and recipes; screenshots appear right in the chronicle with the entry that triggered them.
+  the full history. It shows statistics, the chronicle, professions and recipes, and plays the journey back in a full-screen cinematic mode on the game's own world map (the Kino tab: the whole journey or chosen sessions); screenshots appear right in the chronicle with the entry that triggered them.
   It backs up the addon file, the screenshots and its database to a cloud folder you choose (when WoW starts and
   closes, or by hand) and shows the friends who back up into the same folder.
 

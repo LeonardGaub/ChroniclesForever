@@ -1,6 +1,6 @@
 """Settings: sound effects (the game's own sounds, else the built-in ones), cinematic music (the game's zone music,
-else the built-in theme, own file or folder), the cinematic mode's looks (time of day, end credits) and
-own sound files."""
+else the built-in theme, own file or folder), the cinematic mode's looks (route colours, time of day, end credits)
+and own sound files."""
 
 from __future__ import annotations
 
@@ -8,10 +8,11 @@ from pathlib import Path
 
 from PySide6.QtCore import QSignalBlocker, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QPushButton,
-                               QSlider, QVBoxLayout)
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+                               QPushButton, QSlider, QVBoxLayout)
 
 from ... import i18n
+from ...domain.route_colors import MODES
 from ...i18n import tr
 from ..audio_setup import AudioInstallDialog
 from ..sound import ALL_EFFECTS, AUDIO, MUSIC_SUFFIXES, music_tracks, user_sounds_dir
@@ -123,9 +124,19 @@ class SettingsPage(Page):
         ml.setColumnStretch(3, 1)
         root.addWidget(self.music_box)
 
-        # Cinematic mode: time of day, end credits, ambience (ui/cinematic.py; on by default)
+        # Cinematic mode: route colours (also the Kino page's and the video's), time of day, end credits, ambience
+        # (ui/cinematic.py; on by default)
         self.cine_box = QGroupBox()
         cl = QVBoxLayout(self.cine_box)
+        colors = QHBoxLayout()
+        self.colors_label = QLabel()
+        self.colors = QComboBox()
+        self.colors.setMinimumWidth(160)
+        self.colors.currentIndexChanged.connect(self._colors_selected)
+        colors.addWidget(self.colors_label)
+        colors.addWidget(self.colors)
+        colors.addStretch(1)
+        cl.addLayout(colors)
         for key in ("cine_daylight", "cine_credits", "cine_ambience"):
             cl.addWidget(self._option(key), 0, Qt.AlignmentFlag.AlignLeft)
         root.addWidget(self.cine_box)
@@ -163,6 +174,14 @@ class SettingsPage(Page):
         self.clicks.setText(tr("settings.clicks"))
         self.events.setText(tr("settings.events"))
         self.cine_box.setTitle(tr("settings.cine_box"))
+        self.colors_label.setText(tr("settings.route_colors"))
+        with QSignalBlocker(self.colors):
+            self.colors.clear()
+            for mode in MODES:
+                self.colors.addItem(tr(f"settings.colors_{mode}"), mode)
+            self.colors.setCurrentIndex(MODES.index(self.ctx.map_colors))
+        for w in (self.colors_label, self.colors):
+            w.setToolTip(tr("settings.colors_tip"))
         self.ui_box.setTitle(tr("settings.ui_box"))
         for key, box in self.options:
             box.setText(tr(f"settings.{key}"))
@@ -225,6 +244,11 @@ class SettingsPage(Page):
 
     def _set(self, key: str, value) -> None:
         self.ctx.config.set(key, value)
+
+    def _colors_selected(self) -> None:
+        mode = self.colors.currentData()
+        if mode is not None:
+            self._set("map_colors", mode)
 
     def _set_effects_volume(self, value: int) -> None:
         self._set("effects_volume", value)

@@ -202,7 +202,7 @@ if PHASE == 1 then
   check(kills.value.text == "2" and kills.name.text ~= nil, "tile shows name and value")
   check(#overview.slots == 19 and overview.slots[1].border ~= nil, "19 gear slots")
   settingsPage = openPage("settings")
-  check(#settingsPage.bars == 7, "storage bars on the settings page (" .. #settingsPage.bars .. ")")
+  check(#settingsPage.bars == 8, "storage bars on the settings page (" .. #settingsPage.bars .. ")")
   local testButton
   for _, control in ipairs(settingsPage.controls) do if type(rawget(control, "button")) == "table" then testButton = control.button end end
   check(testButton and testButton.text == FC.L.SHOT_TEST_BUTTON, "test screenshot button in the screenshot settings")
@@ -487,6 +487,20 @@ if PHASE == 5 then
   alert:Show()
   local found = shots:FindPopups(baseline)
   check(#found == 1 and found[1] == alert, "a frame that appeared after the event counts as its popup")
+  alert:Hide()
+  -- The pet bar (a pet summoned, or back after a flight) and a new target appear with play, not with the event.
+  local petBar = CreateFrame("Frame", "PetActionBar", UIParent)
+  local target = CreateFrame("Frame", "TargetFrame", UIParent)
+  petBar:Hide()
+  target:Hide()
+  baseline = shots:VisibleFrames()
+  petBar:Show()
+  target:Show()
+  alert:Show()
+  found = shots:FindPopups(baseline)
+  check(#found == 1 and found[1] == alert, "the pet bar and the target's frame are no popups")
+  petBar:Hide()
+  target:Hide()
   alert:Hide()
   settings.hideUI, settings.delay = "off", 2
   shots:UpdateSnapshots()
@@ -825,6 +839,22 @@ if PHASE == 9 then
   local jumpPts = { { time = 0, endTime = 0, mapID = 1413, x = 0.1, y = 0.1 },
     { time = 4, endTime = 4, mapID = 1413, x = 0.9, y = 0.1, jump = true } }
   check(Route.Glide(jumpPts, 1).x == 0.1, "no gliding across a teleport")
+  check(g.curve and g.curve.f > 0 and g.curve.f < 1 and g.curve.a and g.curve.b, "the glide names its line for curves")
+
+  -- Curves through the points: they pass through both ends, stay straight on a straight line and cope with
+  -- missing or doubled neighbours.
+  local cx, cy = Route.CurvePoint(0, 0, 1, 0, 2, 1, 3, 1, 0)
+  local ex, ey = Route.CurvePoint(0, 0, 1, 0, 2, 1, 3, 1, 1)
+  check(cx == 1 and cy == 0 and math.abs(ex - 2) < 1e-9 and math.abs(ey - 1) < 1e-9, "curve passes through both ends")
+  local sx, sy = Route.CurvePoint(0, 0, 1, 0, 2, 0, 3, 0, 0.25)
+  check(math.abs(sx - 1.25) < 1e-9 and sy == 0, "evenly spaced points on a line stay a straight line")
+  local mx, my = Route.CurvePoint(1, 0, 1, 0, 2, 1, 2, 1, 0.5)
+  local ox, oy = Route.CurvePoint(0, 0, 1, 0, 1, 0, 3, 1, 0.5)
+  check(mx == mx and my == my and ox == 1 and oy == 0, "missing neighbours and a zero-length line give numbers")
+  local _, bend = Route.CurvePoint(0, 0, 1, 0, 2, 1, 3, 1, 0.5)
+  check(math.abs(bend - 0.5) < 1e-9, "a symmetric bend passes the middle")
+  local _, early = Route.CurvePoint(0, 0, 1, 0, 2, 1, 3, 1, 0.25)
+  check(early < 0.25, "the curve leaves the first point along its line, not straight to the second")
 
   -- Timeline: breaks are collapsed.
   local tlPts = { { time = 0, endTime = 100 }, { time = 1000, endTime = 1100 } }
@@ -862,6 +892,33 @@ if PHASE == 9 then
   page.canvas:RenderRoute()
   check(page.canvas.rendered.zoom == 2 and page.canvas.renderAt == nil, "route drawn again at zoom 2")
   page.canvas:ResetZoom()
+
+  -- Zoomed in, lines are drawn as curves through their points, and the marker stays on them.
+  local c = page.canvas
+  local W, H = c.width, c.height
+  local wavy = { { points = { { 0.40, 0.50, 1 }, { 0.45, 0.50, 2 }, { 0.48, 0.55, 3 }, { 0.53, 0.55, 4 } } } }
+  c:DrawRoute(wavy)
+  check(not c.smooth and #c.lineTimes == 3, "zoom 1: straight lines")
+  c:SetView(4, W / 2 - 0.46 * W * 4, H / 2 - 0.52 * H * 4)
+  c:RenderRoute()
+  local n = #c.lineTimes
+  check(c.smooth and n > 3, "zoomed in: curves (" .. n .. " pieces)")
+  local chained = true
+  for i = 2, n do
+    local a, b = c.lines[i - 1].to, c.lines[i].from
+    if math.abs(a[1] - b[1]) > 1e-6 or math.abs(a[2] - b[2]) > 1e-6 or c.lineTimes[i] < c.lineTimes[i - 1] then chained = false end
+  end
+  check(chained and c.lines[1].from[1] == 0.40 * W and math.abs(c.lines[n].to[1] - 0.53 * W) < 1e-6,
+    "pieces join up from the first point to the last, in time order")
+  local curve = { 0.40, 0.50, 0.45, 0.50, 0.48, 0.55, 0.53, 0.55, 0.5 }
+  c:SetMarker(0.465, 0.525, curve)
+  local px, py = Route.CurvePoint(0.40 * W, 0.50 * H, 0.45 * W, 0.50 * H, 0.48 * W, 0.55 * H, 0.53 * W, 0.55 * H, 0.5)
+  local at = c.marker.at
+  check(math.abs(at[1] - px) < 0.5 and math.abs(at[2] + py) < 0.5, "marker on the curve")
+  c:ResetZoom()
+  c:RenderRoute()
+  check(not c.smooth and math.abs(c.marker.at[1] - 0.465 * W) < 1e-6, "zoomed out: marker back on the straight line")
+  page:Redraw()
   check(page.tickCount >= 1 and #page.runs >= 1, "timeline ticks and zone bands (" .. page.tickCount .. ", " .. #page.runs .. ")")
 
   local errors = 0
@@ -1439,6 +1496,65 @@ if PHASE == 16 then
   check(moments[2].data.text == "Sonnenuntergang", "text added afterwards")
 
   MOCK.fire("PLAYER_LOGOUT")
+  local errors = 0
+  for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
+  check(errors == 0, "no errors logged")
+end
+
+if PHASE == 17 then
+  print("phase 17: kills with experience, level-up snapshot")
+  local FC = startClient(true, false)
+  local char = ForeverChronicleDB.characters[ME]
+  local Util = FC.Util
+
+  -- The matcher follows the client's format strings, numbered arguments in any order included.
+  local name, xp = Util.FormatMatcher("%1$s stirbt, Ihr bekommt %2$d Erfahrung.")("Hogger stirbt, Ihr bekommt 120 Erfahrung.")
+  check(name == "Hogger" and xp == 120, "German format string")
+  name, xp = Util.FormatMatcher("Ihr bekommt %2$d Erfahrung von %1$s.")("Ihr bekommt 75 Erfahrung von Kobold.")
+  check(name == "Kobold" and xp == 75, "arguments in another order come back in argument order")
+  check(Util.FormatMatcher("%d%% done")("50% done") == 50 and Util.FormatMatcher(nil)("x") == nil, "%% and no format")
+
+  local function kills()
+    local out = {}
+    for _, text in ipairs(S(char.streams.kills).records) do out[#out + 1] = FC:GetModule("Kills").Parse(text) end
+    return out
+  end
+  MOCK.fire("CHAT_MSG_COMBAT_XP_GAIN", "Hogger dies, you gain 120 experience.")
+  MOCK.advance(3)
+  MOCK.fire("CHAT_MSG_COMBAT_XP_GAIN", "Mottled Boar dies, you gain 90 experience. (+45 exp Rested bonus)")
+  MOCK.fire("CHAT_MSG_COMBAT_XP_GAIN", "Kobold Vermin dies, you gain 60 experience. (+30 exp Rested bonus, +6 group bonus)")
+  MOCK.fire("CHAT_MSG_COMBAT_XP_GAIN", "Gamon, the Drunk dies, you gain 12 experience.")
+  MOCK.fire("CHAT_MSG_COMBAT_XP_GAIN", "You gain 500 experience.") -- quest or exploration: no kill
+  MOCK.fire("CHAT_MSG_COMBAT_XP_GAIN", MOCK.SECRET)
+  local k = kills()
+  check(#k == 4, "four kills recorded")
+  check(k[1].name == "Hogger" and k[1].xp == 120 and k[1].rested == nil and k[1].time == time() - 3, "kill: time, xp, name")
+  check(k[2].xp == 90 and k[2].rested == 45 and k[3].rested == 30, "rested bonus, also with a group bonus")
+  check(k[4].name == "Gamon, the Drunk", "a name with a comma")
+  check(char.stats.kill_xp == 282 and char.stats.rested_xp == 75, "kill and rested XP totals")
+
+  MOCK.fire("QUEST_TURNED_IN", 3513, 450, 1500)
+  check(char.stats.quest_xp == 450 and char.stats.quest_money == 1500, "quest XP and money totals")
+
+  -- The level-up keeps a snapshot, with the time played on the finished level once the server told it.
+  MOCK.advance(15) -- past the automatic /played after login
+  MOCK.fire("TIME_PLAYED_MSG", 36000, 2000)
+  MOCK.advance(100)
+  MOCK.level = 23
+  MOCK.fire("PLAYER_LEVEL_UP", 23)
+  local ups = eventsOfType("level_up")
+  local d = ups[#ups].data
+  check(d.level == 23 and d.money == 123456 and d.stats.kill_xp == 282 and d.stats.quests_completed >= 1,
+    "level-up snapshot: statistics and gold")
+  check(d.gear[1] == "item:4385::::::::22:::::" and d.gear[16] == "item:2099::::::::22:::::", "level-up snapshot: gear")
+  check(d.playedTotal == 36100 and d.levelPlayed == 2100, "level-up snapshot: time played")
+  check(type(d.professions) == "table" and next(d.professions) ~= nil, "level-up snapshot: professions")
+  check(FC:DescribeEvent(ups[#ups]) == "Stufe 23 erreicht", "level-up text unchanged")
+
+  -- Packed for the saved file and read back the same.
+  MOCK.fire("PLAYER_LOGOUT")
+  check(type(char.streams.kills.packed) == "table" and char.streams.kills.packed.kind == "lines", "kills packed as lines")
+  check(#kills() == 4 and kills()[4].name == "Gamon, the Drunk", "kills read back after packing")
   local errors = 0
   for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
   check(errors == 0, "no errors logged")

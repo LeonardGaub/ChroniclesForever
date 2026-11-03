@@ -82,9 +82,46 @@ FC:RegisterStat("achievements", { labelKey = "STAT_ACHIEVEMENTS", order = 23, ic
 -- Handlers
 -------------------------------------------------------------------------------
 
-Progress:RegisterEvent("PLAYER_LEVEL_UP", function(_, _, level)
+-- What the character had when reaching a level, kept in the level_up event's data (data only for now: time per
+-- level, gold at each level, the gear worn, ...):
+--   stats       a copy of every statistic (kills, xp_earned, kill_xp, quest_xp, quests_completed, deaths, ...)
+--   money       gold held, in copper
+--   gear        { [slot ID] = item string ("item:1234:0:..."), ... } of the equipped items
+--   professions { [name] = "rank/max", ... }
+-- Modules/Session.lua adds playedTotal and levelPlayed (the server's time played on the level just finished).
+function Progress:LevelSnapshot()
+  local char, snap = FC.char, {}
+  local stats = {}
+  for k, v in pairs(char.stats) do
+    if type(v) == "number" then stats[k] = v end
+  end
+  snap.stats = stats
+  snap.money = Util.SafeValue("number", GetMoney)
+  local gear = char.snapshots.gear
+  if type(gear) == "table" and type(gear.slots) == "table" then
+    snap.gear = {}
+    for _, entry in ipairs(gear.slots) do
+      local item = type(entry.link) == "string" and entry.link:match("|H(item:[^|]+)|h")
+      if type(entry.slot) == "number" and item then snap.gear[entry.slot] = item end
+    end
+  end
+  local profs = char.snapshots.professions
+  if type(profs) == "table" and type(profs.list) == "table" and #profs.list > 0 then
+    snap.professions = {}
+    for _, p in ipairs(profs.list) do
+      if type(p.name) == "string" and type(p.rank) == "number" then
+        snap.professions[p.name] = p.rank .. "/" .. tostring(p.maxRank or "?")
+      end
+    end
+  end
+  return snap
+end
+
+Progress:RegisterEvent("PLAYER_LEVEL_UP", function(self, _, level)
   level = Util.Plain(level)
-  FC:Record("level_up", { level = type(level) == "number" and level or nil })
+  local data = self:LevelSnapshot()
+  data.level = type(level) == "number" and level or nil
+  FC:Record("level_up", data)
   FC:ConfirmCapability("level_up")
 end)
 
@@ -96,6 +133,10 @@ Progress:RegisterEvent("QUEST_TURNED_IN", function(_, _, questID, xpReward, mone
     questID = questID, title = title, xp = Util.Plain(xpReward), money = Util.Plain(moneyReward),
   })
   FC:IncrementStat("quests_completed")
+  -- Running totals, not shown (the level-up snapshot copies them): XP and money from quests.
+  local xp, money = Util.Plain(xpReward), Util.Plain(moneyReward)
+  if type(xp) == "number" and xp > 0 then FC:IncrementStat("quest_xp", xp) end
+  if type(money) == "number" and money > 0 then FC:IncrementStat("quest_money", money) end
   FC:ConfirmCapability("quests")
 end)
 

@@ -8,12 +8,14 @@
 -- their on-screen size.
 --
 -- Route lines are drawn for the visible area (plus a margin) at the detail of the current zoom, and drawn
--- again shortly after the view changes. Every line has a time, so a replay can "paint" the route up to the
+-- again shortly after the view changes. Zoomed in, they are curves through the recorded points, and the
+-- marker follows the same curve. Every line has a time, so a replay can "paint" the route up to the
 -- current moment, optionally only its last minutes with older parts fading out (Canvas:SetPaint).
 
 local ADDON, FC = ...
 local Util = FC.Util
 local UI = FC.UI
+local Route = FC.Route
 
 local Canvas = {}
 Canvas.__index = Canvas
@@ -28,6 +30,9 @@ local FADE_MIN = 0.12       -- alpha share of the oldest part of a fading trail
 local LINE_THICKNESS = 2.5
 local DOT_SIZE, MARKER_SIZE = 5, 18
 local MAX_ZOOM, ZOOM_STEP = 6, 1.25
+local SMOOTH_ZOOM = 1.5       -- from this zoom on, route lines are drawn as curves through their points
+local SMOOTH_STEP = 4         -- on-screen pixels per straight piece of a curve
+local SMOOTH_MAX_PIECES = 12
 local ROUTE_COLOR = { 1, 0.82, 0, 0.95 }
 local TAXI_COLOR = { 0.41, 0.8, 0.94, 0.9 }
 
@@ -259,25 +264,54 @@ local function dotRegion(self, i)
   return dot
 end
 
+-- How many straight pieces draw the curve from a to b (content pixels): one per SMOOTH_STEP pixels on screen,
+-- 1 (a straight line) for a line too short to show a bend.
+local function curvePieces(self, a, b)
+  local onScreen = (math.abs(b[1] - a[1]) + math.abs(b[2] - a[2])) * self.zoom
+  if onScreen < 2 * SMOOTH_STEP then return 1 end
+  return math.min(SMOOTH_MAX_PIECES, math.ceil(onScreen / SMOOTH_STEP))
+end
+
 -- Calls emit(n, seg, x1, y1, x2, y2, time) for every line that touches rect (content pixels) and returns the
 -- count. Points closer than minDist to the previous line end are merged; the last point of a segment is
--- always drawn. time is the time of the line's end point.
-local function walk(self, segments, rect, minDist, emit)
-  local n = 0
+-- always drawn. time is the time of the line's end point. smooth: lines are drawn as curves through the points
+-- (Route.CurvePoint), each as a few pieces with the line's time.
+local function walk(self, segments, rect, minDist, emit, smooth)
+  local n, kept = 0, {}
   for _, seg in ipairs(segments) do
-    local lastX, lastY
+    local m, lastX, lastY = 0, nil, nil
     local count = #seg.points
     for i, pt in ipairs(seg.points) do
       local px, py = pt[1] * self.width, pt[2] * self.height
-      if not lastX then
+      if not lastX or i == count or (math.abs(px - lastX) + math.abs(py - lastY)) >= minDist then
+        m = m + 1
+        local k = kept[m] or {}
+        k[1], k[2], k[3], kept[m] = px, py, pt[3], k
         lastX, lastY = px, py
-      elseif i == count or (math.abs(px - lastX) + math.abs(py - lastY)) >= minDist then
-        if math.max(px, lastX) >= rect.x0 and math.min(px, lastX) <= rect.x1
-            and math.max(py, lastY) >= rect.y0 and math.min(py, lastY) <= rect.y1 then
+      end
+    end
+    for j = 2, m do
+      local a, b = kept[j - 1], kept[j]
+      if math.max(a[1], b[1]) >= rect.x0 and math.min(a[1], b[1]) <= rect.x1
+          and math.max(a[2], b[2]) >= rect.y0 and math.min(a[2], b[2]) <= rect.y1 then
+        local pieces = smooth and curvePieces(self, a, b) or 1
+        if pieces == 1 then
           n = n + 1
-          if emit then emit(n, seg, lastX, lastY, px, py, pt[3]) end
+          if emit then emit(n, seg, a[1], a[2], b[1], b[2], b[3]) end
+        else
+          local p0 = j > 2 and kept[j - 2] or a
+          local p3 = j < m and kept[j + 1] or b
+          local x, y = a[1], a[2]
+          for s = 1, pieces do
+            local nx, ny = b[1], b[2]
+            if s < pieces then
+              nx, ny = Route.CurvePoint(p0[1], p0[2], a[1], a[2], b[1], b[2], p3[1], p3[2], s / pieces)
+            end
+            n = n + 1
+            if emit then emit(n, seg, x, y, nx, ny, b[3]) end
+            x, y = nx, ny
+          end
         end
-        lastX, lastY = px, py
       end
     end
   end
@@ -301,11 +335,16 @@ function Canvas:RenderRoute()
 
   -- Detail of the current zoom; coarser if that would need too many lines.
   local minDist = MIN_LINE_PIXELS / self.zoom
+  local fullDetail = true
   for _ = 1, 4 do
     local n = walk(self, segments, rect, minDist)
     if n <= MAX_LINES then break end
     minDist = minDist * math.max(1.5, n / MAX_LINES)
+    fullDetail = false
   end
+  -- Curves when zoomed in, as long as every point is drawn and the pieces fit the line budget.
+  local smooth = fullDetail and self.zoom >= SMOOTH_ZOOM and walk(self, segments, rect, minDist, nil, true) <= MAX_LINES
+  self.smooth = smooth
 
   local times, colors = {}, {}
   local colorFn = self.colorFn
@@ -319,7 +358,7 @@ function Canvas:RenderRoute()
     line:SetEndPoint("TOPLEFT", self.content, bx, -by)
     line:Hide()
     times[n], colors[n] = t, c
-  end)
+  end, smooth)
   lineCount = math.min(lineCount, MAX_LINES)
   self.lines:HideFrom(lineCount + 1)
 
@@ -342,6 +381,7 @@ function Canvas:RenderRoute()
   self.lineTimes, self.lineColors, self.dotTimes = times, colors, dotTimes
   self.lineWindow, self.dotWindow = { 1, 0 }, { 1, 0 }
   self:ApplyPaint(true)
+  self:PlaceMarker() -- onto the curve, or back onto the straight line
 end
 
 -------------------------------------------------------------------------------
@@ -546,12 +586,38 @@ function Canvas:PaintPins()
   end
 end
 
-function Canvas:SetMarker(x, y)
-  if not x then
+-- x, y: the marker's place on the map (nil hides it). curve: when it glides along a route line, that line as
+-- { x0, y0, x1, y1, x2, y2, x3, y3, f } (map units: the line's neighbours, its ends, how far along), so it stays
+-- on the line where the line is drawn as a curve.
+function Canvas:SetMarker(x, y, curve)
+  self.markerAt = x and { x, y, curve } or nil
+  self:PlaceMarker()
+end
+
+function Canvas:PlaceMarker()
+  local at = self.markerAt
+  if not at then
     self.marker:Hide()
     return
   end
-  local px, py = self:ToPixels(x, y)
+  local px, py = self:ToPixels(at[1], at[2])
+  local c = at[3]
+  if c and self.smooth then
+    local w, h = self.width, self.height
+    local a, b = { c[3] * w, c[4] * h }, { c[5] * w, c[6] * h }
+    -- The same pieces as the drawn line: the marker moves along them, not along the exact curve.
+    local pieces = curvePieces(self, a, b)
+    if pieces > 1 then
+      local x0, y0, x3, y3 = c[1] * w, c[2] * h, c[7] * w, c[8] * h
+      local s = math.min(pieces - 1, math.floor(c[9] * pieces))
+      local ax, ay = a[1], a[2]
+      if s > 0 then ax, ay = Route.CurvePoint(x0, y0, a[1], a[2], b[1], b[2], x3, y3, s / pieces) end
+      local bx, by = b[1], b[2]
+      if s + 1 < pieces then bx, by = Route.CurvePoint(x0, y0, a[1], a[2], b[1], b[2], x3, y3, (s + 1) / pieces) end
+      local k = c[9] * pieces - s
+      px, py = ax + (bx - ax) * k, ay + (by - ay) * k
+    end
+  end
   self.marker:ClearAllPoints()
   self.marker:SetPoint("CENTER", self.content, "TOPLEFT", px, -py)
   self.marker:Show()

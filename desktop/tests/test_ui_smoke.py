@@ -22,7 +22,7 @@ def test_main_window_with_data(app, ctx, sv_data, db):
     assert window.char_name.text() == "Blind Bullseye"  # Forever characters have a last name
 
     assert window.current_page() is window.page("tab.home"), "the app starts on the home screen"
-    assert [b.text() for b in window.nav_buttons.values()] == ["Start", "Übersicht", "Chronik", "Galerie", "Karte",
+    assert [b.text() for b in window.nav_buttons.values()] == ["Start", "Übersicht", "Chronik", "Galerie", "Kino",
                                                               "Berufe"]
     assert [a.text() for a in window.gear_actions.values()] == ["Import", "Einstellungen", "Diagnose"]
     for page in window.pages:
@@ -95,7 +95,7 @@ def test_main_window_with_data(app, ctx, sv_data, db):
     home = window.page("tab.home")
     window.show_page(home)
     assert home.welcome.text() == "Willkommen zurück, Blind"
-    assert home.session_card.title.text() == "Letzte Sitzung" and home.map_card.title.text() == "Karte & Wiedergabe"
+    assert home.session_card.title.text() == "Letzte Sitzung" and home.map_card.title.text() == "Kino"
     ctx.navigate.emit("tab.gallery")
     assert window.current_page() is window.page("tab.gallery") and window.nav_buttons[window.current_page()].isChecked()
     ctx.select_character.emit(window.current_character_id())

@@ -24,7 +24,6 @@ from .wow.paths import ClientInstall, SavedVariablesFile, client_from_path, find
 
 class AppContext(QObject):
     data_changed = Signal()
-    focus_time = Signal(str, int)  # (character_id, epoch seconds): show this moment, e.g. on the map
     navigate = Signal(str)         # show a page (its title_key), e.g. from a card on the home screen
     select_character = Signal(str)  # make this character the shown one (character_id)
     imported = Signal(list)        # import_ids of imports that brought new events (the main window announces them)
@@ -54,8 +53,8 @@ class AppContext(QObject):
 
     @property
     def map_colors(self) -> str:
-        """How routes are coloured (domain/route_colors.py MODES): chosen on the map page, used by the cinematic mode
-        and the video too."""
+        """How routes are coloured (domain/route_colors.py MODES): chosen in the settings, used by the Kino page, the
+        cinematic mode and the video."""
         mode = self.config.extra.get("map_colors")
         return mode if mode in MODES else MODES[0]
 

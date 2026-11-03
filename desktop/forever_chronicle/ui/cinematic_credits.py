@@ -6,7 +6,7 @@ polaroids on both sides. A last card ("Journey Forever") stops in the middle and
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, QSize
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPen, QPixmap
 
 from ..domain.credits import Section
@@ -32,6 +32,8 @@ class CreditsOverlay(_TimedOverlay):
         self.title, self.sections = title, sections
         self.photos: list[QPixmap] = [p for p in (load_thumbnail(path, QSize(360, 240), fill=True)
                                                   for path in list(photos)[:MAX_PHOTOS]) if p is not None]
+        self.cards: dict[int, QPixmap] = {}     # the polaroids drawn once at the size of the window (photo index)
+        self.card_width = 0.0
         self.hide()
 
     def start(self, area: QRectF) -> None:
@@ -131,12 +133,33 @@ class CreditsOverlay(_TimedOverlay):
             if y < area.top() - pw or y > area.bottom() + pw:
                 continue
             fade = clamp((y - area.top()) / (pw * 0.9)) * clamp((area.bottom() - y) / (pw * 0.9))
+            card = self._card(i, pixmap, pw)
             painter.save()
-            painter.setOpacity(0.8 * fade)
+            painter.setOpacity(fade)
             painter.translate(QPointF(x, y))
             painter.rotate((-1 if i % 2 == 0 else 1) * (3 + (i * 7) % 5))
-            ph = pw * 0.62
-            m = pw * 0.04
-            draw_polaroid(painter, QRectF(-pw / 2 - m, -ph / 2 - m, pw + 2 * m, ph + 4 * m),
-                          QRectF(-pw / 2, -ph / 2, pw, ph), pixmap, QPointF(5, 7))
+            size = card.deviceIndependentSize()
+            painter.drawPixmap(QRectF(-size.width() / 2, -size.height() / 2, size.width(), size.height()),
+                               card, QRectF(card.rect()))
             painter.restore()
+
+    def _card(self, i: int, pixmap: QPixmap, pw: float) -> QPixmap:
+        """Photo i as a polaroid in one picture, so it fades as a whole: drawn with opacity piece by piece,
+        the white paper would show through the photo and wash it out."""
+        if pw != self.card_width:
+            self.cards.clear()
+            self.card_width = pw
+        card = self.cards.get(i)
+        if card is None:
+            ph, m, shadow = pw * 0.62, pw * 0.04, QPointF(5, 7)
+            dpr = self.devicePixelRatioF()
+            w, h = pw + 2 * m + shadow.x(), ph + 4 * m + shadow.y()
+            card = QPixmap(round(w * dpr), round(h * dpr))
+            card.setDevicePixelRatio(dpr)
+            card.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(card)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            draw_polaroid(painter, QRectF(0, 0, pw + 2 * m, ph + 4 * m), QRectF(m, m, pw, ph), pixmap, shadow)
+            painter.end()
+            self.cards[i] = card
+        return card

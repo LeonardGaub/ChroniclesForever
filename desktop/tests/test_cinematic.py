@@ -262,6 +262,53 @@ def test_short_zone_visits_slow_the_replay_down():
     assert 0.1 < window.zone_share < 0.5, "back to speed gently"
 
 
+def test_flights_fly_at_one_speed_along_their_course():
+    from types import SimpleNamespace
+
+    class Flat(Route):                      # a zone's coordinates stand for the world map's
+        def project(self, map_id, x, y, view):
+            return (x, y) if x is not None else None
+
+    def taxi(t, x, until=None, map_id=1):
+        return dataclasses.replace(P(t, x, 0.5, map_id), until=until, taxi=True)
+
+    # On foot; a flight recorded unevenly (steps of one to three seconds, a hold on one point); on foot in another
+    # zone; a short hop; on foot again.
+    flight = [taxi(600, 0.10), taxi(602, 0.11), taxi(603, 0.13), taxi(606, 0.14, until=620), taxi(622, 0.20),
+              taxi(640, 0.30)]
+    points = ([P(t, 0.1, 0.5, 1) for t in range(0, 600, 5)] + flight + [P(642, 0.3, 0.5, 2), P(990, 0.3, 0.5, 2)]
+              + [taxi(1000, 0.30, map_id=2), taxi(1010, 0.32, map_id=2)] + [P(1012, 0.32, 0.5, 3), P(3000, 0.32, 0.5, 3)])
+    window = SimpleNamespace(route=Flat(points), start=0, end=3000, speed=4, t=0.0, ramp=10.0, still_mode="play",
+                             cues=[], cue_index=0, zone_share=0.1)
+    window._measure_flight = lambda times: cine.CinematicWindow._measure_flight(window, times)
+    flights = cine.CinematicWindow._flight_paths(window)
+    assert [(f.begin, f.end) for f in flights] == [(600, 642), (1000, 1012)], "to the first point after landing"
+    first = flights[0]
+    assert first.length == pytest.approx(0.2 * cine.W)
+    assert first.time_at(first.distance_at(610)) == 620, "a hold on a point is passed at once"
+
+    speed = cine.FLIGHT_SPEED * window.speed / cine.FLIGHT_AT
+    dt, t, steps, xs = 0.05, 600.0, 0, []
+    while t < first.end:
+        t = first.time_at(first.distance_at(t) + speed * dt)
+        xs.append(window.route.glide(t, cine.maps.WORLD)[1] * cine.W)
+        steps += 1
+    moved = [b - a for a, b in zip(xs, xs[1:-1])]
+    assert moved and all(m == pytest.approx(speed * dt) for m in moved), "the same distance in every frame"
+    assert steps == pytest.approx(first.length / speed / dt, abs=1), "a flight's time follows its length"
+    assert cine.CinematicWindow.pace(window, first) == 1.0, "short zone visits do not slow a flight down"
+
+    unknown = Route(flight + [P(642, 0.3, 0.5, 2)])
+    window.route, window.start, window.end = unknown, 600, 642
+    measured = cine.CinematicWindow._flight_paths(window)[0]
+    assert measured.length / cine.FLIGHT_SPEED == cine.FLIGHT_SECONDS, \
+        "a flight off the world map takes FLIGHT_SECONDS at FLIGHT_AT×"
+
+    window.route, window.start, window.end = Flat(points), 0, 3000
+    visits = cine.CinematicWindow._zone_visits(window)
+    assert [a for a, _, _ in visits] == [0, 642, 1012], "flying over a zone is no visit"
+
+
 def test_deaths_from_the_route():
     from forever_chronicle.domain.cinematic import NO_ROUTE_DEATH, SPIRIT_HEALER, death_spans
 

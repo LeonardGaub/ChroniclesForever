@@ -28,6 +28,7 @@ Modules\Session.lua
 Modules\Travel.lua
 Modules\Positions.lua
 Modules\Progress.lua
+Modules\Kills.lua
 Modules\Rares.lua
 Modules\Pastimes.lua
 Modules\Dungeons.lua

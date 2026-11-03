@@ -5,7 +5,8 @@
   the level, total played, the average session), the zones it was spent in, its screenshots, and "▶ Rückblick"
   (the session in the cinematic mode) or "⤓ Video".
 - Galerie: the newest pictures (favourites first) and how many there are; opens the gallery.
-- Karte & Wiedergabe: the last session's route on its zone map, "Karte öffnen" and "▶ Kino-Modus" for everything.
+- Kino: the whole journey on the world map (as on the Kino page, ui/journey_art.py), "▶ Die ganze Reise" and
+  "Alle Kapitel" (the Kino page).
 The characters are in the sidebar, so the page has no card for them.
 The cards navigate through AppContext.navigate; the main window does the rest.
 """
@@ -14,17 +15,17 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QPointF, QSize, Qt
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout,
                                QWidget)
 
 from ...domain import event_types, maps
+from ...domain.cinematic import Levels
 from ...domain.route import GAP_SECONDS, Route
+from ...domain.route_colors import RouteColors
 from ...domain.stats import session_durations
 from ...i18n import format_datetime, format_day, format_duration, tr
-from ...wow.map_art import find_art
-from .. import icons, theme
+from .. import icons, journey_art, theme
 from ..cards import Card
 from ..screenshots import load_thumbnail, make_shot, open_viewer, shots_on_disk
 from ..widgets import Page, muted
@@ -33,7 +34,7 @@ from ..widgets import Page, muted
 SESSION_TYPES = ("level_up", "quest_completed", "zone_discovered", "achievement_earned", "rare_killed",
                  "boss_killed", "dungeon_completed", "player_died", "recipe_learned")
 THUMB = QSize(132, 82)
-MAP_PREVIEW = QSize(420, 280)
+JOURNEY = QSize(420, 236)
 MAX_ZONES = 4
 MIN_RATE_SECONDS = 15 * 60      # shorter sessions show no quests per hour
 
@@ -114,42 +115,6 @@ def session_stats(session, count: int, durations: list[int], events, route: Rout
         rows.append((tr("home.stat.average"), format_duration(sum(durations) / len(durations))))
     rows.append((tr("stats.sessions"), str(count)))
     return rows
-
-
-def route_preview(route: Route, view: int, start: int, end: int, size: QSize = MAP_PREVIEW) -> QPixmap:
-    """The zone's map with the route of [start, end] drawn on it, as the map page does."""
-    pix = QPixmap(size)
-    pix.fill(QColor(theme.PANEL_ALT))
-    painter = QPainter(pix)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-    art = find_art(view)
-    if art:
-        painter.drawPixmap(pix.rect(), QPixmap(str(art)))
-    w, h = size.width(), size.height()
-    last = None
-    for seg in route.segments(view, start, end):
-        if len(seg.points) < 2:
-            continue
-        path = QPainterPath(QPointF(seg.points[0][1] * w, seg.points[0][2] * h))
-        for _, x, y in seg.points[1:]:
-            path.lineTo(x * w, y * h)
-        for width, color in ((5, QColor(26, 15, 5, 200)), (2.5, QColor("#69ccf0" if seg.taxi else theme.GOLD))):
-            pen = QPen(color, width)
-            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-            painter.setPen(pen)
-            painter.drawPath(path)
-        last = QPointF(seg.points[-1][1] * w, seg.points[-1][2] * h)
-    if last is not None:
-        painter.setPen(QPen(QColor("black"), 2))
-        painter.setBrush(QColor(theme.GOLD))
-        painter.drawEllipse(last, 6, 6)
-    painter.setPen(QPen(QColor(theme.BORDER), 1))
-    painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.drawRect(pix.rect().adjusted(0, 0, -1, -1))
-    painter.end()
-    return pix
 
 
 class Thumb(QLabel):
@@ -378,27 +343,35 @@ class HomePage(Page):
         if not route:
             body.addWidget(muted(tr("map.no_points")))
             return
-        start, end = session_range(session, route) if session else (route.start, route.end)
-        last = route.point_at(end)
-        view = route.view_for(last)
-        if view is not None:
+        repo = self.ctx.repo
+        char = repo.character(self.character_id)
+        colors = RouteColors(self.ctx.map_colors,
+                             Levels(repo.events(self.character_id, types=("level_up",)), char.level if char else None),
+                             [s["started_at"] for s in repo.sessions(self.character_id)])
+        pixmap = journey_art.picture(route, colors, JOURNEY)
+        if pixmap is not None:
             preview = QLabel()
-            preview.setPixmap(route_preview(route, view, start, end))
+            preview.setPixmap(pixmap)
             preview.setCursor(Qt.CursorShape.PointingHandCursor)
-            preview.mouseReleaseEvent = lambda _e: self.ctx.navigate.emit("tab.map")
+            preview.setToolTip(tr("cinema.play_all_tip"))
+            preview.mouseReleaseEvent = lambda _e: self.ctx.navigate.emit("tab.cinema")
             body.addWidget(preview)
-            zones = {p.map_id for p in route.points if p.map_id is not None}
+        start, end = session_range(session, route) if session else (route.start, route.end)
+        view = route.view_for(route.point_at(end))
+        if view is not None:
             text = QLabel(tr("home.map_last", zone=maps.zone_name(view, route.map_infos)))
             text.setObjectName("CardBig")
             body.addWidget(text)
-            body.addWidget(muted(tr("home.map_stats", zones=len(zones), since=format_datetime(route.start))))
+        zones = {p.map_id for p in route.points if p.map_id is not None}
+        body.addWidget(muted(tr("home.map_stats", zones=len(zones), since=format_datetime(route.start))))
         buttons = QHBoxLayout()
-        open_map = QPushButton(tr("home.open_map"))
-        open_map.clicked.connect(lambda: self.ctx.navigate.emit("tab.map"))
-        everything = QPushButton(tr("home.cinematic_all"))
+        everything = QPushButton(tr("cinema.play_all"))
+        everything.setToolTip(tr("cinema.play_all_tip"))
         everything.clicked.connect(lambda: self.play(route.start, route.end))
-        buttons.addWidget(open_map)
+        chapters = QPushButton(tr("cinema.all_chapters"))
+        chapters.clicked.connect(lambda: self.ctx.navigate.emit("tab.cinema"))
         buttons.addWidget(everything)
+        buttons.addWidget(chapters)
         buttons.addStretch(1)
         body.addLayout(buttons)
 
