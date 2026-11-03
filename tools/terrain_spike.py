@@ -39,6 +39,7 @@ from forever_chronicle.storage.repository import Repository  # noqa: E402
 from forever_chronicle.ui.stage3d import gl  # noqa: E402
 from forever_chronicle.ui.stage3d.buildings import BuildingRenderer  # noqa: E402
 from forever_chronicle.ui.stage3d.camera import DroneCamera  # noqa: E402
+from forever_chronicle.ui.stage3d.textures import GameTextures  # noqa: E402
 from forever_chronicle.ui.stage3d.terrain import TerrainRenderer  # noqa: E402
 from forever_chronicle.ui.stage3d.look import Look  # noqa: E402
 from forever_chronicle.ui.stage3d.trail import LIFT, Trail, drape, flight_heights  # noqa: E402
@@ -46,6 +47,13 @@ from forever_chronicle.ui.theme import class_color  # noqa: E402
 
 SPEEDS = {Qt.Key.Key_1: 10, Qt.Key.Key_2: 30, Qt.Key.Key_3: 60, Qt.Key.Key_4: 120}   # game seconds per second
 TAXI_LIFT = 45.0
+
+
+def open_game_files():
+    """The first WoW Forever install's game files (for the textures), None without one."""
+    from forever_chronicle.wow import casc, paths
+    found = paths.find_forever_installs()
+    return casc.open_client(found[0]) if found else None
 
 
 class Journey:
@@ -118,7 +126,8 @@ class Stage(QOpenGLWidget):
         super().__init__(parent)
         self.journey = journey
         self.terrain = TerrainRenderer(journey.pack)
-        self.buildings = BuildingRenderer(journey.pack, self.terrain)
+        self.textures = GameTextures(open_game_files)
+        self.buildings = BuildingRenderer(journey.pack, self.terrain, self.textures)
         self.look = Look()
         self.trail = Trail(color, sprite=True)
         self.camera = DroneCamera()
@@ -265,6 +274,7 @@ class SpikeWindow(QWidget):
         print(self.stage.stats(), flush=True)
         self.stage.makeCurrent()
         self.stage.buildings.shutdown()
+        self.stage.textures.shutdown()
         self.stage.terrain.shutdown()
         super().closeEvent(event)
 

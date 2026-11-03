@@ -3,10 +3,11 @@
 Which: those whose box comes within the near ring round the camera, and the big ones (cities, keeps) from further
 away; none far out, where they would be specks. Their meshes are decoded by a worker thread and uploaded a few
 hundred thousand vertices a frame; meshes not drawn for a while are dropped.
-How they look: most of the game's building textures are not on the player's PC (they are fetched while playing),
-so the buildings take their colours from the minimap pictures under them, as the ground does: the roofs exactly as
-the map paints them, the walls in the colour of their foot, darker the steeper they stand. The game's baked shade
-of each vertex and the sun do the rest.
+How they look: in the game's own textures, read from the player's install (textures.py), batch by batch, alpha-cut
+where the game cuts them (fences, banners, leaves); with the game's baked shade of each vertex and the sun. Until a
+texture is there, or without the game files, a batch takes its colours from the minimap pictures under it, as the
+ground does: the roofs as the map paints them, the walls in the colour of their foot, darker the steeper they
+stand.
 """
 
 from __future__ import annotations
@@ -25,22 +26,26 @@ BIG, BIG_REACH = 250.0, 3.0  # buildings at least this many yards across are dra
 HIDE_FROM = 6000.0         # camera distance from which no buildings are drawn
 UPLOAD_VERTICES = 150_000  # per frame
 KEEP_FRAMES = 900          # a mesh not drawn this many frames is dropped
-ATLAS_UNIT, FAR_UNIT = 5, 6
+ATLAS_UNIT, FAR_UNIT, TEX_UNIT = 5, 6, 0
+ALPHA_KEY = 1              # a batch's blend mode: alpha-cut
 
 VS = """
 in vec3 a_pos;
 in vec3 a_n;
 in float a_shade;
+in vec2 a_uv;
 uniform mat4 u_vp;
 uniform mat4 u_model;
 out vec3 v_pos;
 out vec3 v_n;
 out float v_shade;
+out vec2 v_uv;
 void main() {
     vec4 p = u_model * vec4(a_pos, 1.0);
     v_pos = p.xyz;
     v_n = mat3(u_model) * a_n;
     v_shade = a_shade;
+    v_uv = a_uv;
     gl_Position = u_vp * p;
 }
 """
@@ -49,6 +54,10 @@ FS = COMMON + """
 in vec3 v_pos;
 in vec3 v_n;
 in float v_shade;
+in vec2 v_uv;
+uniform sampler2D u_tex;
+uniform int u_textured;         // 1: the batch's own texture is bound
+uniform int u_cutout;           // 1: alpha-cut (fences, banners, leaves)
 uniform sampler2D u_atlas;
 uniform vec4 u_atlas_rect;      // west, north, size (yards), on
 uniform sampler2D u_far_map;
@@ -77,20 +86,27 @@ float dither(vec2 frag) {
 }
 void main() {
     if (cut_away(v_pos) > dither(gl_FragCoord.xy)) discard;
-    vec2 a = vec2(v_pos.x - u_atlas_rect.x, u_atlas_rect.y - v_pos.y) / u_atlas_rect.z;
-    vec4 c = vec4(0.0);
-    if (u_atlas_rect.w > 0.5 && a.x >= 0.0 && a.y >= 0.0 && a.x <= 1.0 && a.y <= 1.0)
-        c = texture(u_atlas, a);
-    if (c.a < 0.5) {
-        vec2 f = vec2(v_pos.x - u_far_rect.x, u_far_rect.y - v_pos.y) / u_far_rect.zw;
-        c = vec4(texture(u_far_map, clamp(f, 0.0, 1.0)).rgb, 1.0);
-    }
-    vec3 color = c.rgb;
-    if (dot(color, vec3(1.0)) < 0.09) color = vec3(0.32, 0.3, 0.28);   // over the minimap's black: plain stone
     vec3 n = normalize(v_n);
     if (n.z < 0.0) n = -n;                     // both sides lit alike (roofs seen from below, open walls)
     float steep = 1.0 - abs(n.z);
-    color *= v_shade * mix(1.0, 0.72, steep);
+    vec3 color;
+    if (u_textured == 1) {
+        vec4 t = texture(u_tex, v_uv);
+        if (u_cutout == 1 && t.a < 0.5) discard;
+        color = t.rgb * v_shade * 1.15;
+    } else {
+        vec2 a = vec2(v_pos.x - u_atlas_rect.x, u_atlas_rect.y - v_pos.y) / u_atlas_rect.z;
+        vec4 c = vec4(0.0);
+        if (u_atlas_rect.w > 0.5 && a.x >= 0.0 && a.y >= 0.0 && a.x <= 1.0 && a.y <= 1.0)
+            c = texture(u_atlas, a);
+        if (c.a < 0.5) {
+            vec2 f = vec2(v_pos.x - u_far_rect.x, u_far_rect.y - v_pos.y) / u_far_rect.zw;
+            c = vec4(texture(u_far_map, clamp(f, 0.0, 1.0)).rgb, 1.0);
+        }
+        color = c.rgb;
+        if (dot(color, vec3(1.0)) < 0.09) color = vec3(0.32, 0.3, 0.28);   // over the minimap's black: stone
+        color *= v_shade * mix(1.0, 0.72, steep);
+    }
     float diffuse = max(dot(n, u_sun), 0.0);
     color *= u_ambient + u_light * 0.55 * diffuse;
     o_color = vec4(finish(color, v_pos), 1.0);
@@ -106,8 +122,10 @@ def model_matrix(linear: np.ndarray, shift: np.ndarray) -> np.ndarray:
 
 
 class BuildingRenderer:
-    def __init__(self, pack: TerrainPack, terrain: TerrainRenderer):
-        self.pack, self.terrain = pack, terrain
+    def __init__(self, pack: TerrainPack, terrain: TerrainRenderer, textures=None):
+        """textures: the game's textures (textures.GameTextures), None to draw everything in the minimap's colours."""
+        self.pack, self.terrain, self.textures = pack, terrain, textures
+        self.batches: dict[int, np.ndarray] = {}
         self.meshes: dict[int, gl.Mesh] = {}
         self.loading: dict[int, Future] = {}
         self.used: dict[int, int] = {}
@@ -122,8 +140,8 @@ class BuildingRenderer:
 
     @staticmethod
     def _decode(pack: TerrainPack, fdid: int):
-        pos, nrm, shade, idx = pack.building_mesh(fdid)
-        return np.concatenate([pos, nrm, shade[:, None]], axis=1).astype(np.float32), idx
+        pos, nrm, shade, idx, uv, batches = pack.building_mesh(fdid)
+        return np.concatenate([pos, nrm, shade[:, None], uv], axis=1).astype(np.float32), idx, batches
 
     def update(self, east: float, north: float, distance: float) -> None:
         """Chooses the buildings round (east, north) for the camera at this distance; loads and uploads meshes."""
@@ -150,14 +168,17 @@ class BuildingRenderer:
                 break
             fut = self.loading.pop(fdid)
             try:
-                verts, idx = fut.result()
+                verts, idx, batches = fut.result()
             except (OSError, ValueError):
                 continue
-            self.meshes[fdid] = gl.Mesh(self.prog, verts, {"a_pos": 3, "a_n": 3, "a_shade": 1}, indices=idx)
+            self.meshes[fdid] = gl.Mesh(self.prog, verts, {"a_pos": 3, "a_n": 3, "a_shade": 1, "a_uv": 2},
+                                        indices=idx)
+            self.batches[fdid] = batches
             self.used[fdid] = self.frame
             budget -= len(verts)
         for fdid in [f for f, last in self.used.items() if self.frame - last > KEEP_FRAMES and f in self.meshes]:
             self.meshes.pop(fdid).destroy()
+            self.batches.pop(fdid, None)
             del self.used[fdid]
 
     def draw(self, vp, eye, look: Look, now: float, cut=None) -> None:
@@ -192,6 +213,10 @@ class BuildingRenderer:
         far.bind(FAR_UNIT)
         gl.uniform(p, "u_far_map", FAR_UNIT)
         gl.uniform(p, "u_far_rect", float(fe), float(fn), float(fw), float(fh))
+        gl.uniform(p, "u_tex", TEX_UNIT)
+        textures = self.textures
+        if textures is not None:
+            textures.pump()
         drawn = 0
         for i in self.visible:
             fdid = int(b.fdids[i])
@@ -200,7 +225,13 @@ class BuildingRenderer:
                 continue
             self.used[fdid] = self.frame
             gl.uniform(p, "u_model", gl.qmatrix(model_matrix(b.linear[i], b.shift[i])))
-            mesh.draw()
+            for start, count, tex_id, blend in self.batches[fdid]:
+                tex = textures.get(int(tex_id)) if textures is not None else None
+                if tex is not None:
+                    tex.bind(TEX_UNIT)
+                gl.uniform(p, "u_textured", int(tex is not None))
+                gl.uniform(p, "u_cutout", int(blend == ALPHA_KEY))
+                mesh.draw_range(int(start), int(count))
             drawn += 1
         p.release()
         self.drawn = drawn

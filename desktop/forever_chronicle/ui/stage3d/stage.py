@@ -34,6 +34,7 @@ from .camera import FOV, DroneCamera
 from .director import CameraDirector
 from .sky import look_for
 from .buildings import BuildingRenderer
+from .textures import GameTextures
 from .terrain import TerrainRenderer
 from .trail import GHOST, LIFT, TAXI, WALK, Trail, drape, flight_heights
 
@@ -54,6 +55,13 @@ def drone_share(shown: float) -> float:
     """The share of the 2D picture's width (shown yards) the drone shows."""
     f = min(1.0, max(0.0, math.log(max(shown, 1.0) / DRONE_NEAR) / math.log(DRONE_FAR / DRONE_NEAR)))
     return DRONE + (1 - DRONE) * f * f
+
+
+def _game_files(window):
+    """The player's game files for the textures (None without the game: then the minimap's colours)."""
+    from ...wow import casc
+    client = window.ctx.client() if getattr(window, "ctx", None) is not None else None
+    return casc.open_client(client) if client is not None else None
 
 
 def surface_format() -> QSurfaceFormat:
@@ -99,7 +107,8 @@ class CinemaStage3D(QOpenGLWidget):
         self.window3d = window
         self.pack = pack or TerrainPack()
         self.terrain = TerrainRenderer(self.pack)
-        self.buildings = BuildingRenderer(self.pack, self.terrain)
+        self.textures = GameTextures(lambda: _game_files(window))
+        self.buildings = BuildingRenderer(self.pack, self.terrain, self.textures)
         self.trail = Trail(QColor(window.char_color))
         self.camera = DroneCamera()
         self.director = CameraDirector()
@@ -419,6 +428,7 @@ class CinemaStage3D(QOpenGLWidget):
         if self.ready:
             self.makeCurrent()
             self.buildings.shutdown()
+            self.textures.shutdown()
             self.terrain.shutdown()
             self.doneCurrent()
 

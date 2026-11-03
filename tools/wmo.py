@@ -26,7 +26,8 @@ from build_terrain import chunks
 
 MAP_CORNER = 32 * 1600 / 3
 EXTERIOR, INTERIOR = 0x8, 0x2000
-OPAQUE = 0                    # MOMT blend mode; the others are glass, foliage cards, fences (need their textures)
+OPAQUE, ALPHA_KEY = 0, 1      # MOMT blend modes; the others are glass and glows
+DRAWN = (OPAQUE, ALPHA_KEY)
 # model (x, y, z up) -> placement (x, y up, z): placement x = model y, placement y = model z, placement z = model x
 BASIS = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]])
 # placement -> the terrain pack's true (east, north, up): east = -world y = placement x - corner,
@@ -61,14 +62,24 @@ def placements(obj0: bytes) -> list[dict]:
     return out
 
 
-def mesh(storage, fdid: int, above=None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+def first_chunks(data: bytes) -> dict[str, bytes]:
+    """The chunks by tag, the first of each (a group has a second MOTV and MOCV for its other texture layers)."""
+    out: dict[str, bytes] = {}
+    for tag, payload in chunks(data):
+        out.setdefault(tag, payload)
+    return out
+
+
+def mesh(storage, fdid: int, above=None):
     """A building's drawn geometry, all groups in one: positions (n x 3, model space), normals (n x 3), shade
-    (n, 0..1 from the baked vertex colours, 1 without) and triangle indices.
+    (n, 0..1 from the baked vertex colours, 1 without), texture coordinates (n x 2), triangle indices and per
+    triangle its material: (texture fileDataID, blend mode).
     Which groups: a building with levels (the big ones: cities, keeps) takes its LOD 1 groups; its groups without
     one are interior groups the game leaves out from afar, but the drone looks down into them (classic Orgrimmar is
     all interior), so they come in full where they reach above the ground (above: a group's top middle in model
     space -> True) and stay out underground (Undercity, caves, mines). A building without levels takes its exterior
-    groups (a house's rooms are under its roof), or all where above() allows if it has none."""
+    groups (a house's rooms are under its roof), or all where above() allows if it has none.
+    Which batches: opaque ones and alpha-cut ones (fences, banners, leaves: DRAWN), not glass or glows."""
     root = dict(chunks(storage.read_fdid(fdid)))
     mogi, momt = root.get("MOGI", b""), root.get("MOMT", b"")
     groups = len(mogi) // 32
@@ -79,9 +90,9 @@ def mesh(storage, fdid: int, above=None) -> tuple[np.ndarray, np.ndarray, np.nda
     lod = 1 if levels > 1 else 0
     flags = [struct.unpack_from("<I", mogi, g * 32)[0] for g in range(groups)]
     any_exterior = any(f & EXTERIOR for f in flags)
-    blend = [struct.unpack_from("<I", momt, i * 64 + 8)[0] for i in range(len(momt) // 64)]
+    materials = [struct.unpack_from("<IIII", momt, i * 64) for i in range(len(momt) // 64)]   # flags, shader, blend, tex
     tops = [np.array(struct.unpack_from("<6f", mogi, g * 32 + 4)) for g in range(groups)]
-    pos, nrm, shade, idx, base = [], [], [], [], 0
+    pos, nrm, shade, uvs, idx, mats, base = [], [], [], [], [], [], 0
     for g in range(groups):
         f = gfid[lod * groups + g] if lod else 0
         if not f:
@@ -92,21 +103,25 @@ def mesh(storage, fdid: int, above=None) -> tuple[np.ndarray, np.ndarray, np.nda
             if not f or (not flags[g] & EXTERIOR and above is not None
                          and not above(np.array([(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, b[5]]))):
                 continue
-        sub = dict(chunks(dict(chunks(storage.read_fdid(f)))["MOGP"][68:]))
+        sub = first_chunks(dict(chunks(storage.read_fdid(f)))["MOGP"][68:])
         movt, movi, moba = sub.get("MOVT", b""), sub.get("MOVI", b""), sub.get("MOBA", b"")
         n = len(movt) // 12
         if not n or not movi or not moba:
             continue
         indices = np.frombuffer(movi, "<u2")
-        drawn = []
+        drawn, drawn_mats = [], []
         for b in range(len(moba) // 24):
             large, start, count = struct.unpack_from("<HIH", moba, b * 24 + 10)
             bflags, material = moba[b * 24 + 22], moba[b * 24 + 23]
             if bflags & 0x2:
                 material = large
-            if material < len(blend) and blend[material] != OPAQUE:
+            blend = materials[material][2] if material < len(materials) else OPAQUE
+            if blend not in DRAWN:
                 continue
-            drawn.append(indices[start:start + count])
+            tex = materials[material][3] if material < len(materials) else 0
+            tris = indices[start:start + count - count % 3]
+            drawn.append(tris)
+            drawn_mats.extend([(tex, blend)] * (len(tris) // 3))
         if not drawn:
             continue
         tris = np.concatenate(drawn).astype(np.int64)
@@ -115,6 +130,8 @@ def mesh(storage, fdid: int, above=None) -> tuple[np.ndarray, np.ndarray, np.nda
         pos.append(np.frombuffer(movt, "<f4").reshape(n, 3))
         monr = sub.get("MONR", b"")
         nrm.append(np.frombuffer(monr, "<f4").reshape(n, 3) if len(monr) == 12 * n else np.tile([0.0, 0.0, 1.0], (n, 1)))
+        motv = sub.get("MOTV", b"")
+        uvs.append(np.frombuffer(motv, "<f4").reshape(n, 2) if len(motv) == 8 * n else np.zeros((n, 2), np.float32))
         mocv = sub.get("MOCV", b"")
         if len(mocv) >= 4 * n:
             bgra = np.frombuffer(mocv, np.uint8, 4 * n).reshape(n, 4).astype(np.float32) / 255
@@ -122,31 +139,45 @@ def mesh(storage, fdid: int, above=None) -> tuple[np.ndarray, np.ndarray, np.nda
         else:
             shade.append(np.ones(n, np.float32))
         idx.append(tris + base)
+        mats.extend(drawn_mats)
         base += n
     if not idx:
         return None
-    return (np.concatenate(pos), np.concatenate(nrm), np.concatenate(shade), np.concatenate(idx))
+    return (np.concatenate(pos), np.concatenate(nrm), np.concatenate(shade), np.concatenate(uvs),
+            np.concatenate(idx), mats)
 
 
-def encode_mesh(pos: np.ndarray, nrm: np.ndarray, shade: np.ndarray, idx: np.ndarray) -> bytes:
-    """"FCB1", box low (3 f32), box size (3 f32), vertex and index counts (u32), then zlib of the positions
-    (u16 x 3 over the box), normals (i8 x 3), shade (u8) and indices (u16 below 65,536 vertices, else u32)."""
+def encode_mesh(pos, nrm, shade, uv, idx, mats) -> bytes:
+    """"FCB2", box low (3 f32), box size (3 f32), vertex, index and batch counts (u32), then zlib of the
+    positions (u16 x 3 over the box), normals (i8 x 3), shade (u8), texture coordinates (f16 x 2), indices (u16
+    below 65,536 vertices, else u32) and the batches (u32 x 4: first index, index count, texture fileDataID,
+    blend mode). Triangles are sorted by material, a batch for each; vertices alike in everything are merged."""
     import zlib
     low = pos.min(axis=0)
     size = np.maximum(pos.max(axis=0) - low, 1e-3)
     q = np.round((pos - low) / size * 65535).astype("<u2")
     n8 = np.clip(np.round(nrm / np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-6) * 127), -127, 127)
     s8 = np.round(np.clip(shade, 0, 1) * 255).astype(np.uint8)
-    # Vertices the game splits only for their texture coordinates are one here (no textures): merged.
-    key = np.concatenate([q.astype(np.int64), n8.astype(np.int64), s8[:, None].astype(np.int64)], axis=1)
+    t16 = uv.astype("<f2")
+    key = np.concatenate([q.astype(np.int64), n8.astype(np.int64), s8[:, None].astype(np.int64),
+                          t16.view("<u2").astype(np.int64)], axis=1)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
-    q, n8, s8, idx = q[first], n8[first], s8[first], inverse.ravel()[idx]
-    tri = idx.reshape(-1, 3)
-    idx = tri[(tri[:, 0] != tri[:, 1]) & (tri[:, 1] != tri[:, 2]) & (tri[:, 0] != tri[:, 2])].ravel()
-    pos = q                                     # for the counts below
-    wide = len(pos) >= 65536
-    body = q.tobytes() + n8.astype(np.int8).tobytes() + s8.tobytes() + idx.astype("<u4" if wide else "<u2").tobytes()
-    return (b"FCB1" + struct.pack("<3f3fII", *low, *size, len(pos), len(idx)) + zlib.compress(body, 9))
+    q, n8, s8, t16 = q[first], n8[first], s8[first], t16[first]
+    tri = inverse.ravel()[idx].reshape(-1, 3)
+    mat = np.array(mats, np.int64).reshape(-1, 2)
+    keep = (tri[:, 0] != tri[:, 1]) & (tri[:, 1] != tri[:, 2]) & (tri[:, 0] != tri[:, 2])
+    tri, mat = tri[keep], mat[keep]
+    order = np.lexsort((mat[:, 1], mat[:, 0]))
+    tri, mat = tri[order], mat[order]
+    batches = []
+    if len(mat):
+        change = np.nonzero((np.diff(mat, axis=0) != 0).any(axis=1))[0] + 1
+        for a, b in zip(np.concatenate([[0], change]), np.concatenate([change, [len(mat)]])):
+            batches.append((int(a) * 3, int(b - a) * 3, int(mat[a, 0]), int(mat[a, 1])))
+    wide = len(q) >= 65536
+    body = (q.tobytes() + n8.astype(np.int8).tobytes() + s8.tobytes() + t16.tobytes()
+            + tri.ravel().astype("<u4" if wide else "<u2").tobytes() + np.array(batches, "<u4").tobytes())
+    return (b"FCB2" + struct.pack("<3f3fIII", *low, *size, len(q), tri.size, len(batches)) + zlib.compress(body, 9))
 
 
 def floors(pack, world: int, step: float, highest: bool = False) -> dict[tuple[int, int], float]:
@@ -160,7 +191,7 @@ def floors(pack, world: int, step: float, highest: bool = False) -> dict[tuple[i
     off = np.array([*pack.continents[world].offset, 0.0])
     best: dict[tuple[int, int], float] = {}
     for i in range(len(b)):
-        pos, _nrm, _shade, idx = pack.building_mesh(int(b.fdids[i]))
+        pos, _nrm, _shade, idx = pack.building_mesh(int(b.fdids[i]))[:4]
         w = pos @ b.linear[i].T + b.shift[i] - off
         tri = idx.reshape(-1, 3)
         A, B, C = w[tri[:, 0]], w[tri[:, 1]], w[tri[:, 2]]

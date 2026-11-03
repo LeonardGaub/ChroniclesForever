@@ -92,19 +92,25 @@ def sample_floor(grid: np.ndarray, col: np.ndarray, row: np.ndarray) -> np.ndarr
     return np.where(full, blend, nearest)
 
 
-def decode_mesh(data: bytes) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """A building mesh file (tools/wmo.py encode_mesh)."""
-    if data[:4] != b"FCB1":
-        raise ValueError("not a building mesh file")
+def decode_mesh(data: bytes):
+    """A building mesh file (tools/wmo.py encode_mesh): positions (model space), normals, shade (0..1), triangle
+    indices, texture coordinates and the batches (first index, index count, texture fileDataID, blend mode)."""
+    if data[:4] != b"FCB2":
+        raise ValueError("not a building mesh file (format 2)")
     low, size = np.array(struct.unpack_from("<3f", data, 4)), np.array(struct.unpack_from("<3f", data, 16))
-    n, m = struct.unpack_from("<II", data, 28)
-    raw = zlib.decompress(data[36:])
+    n, m, nb = struct.unpack_from("<III", data, 28)
+    raw = zlib.decompress(data[40:])
     pos = np.frombuffer(raw, "<u2", 3 * n).reshape(n, 3).astype(np.float32) / 65535 * size + low
     at = 6 * n
     nrm = np.frombuffer(raw, np.int8, 3 * n, at).reshape(n, 3).astype(np.float32) / 127
     shade = np.frombuffer(raw, np.uint8, n, at + 3 * n).astype(np.float32) / 255
-    idx = np.frombuffer(raw, "<u4" if n >= 65536 else "<u2", m, at + 4 * n).astype(np.uint32)
-    return pos.astype(np.float32), nrm, shade, idx
+    uv = np.frombuffer(raw, "<f2", 2 * n, at + 4 * n).reshape(n, 2).astype(np.float32)
+    at += 8 * n
+    wide = n >= 65536
+    idx = np.frombuffer(raw, "<u4" if wide else "<u2", m, at).astype(np.uint32)
+    at += m * (4 if wide else 2)
+    batches = np.frombuffer(raw, "<u4", 4 * nb, at).reshape(nb, 4).astype(np.int64)
+    return pos.astype(np.float32), nrm, shade, idx, uv, batches
 
 
 @dataclass
@@ -362,8 +368,8 @@ class TerrainPack:
             self._buildings[world] = Buildings(rows, self.continents[world].offset)
         return self._buildings[world]
 
-    def building_mesh(self, fdid: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """A building's mesh: positions (model space), normals, shade (0..1) and triangle indices."""
+    def building_mesh(self, fdid: int):
+        """A building's mesh (decode_mesh): positions, normals, shade, indices, texture coordinates, batches."""
         return decode_mesh((self.root / "buildings" / f"{fdid}.bin").read_bytes())
 
     def obstacles_many(self, east: np.ndarray, north: np.ndarray) -> np.ndarray:

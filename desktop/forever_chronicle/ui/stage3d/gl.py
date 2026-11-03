@@ -36,10 +36,16 @@ def blend(on: bool = True) -> None:
         f.glDisable(BLEND)
 
 
+_LOCATIONS: dict[int, dict[str, int]] = {}      # program -> uniform name -> location (a lookup costs time)
+
+
 def uniform(prog: QOpenGLShaderProgram, name: str, *values) -> None:
     """Sets a uniform of the bound program: a QMatrix4x4, 1-4 floats, or ints for int/ivec uniforms (PySide6 only
     takes locations, and passes Python ints to float uniforms otherwise)."""
-    loc = prog.uniformLocation(name)
+    cache = _LOCATIONS.setdefault(id(prog), {})
+    loc = cache.get(name)
+    if loc is None:
+        loc = cache[name] = prog.uniformLocation(name)
     if loc < 0:
         return
     if len(values) == 1 and isinstance(values[0], QMatrix4x4):
@@ -97,6 +103,14 @@ class Mesh:
             self.index_type = UNSIGNED_SHORT if indices.dtype == np.uint16 else UNSIGNED_INT
             self.ibo = buffer(indices, index=True)
             self.count = len(indices)
+        self.vao.release()
+
+    def draw_range(self, start: int, count: int, mode: int = TRIANGLES) -> None:
+        """count of the mesh's indices from index start."""
+        f = functions()
+        self.vao.bind()
+        size = 2 if self.index_type == UNSIGNED_SHORT else 4
+        f.glDrawElements(mode, count, self.index_type, NO_OFFSET if start == 0 else VoidPtr(start * size))
         self.vao.release()
 
     def draw(self, mode: int = TRIANGLES) -> None:
