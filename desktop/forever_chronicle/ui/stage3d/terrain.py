@@ -18,7 +18,8 @@ from __future__ import annotations
 from concurrent.futures import Future, ThreadPoolExecutor
 
 import numpy as np
-from PySide6.QtGui import QColor, QImage
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtOpenGL import QOpenGLTexture
 
 from ...domain.terrain import TILE_YARDS, TerrainPack, tile_of, tile_origin
@@ -31,6 +32,8 @@ WIDE_FROM, HIGH_FROM = 450.0, 4000.0   # ... and only 3 x 3 from HIGH_FROM on (t
 UPLOADS_PER_FRAME = 2
 NEAR_UNIT = 4             # texture unit of the near tiles' mask
 SKIRT = 30.0              # yards a full tile's edge hangs down
+ATLAS_TILES, ATLAS_PX = 9, 192   # the atlas of the minimap pictures round the camera (buildings take their colours
+ATLAS_EVERY = 0.4         # from it): tiles across, pixels a tile; made again at most this often (seconds)
 SEA_FLOOR = -40.0         # far mesh height where the world has no tile
 CLOUDS_BELOW = 600.0      # the sea of clouds lies this far under an island in the sky's usual ground (its rocky
                           # underside reaches down into it)
@@ -329,8 +332,9 @@ def texture(image: QImage, nearest: bool = False) -> QOpenGLTexture:
 
 
 class _Tile:
-    def __init__(self, key, mesh: gl.Mesh, tex: QOpenGLTexture, origin, water: gl.Mesh | None):
+    def __init__(self, key, mesh: gl.Mesh, tex: QOpenGLTexture, origin, water: gl.Mesh | None, small: QImage):
         self.key, self.mesh, self.tex, self.origin, self.water = key, mesh, tex, origin, water
+        self.small = small          # the picture at atlas size
 
     def destroy(self) -> None:
         self.mesh.destroy()
@@ -466,7 +470,10 @@ class TerrainRenderer:
         image = QImage(str(pack.tile_path(world, "m", tx, ty)))
         liquids = pack.liquids(world, tx, ty)
         water = liquid_mesh(*liquids) if liquids is not None else None
-        return vertices(h, TILE_YARDS / 128, SKIRT), image.convertToFormat(QImage.Format.Format_RGBA8888), water
+        small = image.scaled(ATLAS_PX, ATLAS_PX, Qt.AspectRatioMode.IgnoreAspectRatio,
+                             Qt.TransformationMode.SmoothTransformation).convertToFormat(QImage.Format.Format_RGBA8888)
+        return (vertices(h, TILE_YARDS / 128, SKIRT), image.convertToFormat(QImage.Format.Format_RGBA8888), water,
+                small)
 
     def layer_at(self, east: float, north: float) -> _Layer | None:
         return next((layer for layer in self.layers if layer.contains(east, north)), None)
@@ -499,14 +506,15 @@ class TerrainRenderer:
             future = layer.loading.pop(key)
             if future.cancelled():
                 continue
-            verts, image, water = future.result()
+            verts, image, water, small = future.result()
             mesh = gl.Mesh(self.ground, verts, {"a_h": 1, "a_n": 3, "a_cr": 2}, shared_indices=self.tile_indices)
             wmesh = None if water is None else gl.Mesh(self.liquid, water[0], {"a_h": 1, "a_kind": 1}, indices=water[1])
-            layer.near[key] = _Tile(key, mesh, texture(image), layer.origin(key), wmesh)
+            layer.near[key] = _Tile(key, mesh, texture(image), layer.origin(key), wmesh, small)
             uploads += 1
             self.uploaded += 1
         for key in [k for k in layer.near if max(abs(k[0] - cx), abs(k[1] - cy)) > radius + 1]:
             layer.near.pop(key).destroy()
+        self.centre = (cx, cy)
 
     # -- drawing --------------------------------------------------------------------------------------------
 
@@ -542,7 +550,38 @@ class TerrainRenderer:
         p.release()
         f.glEnable(gl.DEPTH_TEST)
 
-    def draw(self, vp, eye, look: Look, time: float = 0.0) -> None:
+    def atlas(self, now: float):
+        """The minimap pictures of the near tiles in one texture round the camera's tile, with (east, north) of its
+        north-west corner and its size in yards; None without near tiles. Made again when the tiles or the centre
+        changed, at most every ATLAS_EVERY seconds."""
+        layer = self.active
+        if layer is None or not layer.near or getattr(self, "centre", None) is None:
+            return None
+        cx, cy = self.centre
+        x0, y0 = cx - ATLAS_TILES // 2, cy - ATLAS_TILES // 2
+        key = (layer.world, x0, y0, frozenset(layer.near))
+        made = getattr(self, "_atlas", None)
+        if made is not None and (made[0] == key or now - made[1] < ATLAS_EVERY) and made[0][0] == layer.world:
+            return made[2:]
+        image = QImage(ATLAS_TILES * ATLAS_PX, ATLAS_TILES * ATLAS_PX, QImage.Format.Format_RGBA8888)
+        image.fill(QColor(0, 0, 0, 0))
+        painter = QPainter(image)
+        for (tx, ty), tile in layer.near.items():
+            if x0 <= tx < x0 + ATLAS_TILES and y0 <= ty < y0 + ATLAS_TILES:
+                painter.drawImage((tx - x0) * ATLAS_PX, (ty - y0) * ATLAS_PX, tile.small)
+        painter.end()
+        if made is not None:
+            made[2].destroy()
+        e0, n0 = layer.origin((x0, y0))
+        self._atlas = (key, now, texture(image), e0, n0, ATLAS_TILES * TILE_YARDS)
+        return self._atlas[2:]
+
+    def far_picture(self, layer: _Layer):
+        """A layer's overview texture, (east, north) of its north-west corner and its size in yards."""
+        return layer.far_tex, layer.far_origin[0], layer.far_origin[1],             (layer.cols - 1) * layer.step, (round(1 / layer.far_uv[1])) * layer.step
+
+    def draw(self, vp, eye, look: Look, time: float = 0.0, after_ground=None) -> None:
+        """The ground, then after_ground() (more opaque things: the buildings), then the liquids and the sea."""
         f = gl.functions()
         qvp = gl.qmatrix(vp)
         deep = [look.deep * v for v in look.water]
@@ -572,6 +611,8 @@ class TerrainRenderer:
             layer.far_tex.bind(0)
             layer.far.draw()
         p.release()
+        if after_ground is not None:
+            after_ground()
         # sea floor and clouds (opaque), then liquids and the open sea (blended)
         s = self.sea_prog
         s.bind()

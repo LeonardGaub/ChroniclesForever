@@ -37,6 +37,7 @@ from forever_chronicle.domain.terrain import TerrainPack  # noqa: E402
 from forever_chronicle.storage.database import Database  # noqa: E402
 from forever_chronicle.storage.repository import Repository  # noqa: E402
 from forever_chronicle.ui.stage3d import gl  # noqa: E402
+from forever_chronicle.ui.stage3d.buildings import BuildingRenderer  # noqa: E402
 from forever_chronicle.ui.stage3d.camera import DroneCamera  # noqa: E402
 from forever_chronicle.ui.stage3d.terrain import TerrainRenderer  # noqa: E402
 from forever_chronicle.ui.stage3d.look import Look  # noqa: E402
@@ -117,6 +118,7 @@ class Stage(QOpenGLWidget):
         super().__init__(parent)
         self.journey = journey
         self.terrain = TerrainRenderer(journey.pack)
+        self.buildings = BuildingRenderer(journey.pack, self.terrain)
         self.look = Look()
         self.trail = Trail(color, sprite=True)
         self.camera = DroneCamera()
@@ -137,6 +139,7 @@ class Stage(QOpenGLWidget):
     def initializeGL(self) -> None:
         started = time.perf_counter()
         self.terrain.initialize()
+        self.buildings.initialize()
         self.trail.initialize()
         stretches = self.journey.stretches()
         self.trail.set_route(stretches)
@@ -163,7 +166,8 @@ class Stage(QOpenGLWidget):
                 self.camera.jump(marker)
             self.camera.update(dt, marker, self.journey.ground)
             started = time.perf_counter()
-            self.terrain.update(marker[0], marker[1])
+            self.terrain.update(marker[0], marker[1], self.camera.distance)
+            self.buildings.update(marker[0], marker[1], self.camera.distance)
             self.update_ms.append(1000 * (time.perf_counter() - started))
         self.last_marker = marker
         f = gl.functions()
@@ -178,7 +182,8 @@ class Stage(QOpenGLWidget):
         self.look.haze = 1.0 / (self.camera.distance * 10 + 4000)
         self.look.grey = self.grey
         self.terrain.draw_sky(inv_vp, self.look)
-        self.terrain.draw(vp, eye, self.look, time.perf_counter())
+        now = time.perf_counter()
+        self.terrain.draw(vp, eye, self.look, now, after_ground=lambda: self.buildings.draw(vp, eye, self.look, now))
         pulse = (time.perf_counter() * 0.8) % 1.0
         self.trail.draw(vp, self.t - self.journey.start, self.camera.distance, marker, (w, h), self.grey, pulse)
 
@@ -224,7 +229,7 @@ class SpikeWindow(QWidget):
         self.hud.setText(
             f"{datetime.fromtimestamp(s.t):%d.%m. %H:%M:%S}  ·  {zone}{'  ·  Flugroute' if p and p.taxi else ''}\n"
             f"{self._fps:.0f} fps  ·  {len(s.terrain.near)} tiles near, {len(s.terrain.loading)} loading  ·  "
-            f"{s.speed}× ·  camera {s.camera.distance:.0f} yd{'  ·  paused' if s.paused else ''}\n"
+            f"{s.speed}× ·  {s.buildings.drawn} buildings  ·  camera {s.camera.distance:.0f} yd{'  ·  paused' if s.paused else ''}\n"
             "Space pause · 1-4 speed · wheel distance · ←/→ 5 min · G spirit world · P picture · Esc")
         self.hud.adjustSize()
 
@@ -259,6 +264,7 @@ class SpikeWindow(QWidget):
     def closeEvent(self, event) -> None:
         print(self.stage.stats(), flush=True)
         self.stage.makeCurrent()
+        self.stage.buildings.shutdown()
         self.stage.terrain.shutdown()
         super().closeEvent(event)
 
@@ -283,6 +289,7 @@ def main() -> None:
     ap.add_argument("--session")
     ap.add_argument("--at", type=float, default=0.0, help="start this share into the session")
     ap.add_argument("--speed", type=int, default=30)
+    ap.add_argument("--map", type=int, help="start at the first moment on this uiMapID (e.g. 1454 Orgrimmar)")
     ap.add_argument("--distance", type=float, default=260.0)
     ap.add_argument("--snap", type=Path)
     ap.add_argument("--after", type=float, default=4.0)
@@ -311,7 +318,14 @@ def main() -> None:
         start, end = pick_session(repo, char.character_id, journey_of)
     print(f"{char.name}: {datetime.fromtimestamp(start):%d.%m.%Y %H:%M} - {datetime.fromtimestamp(end):%H:%M}", flush=True)
 
-    window = SpikeWindow(journey_of(start, end), QColor(class_color(char.class_file)), args.at, args.speed,
+    at = args.at
+    if args.map:
+        first = next((p.time for p in route.points_in(start, end) if p.map_id == args.map), None)
+        if first is None:
+            raise SystemExit(f"the session never is on map {args.map}")
+        timeline = journey_of(start, end).timeline
+        at = timeline.to_value(first + 5) / timeline.total
+    window = SpikeWindow(journey_of(start, end), QColor(class_color(char.class_file)), at, args.speed,
                          (args.snap.parent if args.snap else Path.cwd()))
     window.stage.camera.wanted_distance = args.distance
     window.stage.camera.distance = args.distance

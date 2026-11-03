@@ -5,7 +5,8 @@ The 3D stage mirrors the 2D cinematic instead of replacing it: the replay, its c
 shows), the marker, the route, the pins and the companions all stay in the 2D scene (ui/cinematic.py,
 cinematic_fx.py), in map coordinates. Each frame this stage takes them from there, places them in the 3D world
 through the game's own map tables (TerrainPack.map_to_shared) and draws:
-- the terrain, its liquids and the sky (terrain.py, sky.py), the route as a ribbon on the ground (trail.py);
+- the terrain, its liquids and the sky (terrain.py, sky.py), the buildings (buildings.py), the route as a ribbon
+  on the ground (trail.py);
 - over that, at screen size, the 2D items themselves where the 3D picture shows their places: the marker (its
   arrow turned to the drone's view), the pins on poles standing in the ground, bursts, the companions and the
   dashed line of a trip across the sea.
@@ -30,6 +31,7 @@ from ..cinematic_fx import GHOST_COLOR
 from . import gl
 from .camera import FOV, DroneCamera
 from .sky import look_for
+from .buildings import BuildingRenderer
 from .terrain import TerrainRenderer
 from .trail import GHOST, LIFT, TAXI, WALK, Trail, drape, flight_heights
 
@@ -95,6 +97,7 @@ class CinemaStage3D(QOpenGLWidget):
         self.window3d = window
         self.pack = pack or TerrainPack()
         self.terrain = TerrainRenderer(self.pack)
+        self.buildings = BuildingRenderer(self.pack, self.terrain)
         self.trail = Trail(QColor(window.char_color))
         self.camera = DroneCamera()
         self._dt = 0.0                    # real time stepped since the last picture (the cinematic's clock)
@@ -179,6 +182,7 @@ class CinemaStage3D(QOpenGLWidget):
     def initializeGL(self) -> None:
         try:
             self.terrain.initialize()
+            self.buildings.initialize()
             self.trail.initialize()
             self.ready = True
         except Exception as e:          # no 3D then: the cinematic falls back to 2D (cinematic.py)
@@ -268,8 +272,10 @@ class CinemaStage3D(QOpenGLWidget):
         self._sync_route()
         target, d, marker, vp, inv_vp, eye, look = self.frame
         self.terrain.update(target[0], target[1], d)
+        self.buildings.update(target[0], target[1], d)
+        now = time.perf_counter()
         self.terrain.draw_sky(inv_vp, look)
-        self.terrain.draw(vp, eye, look, time.perf_counter())
+        self.terrain.draw(vp, eye, look, now, after_ground=lambda: self.buildings.draw(vp, eye, look, now))
         walking = marker is not None and w.marker.mode in ("walk", "mount", "dead")
         self.trail.draw(vp, w.t - w.start, d, marker if walking else None, (pw, ph), look.grey,
                         (time.perf_counter() * 0.8) % 1.0, QColor(w.char_color), dt)
@@ -350,6 +356,7 @@ class CinemaStage3D(QOpenGLWidget):
     def shutdown(self) -> None:
         if self.ready:
             self.makeCurrent()
+            self.buildings.shutdown()
             self.terrain.shutdown()
             self.doneCurrent()
 

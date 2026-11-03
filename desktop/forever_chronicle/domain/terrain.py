@@ -44,6 +44,7 @@ class Continent:
     offset: tuple[float, float]                      # east, north added to true yards
     tiles: dict[tuple[int, int], tuple[float, float]]  # (tx, ty) -> (lowest, highest) ground
     wet: frozenset = frozenset()                       # tiles with liquids
+    floors: frozenset = frozenset()                    # tiles under buildings (their floors)
 
 
 def tile_of(wx: float, wy: float) -> tuple[int, int, float, float]:
@@ -76,6 +77,66 @@ def decode_liquids(data: bytes) -> tuple[np.ndarray, np.ndarray]:
     return heights, np.frombuffer(raw[n:], np.uint8).reshape(128, 128)
 
 
+def sample_floor(grid: np.ndarray, col: np.ndarray, row: np.ndarray) -> np.ndarray:
+    """Floor heights at grid positions (columns, rows in vertices): between four floor points bilinear, at a
+    floor's edge the nearest point's, NaN off the floors (no smearing over the edge of a bridge or a wall)."""
+    n = grid.shape[0] - 1
+    c0, r0 = np.clip(col.astype(np.int64), 0, n - 1), np.clip(row.astype(np.int64), 0, n - 1)
+    a, b = col - c0, row - r0
+    q = np.stack([grid[r0, c0], grid[r0, c0 + 1], grid[r0 + 1, c0], grid[r0 + 1, c0 + 1]])
+    w = np.stack([(1 - a) * (1 - b), a * (1 - b), (1 - a) * b, a * b])
+    full = np.isfinite(q).all(axis=0)
+    blend = (np.nan_to_num(q) * w).sum(axis=0)
+    nearest = q[np.argmax(w, axis=0), np.arange(q.shape[1])]
+    return np.where(full, blend, nearest)
+
+
+def decode_mesh(data: bytes) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """A building mesh file (tools/wmo.py encode_mesh)."""
+    if data[:4] != b"FCB1":
+        raise ValueError("not a building mesh file")
+    low, size = np.array(struct.unpack_from("<3f", data, 4)), np.array(struct.unpack_from("<3f", data, 16))
+    n, m = struct.unpack_from("<II", data, 28)
+    raw = zlib.decompress(data[36:])
+    pos = np.frombuffer(raw, "<u2", 3 * n).reshape(n, 3).astype(np.float32) / 65535 * size + low
+    at = 6 * n
+    nrm = np.frombuffer(raw, np.int8, 3 * n, at).reshape(n, 3).astype(np.float32) / 127
+    shade = np.frombuffer(raw, np.uint8, n, at + 3 * n).astype(np.float32) / 255
+    idx = np.frombuffer(raw, "<u4" if n >= 65536 else "<u2", m, at + 4 * n).astype(np.uint32)
+    return pos.astype(np.float32), nrm, shade, idx
+
+
+@dataclass
+class Buildings:
+    """A world's building placements: mesh fileDataIDs, model -> shared transforms (3 x 3 and shift) and boxes
+    (low, high corners) in the shared world."""
+    fdids: np.ndarray
+    linear: np.ndarray
+    shift: np.ndarray
+    low: np.ndarray
+    high: np.ndarray
+
+    def __init__(self, rows: list, offset: tuple[float, float]):
+        a = np.array(rows, np.float64).reshape(-1, 19)
+        move = np.array([offset[0], offset[1], 0.0])
+        self.fdids = a[:, 0].astype(np.int64)
+        self.linear = a[:, 1:10].reshape(-1, 3, 3)
+        self.shift = a[:, 10:13] + move
+        self.low, self.high = a[:, 13:16] + move, a[:, 16:19] + move
+
+    def __len__(self) -> int:
+        return len(self.fdids)
+
+    def near(self, east: float, north: float, reach: float, big: float = 0.0, big_reach: float = 0.0) -> np.ndarray:
+        """Indices of the buildings whose box comes within reach of (east, north); those at least big yards across
+        also from big_reach."""
+        dx = np.maximum(0, np.maximum(self.low[:, 0] - east, east - self.high[:, 0]))
+        dy = np.maximum(0, np.maximum(self.low[:, 1] - north, north - self.high[:, 1]))
+        d = np.hypot(dx, dy)
+        size = np.maximum(self.high[:, 0] - self.low[:, 0], self.high[:, 1] - self.low[:, 1])
+        return np.nonzero((d <= reach) | ((size >= big) & (d <= big_reach) if big else False))[0]
+
+
 def map_to_world(rows: list[list[float]], x: float, y: float) -> tuple[int, float, float] | None:
     """A map position through its UiMapAssignment rows (the first whose UI rectangle holds it)."""
     for u0, v0, u1, v1, x0, y0, x1, y1, world, _order in rows:
@@ -96,9 +157,12 @@ class TerrainPack:
         for name, c in index["continents"].items():
             tiles = {(t[0], t[1]): (t[2], t[3]) for t in c["tiles"]}
             wet = frozenset((t[0], t[1]) for t in c["tiles"] if len(t) > 4 and t[4])
-            self.continents[c["map_id"]] = Continent(name, c["map_id"], tuple(c["offset"]), tiles, wet)
+            floors = frozenset(tuple(f) for f in c.get("floors", ()))
+            self.continents[c["map_id"]] = Continent(name, c["map_id"], tuple(c["offset"]), tiles, wet, floors)
         self._heights = lru_cache(maxsize=96)(self._load_heights)
         self._liquids = lru_cache(maxsize=96)(self._load_liquids)
+        self._floors = lru_cache(maxsize=96)(self._load_floors)
+        self._buildings: dict[int, Buildings] = {}
 
     @classmethod
     def available(cls, root: Path | None = None) -> bool:
@@ -167,6 +231,19 @@ class TerrainPack:
     def liquids(self, world: int, tx: int, ty: int) -> tuple[np.ndarray, np.ndarray] | None:
         return self._liquids(world, tx, ty)
 
+    def _load_floors(self, world: int, tx: int, ty: int) -> np.ndarray | None:
+        c = self.continents.get(world)
+        if c is None or (tx, ty) not in c.floors:
+            return None
+        data = (self.root / c.name / f"f_{tx}_{ty}.bin").read_bytes()
+        if data[:4] != b"FCF1":
+            raise ValueError("not a terrain floor file")
+        return np.frombuffer(zlib.decompress(data[4:]), "<f2").reshape(129, 129).astype(np.float32)
+
+    def floors(self, world: int, tx: int, ty: int) -> np.ndarray | None:
+        """The tile's building floors (129 x 129 heights, NaN where no building is), None without any."""
+        return self._floors(world, tx, ty)
+
     def heights(self, world: int, tx: int, ty: int) -> np.ndarray | None:
         return self._heights(world, tx, ty)
 
@@ -201,8 +278,15 @@ class TerrainPack:
         return float(np.nanmean(corners)) if np.isfinite(corners).any() else None
 
     def surface_at(self, world: int, wx: float, wy: float) -> float:
-        """What a player at this spot stands or swims on: the ground, or a liquid's surface above it."""
+        """What a player at this spot stands or swims on: a building's floor, else the ground, or a liquid's
+        surface above it."""
+        tx, ty, fx, fy = tile_of(wx, wy)
         ground = self.height_at(world, wx, wy)
+        found = self.floors(world, tx, ty)
+        if found is not None:
+            level = sample_floor(found, np.array([fx * 128]), np.array([fy * 128]))[0]
+            if np.isfinite(level) and level >= ground - 1.0:
+                ground = float(level)
         water = self.water_at(world, wx, wy)
         return ground if water is None else max(ground, water)
 
@@ -249,6 +333,10 @@ class TerrainPack:
                 bottom = h[r0 + 1, c0] * (1 - a) + h[r0 + 1, c0 + 1] * a
                 ground = top * (1 - b) + bottom * b
                 if water:
+                    found = self.floors(world, *tile)
+                    if found is not None:
+                        level = sample_floor(found, col, row)
+                        ground = np.where(np.isfinite(level) & (level >= ground - 1.0), level, ground)
                     found = self.liquids(world, *tile)
                     if found is not None:
                         lh, kinds = found
@@ -261,6 +349,18 @@ class TerrainPack:
                         ground = np.where(wet, np.maximum(ground, level), ground)
                 out[sel] = ground
         return out
+
+    def buildings(self, world: int) -> "Buildings":
+        """The buildings placed in a world (empty without the pack's buildings)."""
+        if world not in self._buildings:
+            path = self.root / self.continents[world].name / "buildings.json"
+            rows = json.loads(path.read_text("utf-8"))["placements"] if path.exists() else []
+            self._buildings[world] = Buildings(rows, self.continents[world].offset)
+        return self._buildings[world]
+
+    def building_mesh(self, fdid: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """A building's mesh: positions (model space), normals, shade (0..1) and triangle indices."""
+        return decode_mesh((self.root / "buildings" / f"{fdid}.bin").read_bytes())
 
     def overview(self, world: int) -> tuple[np.ndarray, Path]:
         """The continent's far view: 64 x 64 x 17 x 17 heights (NaN off the tiles) and its overview picture."""

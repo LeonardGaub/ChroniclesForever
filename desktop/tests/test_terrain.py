@@ -174,3 +174,27 @@ def test_many_positions_sample_like_one(tmp_path):
     assert many == pytest.approx(one, abs=1e-3)
     dry = pack.surface_many(east, north, water=False)
     assert dry == pytest.approx([pack.ground_shared(e, n) for e, n in zip(east, north)], abs=1e-3)
+
+
+def test_the_player_walks_on_building_floors(tmp_path):
+    pack = write_pack(tmp_path, {(40, 28): np.full((129, 129), 10.0, np.float32)}, offset=(0.0, 0.0))
+    floor = np.full((129, 129), np.nan, np.float32)
+    floor[20:40, 20:40] = 45.0                                # a city's floor high over the ground
+    floor[60:70, 60:70] = 4.0                                 # something below the ground (a cellar): not walked on
+    (tmp_path / "kalimdor" / "f_40_28.bin").write_bytes(b"FCF1" + zlib.compress(floor.astype("<f2").tobytes()))
+    index = json.loads((tmp_path / "index.json").read_text("utf-8"))
+    index["continents"]["kalimdor"]["floors"] = [[40, 28]]
+    (tmp_path / "index.json").write_text(json.dumps(index), "utf-8")
+    pack = TerrainPack(tmp_path)
+    e0, n0 = tile_origin(40, 28)
+    step = terrain.TILE_YARDS / 128
+    at = lambda c, r: (n0 - r * step, -(e0 + c * step))       # noqa: E731  grid point -> world x, y
+    assert pack.surface_at(1, *at(30, 30)) == pytest.approx(45.0, abs=0.05)
+    assert pack.surface_at(1, *at(39.4, 30)) == pytest.approx(45.0, abs=0.05), "at the edge: the floor, not a slope"
+    assert pack.surface_at(1, *at(39.6, 30)) == pytest.approx(10.0, abs=0.05), "just past it: the ground"
+    assert pack.surface_at(1, *at(50, 50)) == pytest.approx(10.0, abs=0.05)
+    assert pack.surface_at(1, *at(65, 65)) == pytest.approx(10.0, abs=0.05)
+    assert pack.height_at(1, *at(30, 30)) == pytest.approx(10.0, abs=0.05), "the ground itself stays"
+    east, north = np.array([e0 + 30 * step, e0 + 50 * step]), np.array([n0 - 30 * step, n0 - 50 * step])
+    assert pack.surface_many(east, north) == pytest.approx([45.0, 10.0], abs=0.05)
+    assert pack.surface_many(east, north, water=False) == pytest.approx([10.0, 10.0], abs=0.05)

@@ -24,6 +24,11 @@ Pack layout (format 1, read by forever_chronicle/domain/terrain.py):
   from the root ADT's MH2O (the first layer of a chunk).
 - <continent>/overview_w.bin: "FCV1", then zlib of 64 x 64 x 17 x 17 float16 liquid heights (NaN where none) and
   64 x 64 x 16 x 16 uint8 kinds, for the far view.
+- <continent>/buildings.json: the buildings placed there (tools/wmo.py): per placement its mesh (fileDataID), the
+  model -> pack transform (3 x 3, then the shift, in true east/north/up yards) and its box in the same yards.
+- buildings/<fdid>.bin: a building's mesh, shared by all its placements ("FCB1", wmo.encode_mesh).
+- <continent>/f_<tx>_<ty>.bin, only for tiles under buildings: "FCF1", then zlib of 129 x 129 float16 heights of
+  the lowest building surface the player could walk on (wmo.floors), NaN where none; listed in index.json.
 Worlds that the world map does not show (Zephras Isle) are placed far from the continents in the shared world.
 """
 
@@ -279,11 +284,90 @@ def bake_continent(storage: casc.Casc, name: str, wdt: int, out: Path, kinds: di
     return {"tiles": tiles}
 
 
+def bake_buildings(storage: casc.Casc, name: str, world: int, wdt: int, out: Path, meshes: dict[int, bool]) -> int:
+    """The world's building placements and the meshes not baked yet (meshes: fileDataID -> baked). Reads the
+    world's baked heights (index.json written already) to keep underground groups out (wmo.mesh)."""
+    import wmo
+    from forever_chronicle.domain.terrain import TerrainPack
+    pack = TerrainPack(out)
+    ids = tile_ids(storage, wdt)
+    placed: dict[int, dict] = {}
+    for ty in range(64):
+        for tx in range(64):
+            if ids[ty, tx, 1]:
+                for p in wmo.placements(storage.read_fdid(int(ids[ty, tx, 1]))):
+                    placed.setdefault(p["uid"], p)
+    folder = out / "buildings"
+    folder.mkdir(parents=True, exist_ok=True)
+    bounds: dict[int, tuple] = {}
+    changed = 0
+    for p in placed.values():
+        fdid = p["fdid"]
+        if fdid not in meshes:
+            def above(top, p=p):
+                e, n, u = p["linear"] @ top + p["shift"]
+                return u > pack.height_at(world, n, -e) + 2.0
+            try:
+                found = wmo.mesh(storage, fdid, above)
+            except (casc.CascError, KeyError, struct.error, ValueError):
+                found = None
+            meshes[fdid] = found is not None
+            if found is not None:
+                changed += write_if_changed(folder / f"{fdid}.bin", wmo.encode_mesh(*found))
+                bounds[fdid] = (found[0].min(axis=0), found[0].max(axis=0))
+        if meshes[fdid] and fdid not in bounds:
+            data = (folder / f"{fdid}.bin").read_bytes()
+            low = np.array(struct.unpack_from("<3f", data, 4))
+            bounds[fdid] = (low, low + np.array(struct.unpack_from("<3f", data, 16)))
+    rows = []
+    for uid, p in sorted(placed.items()):
+        if not meshes.get(p["fdid"]):
+            continue
+        low, high = bounds[p["fdid"]]
+        corners = np.array([[x, y, z] for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])])
+        world = corners @ p["linear"].T + p["shift"]
+        rows.append([p["fdid"], *[round(float(v), 6) for v in p["linear"].ravel()],
+                     *[round(float(v), 3) for v in p["shift"]],
+                     *[round(float(v), 1) for v in world.min(axis=0)], *[round(float(v), 1) for v in world.max(axis=0)]])
+    changed += write_if_changed(out / name / "buildings.json", json.dumps({"placements": rows}, separators=(",", ":")).encode())
+    print(f"  {name}: {len(rows)} buildings, {sum(1 for v in meshes.values() if v)} meshes so far, {changed} files written")
+    return changed
+
+
+def bake_floors(world: int, name: str, out: Path) -> list[list[int]]:
+    """The world's building floors per tile (wmo.floors); returns the tiles that have some."""
+    import wmo
+    from forever_chronicle.domain.terrain import TerrainPack
+    started = time.time()
+    pack = TerrainPack(out)
+    step = TILE_YARDS / 128
+    found = wmo.floors(pack, world, step)
+    tiles: dict[tuple[int, int], np.ndarray] = {}
+    for (gx, gy), h in found.items():
+        # global column gx = east / step, row gy = north / step; tile (tx, ty) column c = gx - (tx - 32) * 128,
+        # row r = (32 - ty) * 128 - gy (a point on a tile edge belongs to both tiles)
+        for tx in {gx // 128 + 32, (gx - 1) // 128 + 32}:
+            for ty in {32 - (gy + 127) // 128, 32 - (gy + 128) // 128}:
+                c, r = gx - (tx - 32) * 128, (32 - ty) * 128 - gy
+                if 0 <= c <= 128 and 0 <= r <= 128:
+                    grid = tiles.setdefault((tx, ty), np.full((GRID, GRID), np.nan, np.float32))
+                    grid[r, c] = h if np.isnan(grid[r, c]) else min(grid[r, c], h)
+    folder = out / name
+    for old in folder.glob("f_*.bin"):
+        if tuple(int(v) for v in old.stem[2:].split("_")) not in tiles:
+            old.unlink()
+    for (tx, ty), grid in tiles.items():
+        write_if_changed(folder / f"f_{tx}_{ty}.bin", b"FCF1" + zlib.compress(grid.astype("<f2").tobytes(), 9))
+    print(f"  {name}: floors on {len(tiles)} tiles ({len(found)} points), {time.time() - started:.0f} s")
+    return sorted([int(tx), int(ty)] for tx, ty in tiles)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=ROOT / "desktop" / "forever_chronicle" / "terrain")
     ap.add_argument("--continents", default=",".join(CONTINENTS))
     ap.add_argument("--install", type=Path, help="the World of Warcraft folder (default: found automatically)")
+    ap.add_argument("--buildings-only", action="store_true", help="bake only the buildings (the terrain is there)")
     args = ap.parse_args()
     install = find_install(args.install)
     storage = open_install(install)
@@ -306,8 +390,22 @@ def main() -> None:
     wdts, kinds = wdt_ids(storage), liquid_kinds(storage)
     for name in args.continents.split(","):
         world = CONTINENTS[name]
+        if args.buildings_only and name in continents:
+            continue
         continents[name] = {"map_id": world, "offset": offsets[world],
                             **bake_continent(storage, name, wdts[world], args.out, kinds)}
+    write_if_changed(index_path, json.dumps(index, separators=(",", ":")).encode("utf-8"))
+    meshes: dict[int, bool] = {}
+    for name in args.continents.split(","):
+        bake_buildings(storage, name, CONTINENTS[name], wdts[CONTINENTS[name]], args.out, meshes)
+        continents[name]["buildings"] = True
+    write_if_changed(index_path, json.dumps(index, separators=(",", ":")).encode("utf-8"))
+    for name in args.continents.split(","):
+        continents[name]["floors"] = bake_floors(CONTINENTS[name], name, args.out)
+    if set(args.continents.split(",")) >= set(CONTINENTS):     # every world baked: drop meshes no one places
+        for path in (args.out / "buildings").glob("*.bin"):
+            if not meshes.get(int(path.stem)):
+                path.unlink()
     for name, c in continents.items():
         c["offset"] = offsets.get(c["map_id"], c["offset"])
     write_if_changed(index_path, json.dumps(index, separators=(",", ":")).encode("utf-8"))
