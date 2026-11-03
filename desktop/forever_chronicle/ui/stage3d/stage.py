@@ -267,7 +267,7 @@ class CinemaStage3D(QOpenGLWidget):
         w = self.window3d
         self._sync_route()
         target, d, marker, vp, inv_vp, eye, look = self.frame
-        self.terrain.update(target[0], target[1])
+        self.terrain.update(target[0], target[1], d)
         self.terrain.draw_sky(inv_vp, look)
         self.terrain.draw(vp, eye, look, time.perf_counter())
         walking = marker is not None and w.marker.mode in ("walk", "mount", "dead")

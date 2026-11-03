@@ -25,10 +25,11 @@ from ...domain.terrain import TILE_YARDS, TerrainPack, tile_of, tile_origin
 from . import gl
 from .look import Look
 
-NEAR_RADIUS = 2           # tiles round the target's tile kept at full detail (5 x 5)
-KEEP_RADIUS = 3           # loaded tiles further away are dropped
+NEAR_RADIUS = 2           # tiles round the target's tile kept at full detail (5 x 5) ...
+WIDE_RADIUS = 3           # ... 7 x 7 when the camera is higher (it sees more), from WIDE_FROM yards on ...
+WIDE_FROM, HIGH_FROM = 450.0, 4000.0   # ... and only 3 x 3 from HIGH_FROM on (the far meshes are enough there)
 UPLOADS_PER_FRAME = 2
-MAX_NEAR = 49
+NEAR_UNIT = 4             # texture unit of the near tiles' mask
 SEA_FLOOR = -40.0         # far mesh height where the world has no tile
 CLOUDS_BELOW = 600.0      # the sea of clouds lies this far under an island in the sky's usual ground (its rocky
                           # underside reaches down into it)
@@ -43,8 +44,7 @@ uniform float u_grey;
 uniform int u_far;
 uniform vec2 u_offset;
 uniform float u_tile;
-uniform int u_near_count;
-uniform ivec2 u_near[%(max_near)d];
+uniform sampler2D u_near_mask;     // 64 x 64: the near tiles drawn in full (the far meshes leave them out)
 vec3 finish(vec3 color, vec3 pos) {
     float f = 1.0 - exp(-length(pos - u_eye) * u_haze);
     color = mix(color, u_sky, clamp(f, 0.0, 0.9));
@@ -53,12 +53,11 @@ vec3 finish(vec3 color, vec3 pos) {
 }
 bool under_near(vec3 pos) {
     if (u_far == 0) return false;
-    ivec2 t = ivec2(floor((pos.x - u_offset.x) / u_tile + 32.0), floor(32.0 - (pos.y - u_offset.y) / u_tile));
-    for (int i = 0; i < u_near_count; ++i)
-        if (u_near[i] == t) return true;
-    return false;
+    vec2 t = floor(vec2((pos.x - u_offset.x) / u_tile + 32.0, 32.0 - (pos.y - u_offset.y) / u_tile));
+    if (t.x < 0.0 || t.y < 0.0 || t.x >= 64.0 || t.y >= 64.0) return false;
+    return texture(u_near_mask, (t + 0.5) / 64.0).r > 0.5;
 }
-""" % {"max_near": MAX_NEAR}
+"""
 
 GRID_VS = """
 uniform mat4 u_vp;
@@ -315,6 +314,8 @@ class _Layer:
         self.near: dict[tuple[int, int], _Tile] = {}
         self.loading: dict[tuple[int, int], Future] = {}
         self.sky_island = pack.sky_island(world)
+        self._near_mask: QOpenGLTexture | None = None
+        self._mask_keys: frozenset = frozenset()
 
     def initialize(self, ground: gl.QOpenGLShaderProgram, liquid: gl.QOpenGLShaderProgram) -> None:
         heights, picture = self.pack.overview(self.world)
@@ -362,6 +363,21 @@ class _Layer:
             self.centre = ((self.far_origin[0] + e1 + self.continent.offset[0]) / 2,
                            (self.far_origin[1] + n1 + self.continent.offset[1]) / 2)
             self.clouds_z = low - CLOUDS_BELOW
+
+    def near_mask(self) -> QOpenGLTexture:
+        """The near tiles as a 64 x 64 mask (made again when they change)."""
+        keys = frozenset(self.near)
+        if keys != self._mask_keys or self._near_mask is None:
+            image = QImage(64, 64, QImage.Format.Format_Grayscale8)
+            image.fill(0)
+            for tx, ty in keys:
+                if 0 <= tx < 64 and 0 <= ty < 64:
+                    image.setPixelColor(tx, ty, QColor(255, 255, 255))
+            if self._near_mask is not None:
+                self._near_mask.destroy()
+            self._near_mask = texture(image, nearest=True)
+            self._mask_keys = keys
+        return self._near_mask
 
     def origin(self, key) -> tuple[float, float]:
         e0, n0 = tile_origin(*key)
@@ -421,9 +437,10 @@ class TerrainRenderer:
     def layer_at(self, east: float, north: float) -> _Layer | None:
         return next((layer for layer in self.layers if layer.contains(east, north)), None)
 
-    def update(self, east: float, north: float) -> None:
-        """Keeps the near ring round (east, north) loaded (in the world there); uploads what the worker has
-        finished; drops what is out of reach."""
+    def update(self, east: float, north: float, distance: float = 0.0) -> None:
+        """Keeps the near ring round (east, north) loaded (in the world there), as wide as the camera at this
+        distance needs; uploads what the worker has finished; drops what is out of reach."""
+        radius = 1 if distance >= HIGH_FROM else WIDE_RADIUS if distance >= WIDE_FROM else NEAR_RADIUS
         layer = self.layer_at(east, north) or self.active
         if layer is not self.active and self.active is not None:
             self.active.destroy()
@@ -435,8 +452,8 @@ class TerrainRenderer:
             return
         wx, wy = self.pack.unshared(layer.world, east, north)
         cx, cy, _, _ = tile_of(wx, wy)
-        wanted = sorted(((tx, ty) for tx in range(cx - NEAR_RADIUS, cx + NEAR_RADIUS + 1)
-                         for ty in range(cy - NEAR_RADIUS, cy + NEAR_RADIUS + 1) if (tx, ty) in layer.continent.tiles),
+        wanted = sorted(((tx, ty) for tx in range(cx - radius, cx + radius + 1)
+                         for ty in range(cy - radius, cy + radius + 1) if (tx, ty) in layer.continent.tiles),
                         key=lambda k: (k[0] - cx) ** 2 + (k[1] - cy) ** 2)
         for key in wanted:
             if key not in layer.near and key not in layer.loading:
@@ -454,7 +471,7 @@ class TerrainRenderer:
             layer.near[key] = _Tile(key, mesh, texture(image), layer.origin(key), wmesh)
             uploads += 1
             self.uploaded += 1
-        for key in [k for k in layer.near if max(abs(k[0] - cx), abs(k[1] - cy)) > KEEP_RADIUS]:
+        for key in [k for k in layer.near if max(abs(k[0] - cx), abs(k[1] - cy)) > radius + 1]:
             layer.near.pop(key).destroy()
 
     # -- drawing --------------------------------------------------------------------------------------------
@@ -466,11 +483,11 @@ class TerrainRenderer:
         gl.uniform(prog, "u_grey", float(look.grey))
         gl.uniform(prog, "u_tile", float(TILE_YARDS))
         gl.uniform(prog, "u_light", float(look.light))
-        keys = list(layer.near)[:MAX_NEAR] if (far and layer is self.active and layer is not None) else []
-        gl.uniform(prog, "u_far", int(bool(keys)))
-        gl.uniform(prog, "u_near_count", len(keys))
-        for i, (tx, ty) in enumerate(keys):
-            gl.uniform(prog, f"u_near[{i}]", tx, ty)
+        mask = layer.near_mask() if (far and layer is self.active and layer is not None and layer.near) else None
+        gl.uniform(prog, "u_far", int(mask is not None))
+        if mask is not None:
+            mask.bind(NEAR_UNIT)
+            gl.uniform(prog, "u_near_mask", NEAR_UNIT)
         if layer is not None:
             gl.uniform(prog, "u_offset", *[float(v) for v in layer.continent.offset])
         gl.uniform(prog, "u_void", int(layer is not None and layer.sky_island))
