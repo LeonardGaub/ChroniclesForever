@@ -154,6 +154,9 @@ class LocalStorage:
                 self.index[key] = (loc >> 30, loc & 0x3FFFFFFF, length)
         self._archives: dict[int, object] = {}
 
+    def has(self, ekey: bytes) -> bool:
+        return ekey[:9] in self.index
+
     def read(self, ekey: bytes, zero_encrypted: bool = False) -> bytes:
         entry = self.index.get(ekey[:9])
         if entry is None:
@@ -255,6 +258,14 @@ class Root:
             return bytes(self.ckeys[i])
         return None
 
+    def ckeys_of(self, fdid: int) -> list[bytes]:
+        """All the file's content keys: a file can be listed in several blocks (content flags: variants), of which
+        an install may hold only one (found on 2026-11-03: building and ground textures have two, the first
+        listed one not installed)."""
+        i = int(np.searchsorted(self.ids, fdid, side="left"))
+        j = int(np.searchsorted(self.ids, fdid, side="right"))
+        return list(dict.fromkeys(bytes(k) for k in self.ckeys[i:j]))
+
     def fdid_by_name(self, path: str) -> int | None:
         h = np.uint64(jenkins_path_hash(path))
         i = np.searchsorted(self.hashes, h)
@@ -282,13 +293,15 @@ class Casc:
         self.root = Root(self.storage.read(root_ekey))
 
     def read_fdid(self, fdid: int, zero_encrypted: bool = False) -> bytes:
-        ckey = self.root.ckey(fdid)
-        if ckey is None:
+        """The file's content, from whichever of its variants (root blocks) this install holds."""
+        ckeys = self.root.ckeys_of(fdid)
+        if not ckeys:
             raise CascError(f"fileDataID {fdid} is not in the root")
-        ekey = self.encoding.ekey(ckey)
-        if ekey is None:
+        ekeys = [e for e in (self.encoding.ekey(k) for k in ckeys) if e is not None]
+        if not ekeys:
             raise CascError(f"fileDataID {fdid} has no encoding entry")
-        return self.storage.read(ekey, zero_encrypted)
+        local = next((e for e in ekeys if self.storage.has(e)), ekeys[0])
+        return self.storage.read(local, zero_encrypted)
 
     def read_name(self, path: str) -> bytes:
         fdid = self.root.fdid_by_name(path)
