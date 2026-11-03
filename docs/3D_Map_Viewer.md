@@ -168,6 +168,47 @@ Not done or not checked yet:
   surface above, and the X-ray pass shows the hidden route.
 - No trees or props (M2), and no building textures (see above).
 
+## Cities and what is next (investigated 2026-11-03)
+
+How the capitals look from the drone (`tools/terrain_spike.py --look MAP,X,Y`):
+- Stormwind, Thunder Bluff and Darnassus look good close up and from afar: the minimap colours give believable
+  roofs, quarters and canals.
+- Orgrimmar looks good from 900 yd. Close up the canyon's arches and walls fill the picture.
+- Ironforge is missing: the city is inside the mountain, so the "underground stays out" rule drops it and the
+  marker sits on the snow. Undercity shows only the Lordaeron ruins above it.
+
+The cinematic's camera on real city visits (Blind: Orgrimmar, Undercity; Dorgar: Thunder Bluff):
+
+| City | Camera distance (median) | Marker hidden by the ground | by a building |
+|---|---|---|---|
+| Orgrimmar | 154 yd | 6 % | 93 % |
+| Thunder Bluff | 110 yd (the minimum) | 60 % | 21 % |
+
+In cities the 2D camera zooms in to the small city frame, so the drone sits at or near its minimum distance and
+looks through walls, arches and mesa edges. The marker is always painted on top, but its ring and the route are
+hidden.
+
+What the local client has (sampled): ground textures 2 of 208 (so "real ground textures" is not possible from the
+install), doodad models 1,609 of 1,646 and their skins all, doodad textures 14 of 101, building textures 977 of
+3,572.
+
+Next steps, most useful first:
+1. **City camera.** In cities and wherever the marker is hidden: higher and steeper (looking down into the
+   streets and the canyon), and swinging the yaw towards a clear view. Occlusion test against a baked "roof"
+   height map (the highest building surface per grid point, like the floors) plus the terrain: cheap enough per
+   frame.
+2. **Underground cities (Undercity, Ironforge).** Bake their interior groups too, and while the player is inside,
+   cut the ground and the upper building parts away round the marker (a cut-away in the shaders), so the camera
+   looks into the city. Needs the floors of those groups as well.
+3. **Camera shots.** An establishing pull-back and slow orbit when entering a new zone or city, a slow orbit at
+   level-ups and screenshots (under the overlays), a lower chase camera behind the flyer on flight paths.
+4. **Light.** Sun shadows from terrain and buildings (a shadow map) and soft ambient occlusion: the biggest step
+   for depth. Also a sun glint on water and moving clouds' shadows.
+5. **Trees and props (M2).** Models and skins are there, textures mostly not. Leaves are alpha-cut cards, so
+   without their textures they need a drawn leaf mask; coloured from the minimap like the buildings. Experimental.
+6. **Real building textures where present** (27 %), the minimap colour elsewhere: patchy, so only together with
+   a way to get the missing files.
+
 ## Phase 0 results (spike, 2026-11-03)
 
 Built: `tools/build_terrain.py` (format 1, Kalimdor baked), `domain/terrain.py` with tests (`test_terrain.py`:

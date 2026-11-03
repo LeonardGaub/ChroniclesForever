@@ -269,6 +269,18 @@ class SpikeWindow(QWidget):
         super().closeEvent(event)
 
 
+class FixedView(Journey):
+    """A view held over one place (--look), with the session's route still drawn: for looking at places the
+    route does not pass, like other cities."""
+
+    def __init__(self, route, pack, start, end, spot):
+        super().__init__(route, pack, start, end)
+        self.spot = spot
+
+    def marker(self, t: float):
+        return self.spot
+
+
 def pick_session(repo, character_id: str, journey_of) -> tuple[int, int]:
     best, best_n = None, -1
     for s in repo.sessions(character_id):
@@ -293,6 +305,8 @@ def main() -> None:
     ap.add_argument("--distance", type=float, default=260.0)
     ap.add_argument("--snap", type=Path)
     ap.add_argument("--after", type=float, default=4.0)
+    ap.add_argument("--look", help="hold the view over MAP,X,Y[,HEADING] (uiMapID, map position, heading in degrees: "
+                                   "0 east, 90 north)")
     args = ap.parse_args()
 
     fmt = QSurfaceFormat()
@@ -325,8 +339,20 @@ def main() -> None:
             raise SystemExit(f"the session never is on map {args.map}")
         timeline = journey_of(start, end).timeline
         at = timeline.to_value(first + 5) / timeline.total
-    window = SpikeWindow(journey_of(start, end), QColor(class_color(char.class_file)), at, args.speed,
+    journey = journey_of(start, end)
+    heading = None
+    if args.look:
+        parts = [float(v) for v in args.look.split(",")]
+        placed = pack.place(int(parts[0]), parts[1], parts[2])
+        if placed is None:
+            raise SystemExit(f"map {int(parts[0])} is not in the terrain pack")
+        journey = FixedView(route, pack, start, end, np.array([placed[0], placed[1], placed[2] + LIFT]))
+        heading = parts[3] if len(parts) > 3 else 90.0
+    window = SpikeWindow(journey, QColor(class_color(char.class_file)), at, args.speed,
                          (args.snap.parent if args.snap else Path.cwd()))
+    if heading is not None:
+        import math
+        window.stage.camera.yaw = math.radians(heading)
     window.stage.camera.wanted_distance = args.distance
     window.stage.camera.distance = args.distance
     if args.snap:
