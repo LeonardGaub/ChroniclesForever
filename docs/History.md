@@ -22,6 +22,11 @@ at the time: older entries may describe things that changed or were removed late
   open sea black (and the void round Zephras Isle).
 - Measured on the user's PC: vsync-bound (about 68 fps), tile streaming at most 2-3 ms a frame, a whole journey
   opens in about 1 s, a 15-minute range exports at 720p in 25 s.
+- Same day, at the user's request: buildings (WMO) and a calmer camera over hills. The placement transform was
+  fitted to the MODF boxes. The big buildings' LOD 1 skips interior groups, and classic Orgrimmar is all interior,
+  so those come in full where they reach above the ground. 73% of the building textures are not in the local
+  CASC, so buildings are coloured from the minimap. Building floors carry the route (Orgrimmar's floors are 13-93
+  yd above its terrain). Details in docs/3D_Map_Viewer.md, "As built".
 
 ### Kino tab replaces the desktop map page (2026-11-02)
 - User decision: the desktop map page lacked screenshot pins and the replay's moments, and the cinematic mode is
