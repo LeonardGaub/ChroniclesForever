@@ -1909,7 +1909,7 @@ class CinematicWindow(QWidget):
     def _update_world(self, scale: float) -> None:
         """The seamless map's detail for the view as it is now. A flight's destination city fades in while the
         camera dives in (not after landing, close up on the coarse tiles), and a cut shows it at once."""
-        if self.world is not None and self.view_map == maps.WORLD:
+        if self.world is not None and self.view_map == maps.WORLD and self.stage3d is None:   # (3D: not seen)
             zone, voyage = self.zone_now, self.voyage
             if voyage is not None and voyage.age >= voyage.out + voyage.across:
                 zone = voyage.to_view

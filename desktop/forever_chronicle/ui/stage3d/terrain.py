@@ -30,6 +30,7 @@ WIDE_RADIUS = 3           # ... 7 x 7 when the camera is higher (it sees more), 
 WIDE_FROM, HIGH_FROM = 450.0, 4000.0   # ... and only 3 x 3 from HIGH_FROM on (the far meshes are enough there)
 UPLOADS_PER_FRAME = 2
 NEAR_UNIT = 4             # texture unit of the near tiles' mask
+SKIRT = 30.0              # yards a full tile's edge hangs down
 SEA_FLOOR = -40.0         # far mesh height where the world has no tile
 CLOUDS_BELOW = 600.0      # the sea of clouds lies this far under an island in the sky's usual ground (its rocky
                           # underside reaches down into it)
@@ -74,16 +75,20 @@ vec2 grid_cr() {
 }
 """
 
-GROUND_VS = GRID_VS + """
+GROUND_VS = """
 in float a_h;
 in vec3 a_n;
+in vec2 a_cr;                  // column and row in the grid (a skirt's vertex repeats its edge vertex's)
+uniform mat4 u_vp;
+uniform vec2 u_origin;
+uniform float u_step;
 uniform vec2 u_uv_scale;
 out vec2 v_uv;
 out vec3 v_n;
 out vec3 v_pos;
 void main() {
-    vec3 p = grid_pos(a_h);
-    v_uv = grid_cr() * u_uv_scale;
+    vec3 p = vec3(u_origin.x + a_cr.x * u_step, u_origin.y - a_cr.y * u_step, a_h);
+    v_uv = a_cr * u_uv_scale;
     v_n = a_n;
     v_pos = p;
     gl_Position = u_vp * vec4(p, 1.0);
@@ -258,8 +263,37 @@ def normals(h: np.ndarray, step: float) -> np.ndarray:
     return n / np.linalg.norm(n, axis=-1, keepdims=True)
 
 
-def vertices(h: np.ndarray, step: float) -> np.ndarray:
-    return np.concatenate([h[..., None], normals(h, step)], axis=-1).reshape(-1, 4).astype(np.float32)
+def vertices(h: np.ndarray, step: float, skirt: float = 0.0) -> np.ndarray:
+    """Ground vertices (height, normal, column, row) of a height grid; with skirt, the edge's vertices once more
+    that far down (skirt_indices), so no gap shows where a full tile meets the coarser far mesh."""
+    rows, cols = h.shape
+    r, c = np.mgrid[0:rows, 0:cols]
+    v = np.concatenate([h[..., None], normals(h, step), c[..., None], r[..., None]], axis=-1).reshape(-1, 6)
+    if skirt:
+        edge = v[perimeter(rows, cols)].copy()
+        edge[:, 0] -= skirt
+        v = np.vstack([v, edge])
+    return v.astype(np.float32)
+
+
+def perimeter(rows: int, cols: int) -> np.ndarray:
+    """The grid's edge vertices once round (clockwise from the north-west corner)."""
+    top = np.arange(cols)
+    right = np.arange(1, rows) * cols + cols - 1
+    bottom = (rows - 1) * cols + np.arange(cols - 2, -1, -1)
+    left = np.arange(rows - 2, 0, -1) * cols
+    return np.concatenate([top, right, bottom, left])
+
+
+def skirt_indices(rows: int, cols: int) -> np.ndarray:
+    """The grid's triangles and its skirt's (the skirt vertices follow the grid's, in perimeter order)."""
+    edge = perimeter(rows, cols)
+    n = len(edge)
+    k = np.arange(n)
+    a, b = edge[k], edge[(k + 1) % n]
+    sa, sb = rows * cols + k, rows * cols + (k + 1) % n
+    walls = np.stack([a, b, sa, b, sb, sa], axis=1).ravel()
+    return np.concatenate([gl.grid_indices(rows, cols).astype(np.uint32), walls.astype(np.uint32)])
 
 
 def liquid_mesh(heights: np.ndarray, kinds: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
@@ -341,7 +375,7 @@ class _Layer:
         if self.sky_island:             # it floats: no ground where it has no tiles
             hole = missing.ravel()
             indices = indices.reshape(-1, 3)[~hole[indices.reshape(-1, 3)].any(axis=1)].ravel()
-        self.far = gl.Mesh(ground, vertices(grid, self.step), {"a_h": 1, "a_n": 3}, indices=indices)
+        self.far = gl.Mesh(ground, vertices(grid, self.step), {"a_h": 1, "a_n": 3, "a_cr": 2}, indices=indices)
         liquids = liquid_mesh(water, kinds)
         self.far_water = None if liquids is None else gl.Mesh(liquid, liquids[0], {"a_h": 1, "a_kind": 1},
                                                               indices=liquids[1])
@@ -417,7 +451,7 @@ class TerrainRenderer:
         self.liquid = gl.program(LIQUID_VS, LIQUID_FS)
         self.sea_prog = gl.program(SEA_VS, SEA_FS)
         self.sky_prog = gl.program(SKY_VS, SKY_FS)
-        self.tile_indices = gl.IndexOnly(gl.grid_indices(129, 129))
+        self.tile_indices = gl.IndexOnly(skirt_indices(129, 129))
         for layer in self.layers:
             layer.initialize(self.ground, self.liquid)
         r = 400000.0
@@ -432,7 +466,7 @@ class TerrainRenderer:
         image = QImage(str(pack.tile_path(world, "m", tx, ty)))
         liquids = pack.liquids(world, tx, ty)
         water = liquid_mesh(*liquids) if liquids is not None else None
-        return vertices(h, TILE_YARDS / 128), image.convertToFormat(QImage.Format.Format_RGBA8888), water
+        return vertices(h, TILE_YARDS / 128, SKIRT), image.convertToFormat(QImage.Format.Format_RGBA8888), water
 
     def layer_at(self, east: float, north: float) -> _Layer | None:
         return next((layer for layer in self.layers if layer.contains(east, north)), None)
@@ -466,7 +500,7 @@ class TerrainRenderer:
             if future.cancelled():
                 continue
             verts, image, water = future.result()
-            mesh = gl.Mesh(self.ground, verts, {"a_h": 1, "a_n": 3}, shared_indices=self.tile_indices)
+            mesh = gl.Mesh(self.ground, verts, {"a_h": 1, "a_n": 3, "a_cr": 2}, shared_indices=self.tile_indices)
             wmesh = None if water is None else gl.Mesh(self.liquid, water[0], {"a_h": 1, "a_kind": 1}, indices=water[1])
             layer.near[key] = _Tile(key, mesh, texture(image), layer.origin(key), wmesh)
             uploads += 1

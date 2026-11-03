@@ -136,8 +136,8 @@ Not done or not checked yet:
 - The user hasn't seen it in the app; not tried on a weaker laptop.
 - Occlusion: the 2D items are always on top. A pin behind a hill still shows; the marker always showing is
   intended.
-- Tile seams: normals are per tile, and near and far meshes meet with small T-junctions. Faint lines can show at tile
-  edges.
+- Tile seams: near tiles hang a 30 yd skirt from their edges, so the gaps where they meet the coarser far mesh are
+  covered. Normals are still per tile, so lighting can change slightly at a tile edge.
 - Caves, bridges, buildings: no heights of their own until the WMO phase. The X-ray pass shows the hidden route,
   but the marker stays on the ground over Undercity and Ironforge (the floor heights from the plan aren't built).
 
