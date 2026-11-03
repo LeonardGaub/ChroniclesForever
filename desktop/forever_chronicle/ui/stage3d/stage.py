@@ -16,6 +16,7 @@ before, and the video export records it like the 2D view.
 
 from __future__ import annotations
 
+import bisect
 import math
 import time
 
@@ -40,9 +41,9 @@ DRONE = 0.32            # the drone shows this share of what the 2D picture show
 DRONE_NEAR, DRONE_FAR = 4000.0, 40000.0   # ... up to this many yards across; from the far one on (the opening,
                         # the credits, trips across the world) all of it
 MIN_DISTANCE = 110.0
-FLY_HIGH = 0.12         # trips across the world (boats, teleports, the spirit's flight) fly this share of the
-                        # camera distance above the ground
-FLIGHT_SAMPLE = 300.0   # a flying mount keeps clear of the ground this far round it
+FLY_HIGH = 0.12         # an island-in-the-sky trip's marker flies this share of the camera distance high
+ARC_HIGH = 0.15         # a trip across the world (boat, teleport, the spirit's flight) arcs this share of its
+ARC_LOW, ARC_TOP = 60.0, 3000.0   # length high, within these yards
 POLE = 0.075            # a pin's pole: this share of the camera distance tall
 TAXI_STEP = 30.0        # flight paths are draped coarser (their height is smoothed anyway)
 JUMP = 2.5              # a camera step longer than this many distances is a cut
@@ -105,10 +106,15 @@ class CinemaStage3D(QOpenGLWidget):
         self.ready = False
         self.failed: str | None = None
         self._route_of = None             # the RouteItem the ribbon was built from
-        self._fly_z: float | None = None  # a flying mount's height (smoothed)
+        self._stretches: list[np.ndarray] = []   # the draped route (rows t since start, east, north, z, ...)
+        self._spans: list[tuple[float, float]] = []
+        self._pending_route: list[np.ndarray] | None = None   # draped, not yet uploaded (needs the GL context)
+        self._arc_of = None               # the voyage the 3D arc was made for, and its ends' heights
         self._last_target: np.ndarray | None = None
         self.vp = None
         self.frame = None
+        self._stale = True                # the cinematic moved on since the view was worked out
+        self._step_dt = 0.0
         self.items = ItemsLayer(window, self)
 
     # -- coordinates ----------------------------------------------------------------------------------------
@@ -147,6 +153,9 @@ class CinemaStage3D(QOpenGLWidget):
     # -- the route ------------------------------------------------------------------------------------------
 
     def _sync_route(self) -> None:
+        """Drapes the route of the scene's RouteItem anew when it changed. A recorded point counts from when the
+        player came there until they moved on (its standstill's end), as Route.glide moves the marker, so the
+        ribbon and the marker (_route_point) leave a point together."""
         item = self.window3d.route_item
         if item is self._route_of:
             return
@@ -154,6 +163,7 @@ class CinemaStage3D(QOpenGLWidget):
         stretches = []
         start = self.window3d.start
         surface = self.pack.surface_many
+        ends = {p.time: p.end for p in self.window3d.route.points}
         for times, pts, taxi, _runs, line_colors in (item.segs if item is not None else []):
             run = []
 
@@ -173,9 +183,45 @@ class CinemaStage3D(QOpenGLWidget):
                 color = line_colors[i] or (line_colors[i + 1] if i + 1 < len(line_colors) else None) \
                     or QColor(self.window3d.char_color)
                 kind = TAXI if taxi else GHOST if color.rgb() == GHOST_COLOR.rgb() else WALK
-                run.append((t - start, here[0], here[1], color.redF(), color.greenF(), color.blueF(), kind))
+                row = (color.redF(), color.greenF(), color.blueF(), kind)
+                run.append((t - start, here[0], here[1], *row))
+                end = ends.get(int(t), t)
+                if end > t and (i + 1 >= len(times) or end < times[i + 1]):
+                    run.append((end - start, here[0], here[1], *row))
             close()
-        self.trail.set_route(stretches)
+        self._stretches = stretches
+        self._spans = [(float(st[0, 0]), float(st[-1, 0])) for st in stretches]
+        self._pending_route = stretches
+
+    def _route_point(self, rel: float) -> np.ndarray | None:
+        """Where the draped route is at rel seconds since the start (the ribbon's head), None off it."""
+        i = bisect.bisect_right([a for a, _ in self._spans], rel) - 1
+        if i < 0 or rel > self._spans[i][1]:
+            return None
+        st = self._stretches[i]
+        j = int(np.clip(np.searchsorted(st[:, 0], rel, side="right") - 1, 0, len(st) - 2))
+        t0, t1 = st[j, 0], st[j + 1, 0]
+        f = 0.0 if t1 <= t0 else min(1.0, max(0.0, (rel - t0) / (t1 - t0)))
+        return st[j, 1:4] + (st[j + 1, 1:4] - st[j, 1:4]) * f
+
+    # -- trips across the world ------------------------------------------------------------------------------
+
+    def _arc_point(self, voyage, f: float) -> np.ndarray | None:
+        """A point of a trip's 3D arc (0: start, 1: arrival): over the 2D arc's course, rising from the start's
+        ground ARC_HIGH of the trip's length and coming down onto the arrival's. The marker and the trip's line
+        both use it, so the marker flies at the line's head."""
+        if self._arc_of is None or self._arc_of[0] is not voyage:
+            a, b = self.place(voyage.origin, LIFT), self.place(voyage.target, LIFT)
+            if a is None or b is None:
+                return None
+            high = min(ARC_TOP, max(ARC_LOW, ARC_HIGH * math.hypot(*(b[:2] - a[:2]))))
+            self._arc_of = (voyage, a[2], b[2], high)
+        _, za, zb, high = self._arc_of
+        s = self.shared(voyage.arc(f))
+        if s is None:
+            return None
+        z = za + (zb - za) * f + high * math.sin(math.pi * f)
+        return np.array([s[0], s[1], max(z, self.ground(*s) + LIFT)])
 
     # -- GL -------------------------------------------------------------------------------------------------
 
@@ -189,34 +235,41 @@ class CinemaStage3D(QOpenGLWidget):
             self.failed = str(e)
 
     def step(self, dt: float) -> None:
-        """The cinematic moved on by dt real seconds (also in the video export, frame by frame): the drone follows,
-        and the 3D picture and the items over it are drawn anew."""
-        self._prepare(dt)
+        """The cinematic moved on by dt real seconds (also in the video export, frame by frame): the 3D picture and
+        the items over it are drawn anew. The drone's view is worked out when they are drawn (fresh()), after the
+        cinematic's step has moved the replay on (it calls this first), so marker and ribbon show the same moment."""
+        self._step_dt += dt
+        self._stale = True
         self.update()
         self.items.update()
+
+    def fresh(self) -> None:
+        """The view for the cinematic's state now, once per step (the picture and the items share it)."""
+        if self._stale:
+            self._stale = False
+            dt, self._step_dt = self._step_dt, 0.0
+            self._prepare(dt)
 
     def _marker_point(self, d: float) -> np.ndarray | None:
         w = self.window3d
         m = w.marker
         if not m.isVisible():
-            self._fly_z = None
             return None
         s = self.shared(m.pos())
         if s is None:
             return None
-        base = self.ground(*s)
+        if w.voyage is not None:
+            point = self._arc_point(w.voyage, w.voyage.travelled())
+            if point is not None:
+                return point
         if w.voyage is not None or w.sky_trip is not None or m.mode == "flight":
-            self._fly_z = None
-            return np.array([s[0], s[1], base + FLY_HIGH * d])
-        if m.mode == "taxi":
-            ring = [(s[0] + FLIGHT_SAMPLE * math.cos(a), s[1] + FLIGHT_SAMPLE * math.sin(a))
-                    for a in np.linspace(0, 2 * math.pi, 8, endpoint=False)]
-            highest = float(self.pack.surface_many(np.array([s[0]] + [p[0] for p in ring]),
-                                                   np.array([s[1]] + [p[1] for p in ring])).max()) + 45.0
-            self._fly_z = highest if self._fly_z is None else self._fly_z + (highest - self._fly_z) * 0.05
-            return np.array([s[0], s[1], max(self._fly_z, base + 20.0)])
-        self._fly_z = None
-        return np.array([s[0], s[1], base + LIFT])
+            return np.array([s[0], s[1], self.ground(*s) + FLY_HIGH * d])
+        # On the route the marker is the ribbon's head itself (also high on a flight path).
+        self._sync_route()
+        on_route = self._route_point(w.t - w.start)
+        if on_route is not None and math.hypot(on_route[0] - s[0], on_route[1] - s[1]) < 0.25 * d + 30:
+            return on_route
+        return np.array([s[0], s[1], self.ground(*s) + LIFT])
 
     def _prepare(self, dt: float) -> None:
         """The drone's view for the cinematic's state now (stored in self.frame for the picture and the items)."""
@@ -263,13 +316,15 @@ class CinemaStage3D(QOpenGLWidget):
         f.glClear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
         if not self.ready:
             return
-        if self.frame is None:
-            self._prepare(0.0)
+        self.fresh()
         if self.frame is None:
             return
         dt, self._dt = min(0.25, self._dt), 0.0
         w = self.window3d
         self._sync_route()
+        if self._pending_route is not None:
+            self.trail.set_route(self._pending_route)
+            self._pending_route = None
         target, d, marker, vp, inv_vp, eye, look = self.frame
         self.terrain.update(target[0], target[1], d)
         self.buildings.update(target[0], target[1], d)
@@ -286,13 +341,14 @@ class CinemaStage3D(QOpenGLWidget):
         """The 2D items where the 3D picture shows their places (painted by ItemsLayer, just above this widget:
         QPainter inside paintGL would be left out of QWidget.render, the video export's picture)."""
         w = self.window3d
+        self.fresh()
         if self.frame is None:
             return
         _, d, marker, *_ = self.frame
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         voyage = w.voyage
         if voyage is not None and voyage.line is not None and voyage.line.isVisible():
-            self._paint_line(painter, voyage.line, d)
+            self._paint_line(painter, voyage)
         if w.pins is not None:
             pole = POLE * d
             w.pins.paint_at(painter, lambda p: self._project_place(p, pole),
@@ -332,25 +388,19 @@ class CinemaStage3D(QOpenGLWidget):
         painter.restore()
         m.angle = saved
 
-    def _paint_line(self, painter: QPainter, line, d: float) -> None:
-        """A trip's dashed line across the world map, as an arc over the 3D world."""
-        path = line.path()
-        if path.isEmpty():
+    def _paint_line(self, painter: QPainter, voyage) -> None:
+        """A trip's dashed line so far, on the 3D arc up to the marker."""
+        reached = voyage.travelled()
+        if reached <= 0:
             return
         points = []
-        n = 48
-        for i in range(n + 1):
-            f = i / n
-            p = path.pointAtPercent(f)
-            s = self.shared(p)
-            if s is None:
-                continue
-            z = self.ground(*s) + FLY_HIGH * d * math.sin(math.pi * f) + LIFT
-            q = self.project((s[0], s[1], z))
+        for f in np.linspace(0.0, reached, 49):
+            point = self._arc_point(voyage, float(f))
+            q = self.project(point) if point is not None else None
             if q is not None:
                 points.append(q)
         if len(points) > 1:
-            painter.setPen(line.pen())
+            painter.setPen(voyage.line.pen())
             painter.drawPolyline(points)
 
     def shutdown(self) -> None:

@@ -159,3 +159,27 @@ def test_the_drone_floats_over_cliffs_instead_of_riding_them():
         assert eye[2] >= cliffs(eye[0], eye[1]) + CLEARANCE - 60, "never deep in the ground"
     steps = np.abs(np.diff(heights[30:]))
     assert steps.max() < 0.03 * d, "no jolts: the height changes by at most 3 % of the distance a frame"
+
+
+@pytest.mark.skipif(not __import__("forever_chronicle.domain.terrain", fromlist=["x"]).TerrainPack.available(),
+                    reason="no terrain pack baked")
+def test_the_marker_is_the_head_of_the_ribbon_and_leaves_a_standstill_with_it(app):
+    from types import SimpleNamespace
+    from PySide6.QtWidgets import QWidget
+    from forever_chronicle.domain import maps
+    host = QWidget()
+    host.char_color = "#aad372"
+    host.view_map, host.start = maps.WORLD, 1000
+    # Two points in Durotar on the world map: stood at the first from t=1000 until 1060, then walked to the second.
+    a, b = QPointF(0.33 * maps.ART_WIDTH, 0.45 * maps.ART_HEIGHT), QPointF(0.335 * maps.ART_WIDTH, 0.45 * maps.ART_HEIGHT)
+    green = QColor("#33cc33")
+    host.route_item = SimpleNamespace(segs=[([1000, 1120], [a, b], False, [], [None, green])])
+    host.route = SimpleNamespace(points=[SimpleNamespace(time=1000, end=1060), SimpleNamespace(time=1120, end=1120)])
+    s = stage.CinemaStage3D(host)
+    s._sync_route()
+    pa, pb = np.array(s.shared(a)), np.array(s.shared(b))
+    standing = s._route_point(30.0)
+    assert np.allclose(standing[:2], pa), "while the player stood, the head stays on the point"
+    halfway = s._route_point(90.0)
+    assert np.allclose(halfway[:2], (pa + pb) / 2, atol=1.0), "it leaves when the standstill ends, as the marker"
+    assert s._route_point(500.0) is None

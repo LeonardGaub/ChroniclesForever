@@ -131,6 +131,13 @@ thread, and the GL upload happens on the GUI thread, a few tiles per frame.
 - **Water** is the game's liquids per tile (MH2O). The open sea is drawn only off the tiles; the minimap's black open
   sea gets the sea floor's colour, and round Zephras Isle it is void over a sea of clouds.
 - **Fallback:** without the pack, without OpenGL 3.3, or if GL fails to start, the replay stays or goes back to 2D.
+- **The marker is the ribbon's head** (fixed after the user saw the line run ahead of it). On the route the marker
+  takes its 3D place from the draped ribbon at the same moment, flight heights included. The ribbon keeps a point
+  until its standstill ends, as `Route.glide` moves the 2D marker. The view is worked out when the stage paints,
+  after the cinematic's step (it used to lag one step). Trips across the world draw their line and fly the marker
+  on one 3D arc (`_arc_point`: from the start's ground, ARC_HIGH of the trip's length high, down onto the
+  arrival's). The 2D position is used only off the route (inside dungeons, in gaps): 176 of 2,272 frames of
+  Blind's session.
 
 - **Buildings (WMO), the user's next request the same day.** `tools/wmo.py` reads the placements (obj0 MODF). The
   transform was fitted to the stored boxes of 1,524 placements (0.65 yd mean error): placement x = model y,
