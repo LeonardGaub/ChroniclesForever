@@ -62,14 +62,14 @@ RECORD_TYPES: list[RecordType] = [
     RecordType("position", "positions", ("occurred_at",), merge="newer", compare="until_at"),
     RecordType("metric", "metrics", ("occurred_at",), merge="replace"),
     RecordType("group_stretch", "group_stretches", ("started_at",), merge="newer", compare="until_at"),
-    RecordType("profession", "professions", ("skill_line",), merge="newer", compare="updated_at"),
-    RecordType("recipe_category", "recipe_categories", ("skill_line", "category_id"), merge="replace"),
-    RecordType("recipe", "recipes", ("skill_line", "recipe_id"), merge="replace"),
     RecordType("gear", "gear", ("slot",), merge="newer", compare="updated_at"),
     RecordType("data_gap", "data_gaps", ("stream", "from_seq", "to_seq"), local=("gap_id", "import_id")),
     RecordType("stream_state", "stream_state", ("stream",), merge="newer", compare="last_seq"),
 ]
 BY_NAME = {t.name: t for t in RECORD_TYPES}
+# Record types of earlier app versions whose data is no longer kept (the profession snapshots): skipped quietly.
+RETIRED = frozenset({"profession", "recipe_category", "recipe"})
+RETIRED_EVENT_TYPES = frozenset({"recipe_learned"})  # as the addon importer (importing/sv_importer.py)
 
 
 @dataclass
@@ -277,6 +277,9 @@ def read_records(lines: list[str], result: JsonlImportResult) -> tuple[dict[str,
             continue
         if not isinstance(rec, dict) or not isinstance(rec.get("record_type"), str):
             result.problem(number, "record_type missing")
+            continue
+        if rec["record_type"] in RETIRED or (rec["record_type"] == "event"
+                                              and rec.get("event_type") in RETIRED_EVENT_TYPES):
             continue
         if rec["record_type"] not in BY_NAME:
             result.unknown += 1

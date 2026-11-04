@@ -65,6 +65,7 @@ local WINDOWS = {
   TRADE_SHOW = { "trade", true }, TRADE_CLOSED = { "trade", false },
   AUCTION_HOUSE_SHOW = { "auction", true }, AUCTION_HOUSE_CLOSED = { "auction", false },
   BANKFRAME_OPENED = { "bank", true }, BANKFRAME_CLOSED = { "bank", false },
+  TRADE_SKILL_SHOW = { "craft", true }, TRADE_SKILL_CLOSE = { "craft", false },
 }
 
 for event, def in pairs(WINDOWS) do
@@ -94,9 +95,7 @@ function Loot:Source()
     return "loot"
   end
   if self.questAt and now - self.questAt <= AFTER_WINDOW then return "quest" end
-  local professions = FC:GetModule("Professions")
-  if professions and professions.windowOpen then return "craft" end
-  for _, window in ipairs({ "vendor", "mail", "trade", "auction" }) do
+  for _, window in ipairs({ "craft", "vendor", "mail", "trade", "auction" }) do
     if self:IsOpen(window) then return window end
   end
   return "other"

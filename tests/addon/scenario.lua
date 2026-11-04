@@ -164,10 +164,10 @@ if PHASE == 1 then
   SlashCmdList.FOREVERCHRONICLE("")
   check(ForeverChronicleFrame and ForeverChronicleFrame:IsShown(), "window opens with /fj")
   for i = 1, #FC.UI.pages do FC.UI:SelectPage(i) end
-  check(#FC.UI.pages == 6, "six pages registered")
+  check(#FC.UI.pages == 5, "five pages registered")
   SlashCmdList.FOREVERCHRONICLE("lang en")
   check(FC.L.TAB_OVERVIEW == "Overview", "language switched to English")
-  check(#ForeverChronicleFrame.Tabs == 6 and ForeverChronicleFrame.Tabs[2].page.icon ~= nil, "icon tabs, one per page")
+  check(#ForeverChronicleFrame.Tabs == 5 and ForeverChronicleFrame.Tabs[2].page.icon ~= nil, "icon tabs, one per page")
 
   -- Minimap button: shown, clicks toggle the window / open settings, can be hidden, dragging saves the angle.
   local mm = ForeverChronicleMinimapButton
@@ -283,11 +283,7 @@ elseif PHASE == 3 then
   check(#sessions() == 2, "second session")
   check(sessions()[1].endReason == "logout", "first session stays closed")
   check(events()[6].type == "session_started" and events()[6].seq == 6, "session_started appended with next seq")
-  -- Recipes for the desktop fixture: open the leatherworking window once.
-  MOCK.openProfession(165)
-  MOCK.advance(1)
-  MOCK.closeProfession()
-  MOCK.advance(300)
+  MOCK.advance(301)
   -- Graph window: the last 2 hours of played time join both sessions; a short window stays in the last one.
   local Metrics = ForeverChronicle.Metrics
   local spans, length = Metrics:PlayedWindow(7200)
@@ -1011,85 +1007,19 @@ if PHASE == 10 then
 end
 
 if PHASE == 11 then
-  print("phase 11: professions and recipes")
+  print("phase 11: professions")
   local FC = startClient(true, false)
   local char = ForeverChronicleDB.characters[ME]
   local P = FC:GetModule("Professions")
 
   local snap = char.snapshots.professions
-  check(snap and #snap.list == 4 and snap.baseline, "four professions captured at login")
+  check(snap and #snap.list == 4 and snap.baseline, "four professions seen at login")
   local lw = P:Find(165)
-  check(lw.name == "Leatherworking" and lw.rank == 126 and lw.maxRank == 150 and lw.kind == "primary",
-    "leatherworking skill and rank")
-  check(P:Find(129).kind == "secondary" and P:Find(185).kind == "secondary", "first aid and cooking are secondary")
+  check(lw.name == "Leatherworking" and lw.maxRank == 150 and lw.rank == nil and lw.recipes == nil,
+    "only name, icon and maximum are kept")
   check(#eventsOfType("profession_learned") == 0, "professions known at install are not reported as learned")
-  check(lw.recipes == nil, "no recipes before a profession window was opened")
   MOCK.advance(6)
   check(#eventsOfType("profession_learned") == 0, "delayed login scan adds no events")
-
-  -- Opening the window captures the learned recipes from the unfiltered list.
-  MOCK.openProfession(165)
-  check(lw.recipes == nil, "capture waits for the list to settle")
-  MOCK.advance(1)
-  check(lw.recipes and lw.recipes.status == "complete" and #lw.recipes.list == 4 and lw.recipes.total == 6,
-    "learned recipes captured (" .. (lw.recipes and #lw.recipes.list or 0) .. " of 6)")
-  check(lw.recipes.format == 2 and lw.recipes.list[1] == "2881,2550,134252,1,Light Leather",
-    "compact recipe format with item quality: " .. lw.recipes.list[1])
-  check(lw.recipes.list[2] == "3816,2550,134366,1,Cured Light Hide", "quality from the item ID when there is no link")
-  check(lw.recipes.list[4] == "9058,2552,133150,2,Handstitched Leather Cloak", "uncommon (green) recipe")
-  local cats = P.ParseCategories(lw.recipes.categories)
-  check(cats[2550].name == "Materials" and cats[2550].parent == 2549 and cats[2549].name == "Leatherworking",
-    "categories stored with their parents")
-  check(ForeverChronicleDB.diagnostics.capabilities.recipes.status == "confirmed", "recipes capability confirmed")
-
-  -- At most one capture per 5 seconds.
-  local captured = P.lastCapture
-  MOCK.fire("TRADE_SKILL_LIST_UPDATE")
-  MOCK.advance(1)
-  check(P.lastCapture == captured, "no second capture within 5 s")
-  MOCK.advance(5)
-  check(P.lastCapture > captured, "captured again after 5 s")
-
-  -- Learning a recipe: chronicle event and a new capture.
-  MOCK.recipes[165][5].learned = true
-  MOCK.fire("NEW_RECIPE_LEARNED", 2149)
-  local learned = eventsOfType("recipe_learned")
-  check(#learned == 1 and learned[1].data.name == "Handstitched Leather Boots" and learned[1].data.recipeID == 2149,
-    "recipe_learned event")
-  check(FC:DescribeEvent(learned[1]) == "Rezept gelernt: Handstitched Leather Boots", "recipe event text")
-  MOCK.advance(6)
-  check(#lw.recipes.list == 5, "new recipe in the snapshot")
-
-  -- Unreadable recipe info: partial snapshot that keeps what was known.
-  MOCK.recipes[165][1].broken = true
-  MOCK.fire("TRADE_SKILL_LIST_UPDATE")
-  MOCK.advance(6)
-  check(lw.recipes.status == "partial" and lw.recipes.unreadable == 1 and #lw.recipes.list == 5,
-    "partial capture keeps earlier recipes")
-  MOCK.recipes[165][1].broken = nil
-  MOCK.closeProfession()
-
-  -- Window closed before the capture ran: nothing is captured.
-  MOCK.openProfession(185)
-  MOCK.closeProfession()
-  MOCK.advance(6)
-  check(P:Find(185).recipes == nil, "no capture after the window was closed")
-
-  -- Another player's linked profession and professions the character does not have are ignored.
-  MOCK.linked = true
-  MOCK.openProfession(185)
-  MOCK.advance(6)
-  check(P:Find(185).recipes == nil, "linked profession not captured")
-  MOCK.closeProfession()
-  MOCK.linked = nil
-  MOCK.openProfession(197)
-  MOCK.advance(6)
-  check(P:Find(197) == nil, "profession the character does not have is ignored")
-  MOCK.closeProfession()
-  MOCK.openProfession(185)
-  MOCK.advance(1)
-  check(P:Find(185).recipes and #P:Find(185).recipes.list == 1, "cooking recipes captured")
-  MOCK.closeProfession()
 
   -- Next rank trained (maximum 150 -> 225).
   MOCK.professions[6][4] = 225
@@ -1107,43 +1037,36 @@ if PHASE == 11 then
   MOCK.advance(2)
   local learnedProf = eventsOfType("profession_learned")
   check(#learnedProf == 1 and learnedProf[1].data.name == "Fishing", "profession_learned event")
-  check(P:Find(182).active == false and P:Find(182).unlearnedAt, "herbalism marked as unlearned")
-  check(#P:GetActive() == 4 and P:GetActive()[1].skillLine == 165, "active professions, primary first")
-  local stat
-  for _, def in ipairs(FC.statDefs) do if def.key == "recipes_known" then stat = def end end
-  check(FC:GetStatValue(stat) == 6, "recipes stat (" .. tostring(FC:GetStatValue(stat)) .. ")")
+  check(FC:DescribeEvent(learnedProf[1]) == "Beruf erlernt: Fishing", "learned text: " .. FC:DescribeEvent(learnedProf[1]))
+  check(P:Find(182).active == false, "herbalism marked as unlearned")
 
-  -- In-game page: profession buttons, recipes grouped by category, search.
-  FC.UI:Toggle()
-  local page = openPage("professions")
-  local buttons = 0
-  for _, b in ipairs(page.buttons) do if b:IsShown() then buttons = buttons + 1 end end
-  check(buttons == 4 and page.selected == 165 and page.title.text == "Leatherworking", "profession buttons")
-  local function shownRows()
-    local n = 0
-    for _, row in ipairs(page.list.rows) do if row:IsShown() then n = n + 1 end end
-    return n
-  end
-  check(shownRows() == 8, "3 category headers and 5 recipes (" .. shownRows() .. ")")
-  check(page.list.rows[1].header.text == "Armor" and page.list.rows[2].text.text == "Handstitched Leather Boots",
-    "categories sorted, recipes below their category")
-  local green, white = page.list.rows[2].text.color, page.list.rows[8].text.color
-  check(green[1] == 0.12 and green[2] == 1 and white[1] == 1 and white[3] == 1, "recipe names in item quality colour")
-  check(page.status.text:find("unvollst", 1, true) ~= nil, "status shows the partial capture: " .. page.status.text)
-  page.search:SetText("hide")
-  page.search:GetScript("OnTextChanged")(page.search)
-  check(shownRows() == 3 and page.status.text:find("2 angezeigt", 1, true), "search filters recipes")
-  page.search:SetText("HIDE")
-  page.search:GetScript("OnTextChanged")(page.search)
-  check(shownRows() == 3, "recipe search ignores case")
+  -- Learning herbalism again is reported again.
+  MOCK.professionSlots[2] = 7
+  MOCK.fire("SKILL_LINES_CHANGED")
+  MOCK.advance(2)
+  check(#eventsOfType("profession_learned") == 2 and P:Find(182).active, "relearned profession reported")
+
+  -- Saved files from before 0.15 lose the recipes, the skill and the "recipe_learned" events.
+  local old = { characters = { alt = {
+    snapshots = { professions = { baseline = true, scannedAt = 1, list = {
+      { skillLine = 165, name = "Leatherworking", icon = 1, rank = 126, maxRank = 150, kind = "primary", active = true,
+        recipes = { status = "complete", list = { "2881,2550,134252,1,Light Leather" } } } } } },
+    streams = { events = { nextSeq = 4, dropped = 0, records = {
+      { seq = 1, type = "session_started" }, { seq = 2, type = "recipe_learned" }, { seq = 3, type = "level_up" } } } },
+  } } }
+  P.RemoveOldData(old)
+  local altProf = old.characters.alt.snapshots.professions.list[1]
+  check(altProf.recipes == nil and altProf.rank == nil and altProf.kind == nil and altProf.maxRank == 150,
+    "old profession fields removed")
+  local recs = old.characters.alt.streams.events.records
+  check(#recs == 2 and recs[1].seq == 1 and recs[2].seq == 3 and old.characters.alt.streams.events.nextSeq == 4,
+    "old recipe events removed, order and seq kept")
+
+  -- The profession window still tells where crafted items come from.
+  MOCK.fire("TRADE_SKILL_SHOW")
+  check(FC:GetModule("Loot"):Source() == "craft", "items made at the profession window come from crafting")
+  MOCK.fire("TRADE_SKILL_CLOSE")
   check(FC.Util.Fold("Ärmel ÖL Über") == "ärmel öl über", "umlauts folded for searching")
-  page.buttons[4]:GetScript("OnClick")(page.buttons[4])
-  check(page.selected == 356 and page.recipeEmpty.text:find("Sammelberufe", 1, true), "profession without recipes")
-
-  SlashCmdList.FOREVERCHRONICLE("professions")
-  local found = false
-  for _, line in ipairs(MOCK.chat) do if line:find("Leatherworking 126/225", 1, true) then found = true end end
-  check(found, "/fj professions lists the professions")
 
   local errors = 0
   for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
@@ -1548,7 +1471,6 @@ if PHASE == 17 then
     "level-up snapshot: statistics and gold")
   check(d.gear[1] == "item:4385::::::::22:::::" and d.gear[16] == "item:2099::::::::22:::::", "level-up snapshot: gear")
   check(d.playedTotal == 36100 and d.levelPlayed == 2100, "level-up snapshot: time played")
-  check(type(d.professions) == "table" and next(d.professions) ~= nil, "level-up snapshot: professions")
   check(FC:DescribeEvent(ups[#ups]) == "Stufe 23 erreicht", "level-up text unchanged")
 
   -- Packed for the saved file and read back the same.

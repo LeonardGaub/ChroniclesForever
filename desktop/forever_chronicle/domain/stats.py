@@ -130,6 +130,5 @@ register(Stat("achievements", "stats.achievements", 24, lambda r, c: r.count_eve
               icon=I + "INV_Misc_Ribbon_01"))
 register(Stat("zones", "stats.zones", 25, lambda r, c: r.count_events(c, "zone_discovered"),
               icon=I + "INV_Misc_Map_01"))
-register(Stat("recipes", "stats.recipes", 26, lambda r, c: r.count_recipes(c), icon=I + "INV_Scroll_03"))
 register(Stat("fish_caught", "stats.fish_caught", 27, _counter("fish_caught"), icon=I + "INV_Misc_Fish_02"))
 register(Stat("jumps", "stats.jumps", 28, _counter("jumps"), icon=I + "INV_Gizmo_RocketBoot_01"))

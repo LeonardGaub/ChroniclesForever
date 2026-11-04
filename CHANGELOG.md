@@ -6,14 +6,17 @@ then turn "Unreleased" into the uploaded version and date.
 
 ## Unreleased
 
+- The Professions tab is gone, and with it the recipe list, the "Known recipes" statistic, recipe entries in the
+  chronicle and `/fj professions`. Learning a profession and training a new rank still appear in the chronicle
+  (and in the desktop app's cinematic). Old recipe entries are removed from the saved file.
 - Screenshots with "Keep popups": the pet bar, other action bars, the target's frame and similar parts of the
   interface no longer stay visible when they happen to appear right after the event (a pet summoned, a new
   target); only the event's popup does.
 - Map: zoomed in, the route is drawn as smooth curves through the recorded points instead of straight corners,
   and the replay marker follows the curve.
 - Groundwork for future statistics, nothing new to see yet: every kill that gives experience is noted with its
-  experience and the enemy's name, and each level-up keeps what you had at that moment (statistics, gold, gear,
-  professions and the time played on the level).
+  experience and the enemy's name, and each level-up keeps what you had at that moment (statistics, gold, gear
+  and the time played on the level).
 - Notable loot in the chronicle (new filter "Loot and mounts"). Not every drop, only what is worth telling:
   every epic item the first time you get it, and blue gear that mattered: from a boss or rare enemy, or put on
   within an hour of getting it ("New gear"). Blue gear you sell, green and white items, anything that stacks
@@ -32,7 +35,6 @@ then turn "Unreleased" into the uploaded version and date.
 - Ready for the release client: the addon also counts as up to date on game versions 1.60.2, 1.60.3 and 1.61.0.
 - Two new statistics on the overview: "Jumps" and "Fish caught". Only jumps from the ground count (not pressing
   jump in mid-air, swimming up or on a flight path), and every catch from fishing counts as one fish.
-- The recipe search on the Professions tab ignores the case of umlauts too ("ä" finds "Ä").
 - The `/fj dungeon` command is gone. It reported test data for dungeon maps, which the addon no longer has;
   that data is removed from the saved file.
 - Safer reading of other characters' saved data: a specially crafted entry can no longer freeze the game.

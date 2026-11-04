@@ -1,20 +1,13 @@
--- Journey Forever - Professions module (spec F-008)
--- Snapshot of the character's professions (skill, maximum) and of the recipes it knows.
+-- Journey Forever - Professions module
+-- Records when the character learns a profession ("profession_learned") or reaches a new rank in one
+-- ("profession_rank"); the cinematic plays both. Nothing else about professions is kept: no recipes, no skill.
 --
--- Professions are read with the Mainline API at login, on skill changes and via /fj professions.
--- Recipes can only be read while the profession window is open: they are captured on TRADE_SKILL_SHOW /
--- TRADE_SKILL_LIST_UPDATE (at most once per 5 s) from the unfiltered recipe list, so search text, filters
--- and collapsed categories in the window do not matter. Linked, guild and NPC professions are never captured.
+-- Professions are read with the Mainline API at login and on skill changes. The list below exists only to tell
+-- what is new since the last scan:
 --
 -- snapshots.professions = {
 --   baseline,  -- true after the first scan: professions appearing later become "profession_learned" events
---   list = { { skillLine, name, icon, rank, maxRank, modifier, kind = "primary" | "secondary", active,
---              firstSeenAt, updatedAt,
---              recipes = { status = "complete" | "partial", updatedAt, total, unreadable,
---                          format = 2, list = { "recipeID,categoryID,icon,quality,name" },
---                          categories = { "id,parentID,name" } } } },
--- quality: item quality of what the recipe creates (0 poor ... 5 legendary), empty if unknown (e.g. enchants).
--- Format 1 (v0.10.0) had no quality field: "recipeID,categoryID,icon,name".
+--   list = { { skillLine, name, icon, maxRank, active } },
 -- }
 
 local ADDON, FC = ...
@@ -23,7 +16,6 @@ local L = FC.L
 
 local Professions = FC:NewModule("Professions", { order = 35 })
 
-local CAPTURE_INTERVAL = 5   -- seconds between two recipe captures
 local LOGIN_DELAY = 5        -- profession data can arrive late after login
 
 -------------------------------------------------------------------------------
@@ -34,11 +26,6 @@ local ICON = "Interface\\Icons\\Trade_BlackSmithing"
 
 FC:RegisterCapability("professions", "CAP_PROFESSIONS", function()
   return type(GetProfessions) == "function" and type(GetProfessionInfo) == "function"
-end)
-FC:RegisterCapability("recipes", "CAP_RECIPES", function()
-  local api = C_TradeSkillUI
-  return api ~= nil and type(api.GetAllRecipeIDs) == "function" and type(api.GetRecipeInfo) == "function"
-    and type(api.GetBaseProfessionInfo) == "function" and FC.eventStatus.TRADE_SKILL_SHOW == "registered"
 end)
 
 FC:RegisterEventCategory("professions", { labelKey = "CAT_PROFESSIONS", icon = ICON, order = 60 })
@@ -55,15 +42,6 @@ FC:RegisterEventType("profession_rank", {
     return string.format(L.EVT_PROFESSION_RANK, r.data.name or "?", Professions.RankName(r.data.maxRank))
   end,
 })
-FC:RegisterEventType("recipe_learned", {
-  icon = "Interface\\Icons\\INV_Scroll_03", category = "professions",
-  getIcon = function(r) return r.data.icon end,
-  format = function(r) return string.format(L.EVT_RECIPE_LEARNED, r.data.name or ("#" .. tostring(r.data.recipeID))) end,
-})
-
-FC:RegisterStat("recipes_known", { labelKey = "STAT_RECIPES", order = 25, icon = "Interface\\Icons\\INV_Scroll_03",
-  compute = function() return Professions:CountRecipes() end,
-  fromRecord = function(char) return Professions:CountRecipes(char) end })
 
 -------------------------------------------------------------------------------
 -- Helpers
@@ -77,18 +55,7 @@ function Professions.RankName(maxRank)
   return key and L[key] or tostring(maxRank or "?")
 end
 
-local function api(name)
-  return C_TradeSkillUI and C_TradeSkillUI[name]
-end
-
--- The professions snapshot of a character (default: the played one). Other characters' snapshots are
--- read-only (alts from this account, friends from the desktop app).
-function Professions:GetSnapshot(char)
-  if char and char ~= FC.char then
-    local snap = type(char.snapshots) == "table" and char.snapshots.professions
-    if type(snap) ~= "table" or type(snap.list) ~= "table" then return { list = {} } end
-    return snap
-  end
+function Professions:GetSnapshot()
   local snap = FC.Storage:GetSnapshot("professions")
   snap.list = snap.list or {}
   return snap
@@ -100,76 +67,39 @@ function Professions:Find(skillLine)
   end
 end
 
--- Active professions, primary first, then by name.
-function Professions:GetActive(char)
-  local out = {}
-  for _, prof in ipairs(self:GetSnapshot(char).list) do
-    if prof.active then out[#out + 1] = prof end
+-- Until 0.15 the addon also kept the skill, the known recipes and "recipe_learned" events. Removes what is left
+-- of them from every character in the saved file.
+local OLD_FIELDS = { "recipes", "rank", "modifier", "kind", "firstSeenAt", "updatedAt", "unlearnedAt" }
+
+function Professions.RemoveOldData(db)
+  local caps = type(db.diagnostics) == "table" and db.diagnostics.capabilities
+  if type(caps) == "table" then caps.recipes = nil end
+  for _, char in pairs(db.characters or {}) do
+    local snap = type(char.snapshots) == "table" and char.snapshots.professions
+    if type(snap) == "table" then
+      snap.scannedAt = nil
+      for _, prof in ipairs(type(snap.list) == "table" and snap.list or {}) do
+        for _, field in ipairs(OLD_FIELDS) do prof[field] = nil end
+      end
+    end
+    local events = type(char.streams) == "table" and char.streams.events
+    local records = type(events) == "table" and events.records
+    if type(records) == "table" then
+      local n = 0
+      for i = 1, #records do
+        local r = records[i]
+        if not (type(r) == "table" and r.type == "recipe_learned") then
+          n = n + 1
+          records[n] = r
+        end
+      end
+      for i = #records, n + 1, -1 do records[i] = nil end
+    end
   end
-  table.sort(out, function(a, b)
-    if a.kind ~= b.kind then return a.kind == "primary" end
-    return (a.name or "") < (b.name or "")
-  end)
-  return out
-end
-
-function Professions:CountRecipes(char)
-  local n = 0
-  for _, prof in ipairs(self:GetActive(char)) do
-    if prof.recipes then n = n + #prof.recipes.list end
-  end
-  return n
-end
-
-local RECIPE_FORMAT = 2
-
--- Recipe string "id,categoryID,icon,quality,name" -> table.
-function Professions.ParseRecipe(text)
-  local id, cat, icon, quality, name = text:match("^(%d+),(%d*),([^,]*),(%d*),(.*)$")
-  if not id then return nil end
-  return { id = tonumber(id), category = tonumber(cat), icon = tonumber(icon) or icon, quality = tonumber(quality),
-    name = name }
-end
-
-local function formatRecipe(r)
-  local icon = r.icon and tostring(r.icon):gsub(",", "") or ""
-  return string.format("%d,%s,%s,%s,%s", r.id, r.category or "", icon, r.quality or "", r.name)
-end
-
--- Item quality by hyperlink colour (works without the item being cached).
-local LINK_QUALITY = { ["9d9d9d"] = 0, ffffff = 1, ["1eff00"] = 2, ["0070dd"] = 3, a335ee = 4, ff8000 = 5,
-  e6cc80 = 6, ["00ccff"] = 7 }
-
--- Quality of the item a recipe creates, or nil (enchants, data not loaded yet).
-local function recipeQuality(id)
-  local link, itemID
-  local ok, out = pcall(api("GetRecipeOutputItemData"), id)
-  if ok and type(out) == "table" then link, itemID = Util.Plain(out.hyperlink), Util.Plain(out.itemID) end
-  if type(link) ~= "string" then link = Util.SafeValues(api("GetRecipeItemLink"), id) end
-  if type(link) == "string" then
-    local color = link:match("|c%x%x(%x%x%x%x%x%x)")
-    local q = color and LINK_QUALITY[color:lower()]
-    if q then return q end
-    itemID = itemID or tonumber(link:match("item:(%d+)"))
-  end
-  if type(itemID) == "number" and C_Item and C_Item.GetItemQualityByID then
-    local q = Util.SafeValues(C_Item.GetItemQualityByID, itemID)
-    if type(q) == "number" then return q end
-  end
-end
-
--- "id,parentID,name" list -> { [id] = { name, parent } }
-function Professions.ParseCategories(list)
-  local out = {}
-  for _, text in ipairs(list or {}) do
-    local id, parent, name = text:match("^(%d+),(%d*),(.*)$")
-    if id then out[tonumber(id)] = { name = name, parent = tonumber(parent) } end
-  end
-  return out
 end
 
 -------------------------------------------------------------------------------
--- Profession snapshot
+-- Scan
 -------------------------------------------------------------------------------
 
 -- Reads all professions. Returns the number found, or nil if the API is missing.
@@ -179,18 +109,15 @@ function Professions:Scan(setBaseline)
   if type(GetProfessions) ~= "function" then return nil end
   local snap = self:GetSnapshot()
   local slots = Util.Pack(Util.SafeValues(GetProfessions))
-  local now, seen, found = time(), {}, 0
+  local seen, found = {}, 0
   for slot = 1, math.max(slots.n or 0, 7) do
     local index = slots[slot]
     if type(index) == "number" then
-      local name, icon, rank, maxRank, _, _, skillLine, modifier = Util.SafeValues(GetProfessionInfo, index)
+      local name, icon, _, maxRank, _, _, skillLine = Util.SafeValues(GetProfessionInfo, index)
       if type(skillLine) == "number" and type(name) == "string" then
         found = found + 1
         seen[skillLine] = true
-        self:Update(snap, skillLine, {
-          name = name, icon = icon, rank = rank, maxRank = maxRank, modifier = modifier,
-          kind = slot <= 2 and "primary" or "secondary",
-        }, now)
+        self:Update(snap, skillLine, { name = name, icon = icon, maxRank = maxRank })
       end
     end
   end
@@ -198,22 +125,18 @@ function Professions:Scan(setBaseline)
   -- so an empty answer while the client is still loading does not remove anything.
   if found > 0 then
     for _, prof in ipairs(snap.list) do
-      if prof.active and not seen[prof.skillLine] then
-        prof.active = false
-        prof.unlearnedAt = now
-      end
+      if prof.active and not seen[prof.skillLine] then prof.active = false end
     end
     FC:ConfirmCapability("professions")
   end
   snap.baseline = snap.baseline or found > 0 or setBaseline == true
-  snap.scannedAt = now
   return found
 end
 
-function Professions:Update(snap, skillLine, info, now)
+function Professions:Update(snap, skillLine, info)
   local prof = self:Find(skillLine)
   if not prof then
-    prof = { skillLine = skillLine, firstSeenAt = now }
+    prof = { skillLine = skillLine }
     table.insert(snap.list, prof)
     if snap.baseline then
       FC:Record("profession_learned", { skillLine = skillLine, name = info.name, icon = info.icon })
@@ -224,10 +147,8 @@ function Professions:Update(snap, skillLine, info, now)
       and info.maxRank > prof.maxRank then
     FC:Record("profession_rank", { skillLine = skillLine, name = info.name, icon = info.icon, maxRank = info.maxRank })
   end
-  prof.active, prof.unlearnedAt = true, nil
-  prof.name, prof.icon, prof.kind = info.name, info.icon, info.kind
-  prof.rank, prof.maxRank, prof.modifier = info.rank, info.maxRank, info.modifier
-  prof.updatedAt = now
+  prof.active = true
+  prof.name, prof.icon, prof.maxRank = info.name, info.icon, info.maxRank
   return prof
 end
 
@@ -236,154 +157,14 @@ function Professions:ScheduleScan(delay, setBaseline)
 end
 
 -------------------------------------------------------------------------------
--- Recipe snapshot (only while the profession window is open)
--------------------------------------------------------------------------------
-
-local function categoryLine(id, seen, out)
-  -- The category and its parents, so the desktop can show the full grouping.
-  for _ = 1, 5 do
-    if not id or seen[id] then return end
-    seen[id] = true
-    local ok, info = pcall(api("GetCategoryInfo"), id)
-    if not ok or type(info) ~= "table" or type(info.name) ~= "string" then return end
-    local parent = type(info.parentCategoryID) == "number" and info.parentCategoryID or nil
-    out[#out + 1] = string.format("%d,%s,%s", id, parent or "", info.name)
-    id = parent
-  end
-end
-
--- Returns a result code: ok | no_api | closed | not_ready | foreign | not_own.
-function Professions:CaptureRecipes()
-  if not (api("GetAllRecipeIDs") and api("GetRecipeInfo") and api("GetBaseProfessionInfo")) then return "no_api" end
-  if not self.windowOpen then return "closed" end
-  if api("IsTradeSkillReady") and Util.SafeValues(api("IsTradeSkillReady")) == false then return "not_ready" end
-  -- Never another player's, a guild or an NPC profession.
-  if Util.SafeValues(api("IsTradeSkillLinked")) or Util.SafeValues(api("IsTradeSkillGuild"))
-      or Util.SafeValues(api("IsNPCCrafting")) then
-    return "foreign"
-  end
-  local base = Util.SafeValues(api("GetBaseProfessionInfo"))
-  local skillLine = type(base) == "table" and base.professionID
-  if type(skillLine) ~= "number" then return "not_ready" end
-  local prof = self:Find(skillLine)
-  if not (prof and prof.active) then
-    self:Scan()
-    prof = self:Find(skillLine)
-    if not (prof and prof.active) then return "not_own" end
-  end
-
-  self.lastCapture = GetTime()
-  local ids = Util.SafeValues(api("GetAllRecipeIDs"))
-  if type(ids) ~= "table" then return "not_ready" end
-  local learned, unreadable = {}, 0
-  -- Earlier capture by recipe ID: keeps qualities that cannot be read right now, and recipes of a partial read.
-  local previous, before = prof.recipes, {}
-  for _, text in ipairs(previous and previous.list or {}) do
-    local r = self.ParseRecipe(text)
-    if r then before[r.id] = r end
-  end
-  local hasCategoryInfo = api("GetCategoryInfo") ~= nil
-  local categories, catSeen = {}, {}
-  for _, id in ipairs(ids) do
-    local ok, info = pcall(api("GetRecipeInfo"), id)
-    if ok and type(info) == "table" and not Util.IsSecret(info.learned) then
-      if info.learned and type(info.name) == "string" then
-        local cat = type(info.categoryID) == "number" and info.categoryID or nil
-        local icon = (type(info.icon) == "number" or type(info.icon) == "string") and info.icon or nil
-        local quality = recipeQuality(id) or (before[id] and before[id].quality)
-        learned[id] = formatRecipe({ id = id, category = cat, icon = icon, quality = quality, name = info.name })
-        if cat and hasCategoryInfo then categoryLine(cat, catSeen, categories) end
-      end
-    else
-      unreadable = unreadable + 1
-    end
-  end
-
-  local status = unreadable == 0 and "complete" or "partial"
-  -- A partial capture never removes recipes that an earlier capture found.
-  if status == "partial" and previous then
-    for id, r in pairs(before) do
-      if not learned[id] then learned[id] = formatRecipe(r) end
-    end
-    if #categories == 0 then categories = previous.categories end
-  end
-  local list = {}
-  for _, text in pairs(learned) do list[#list + 1] = text end
-  table.sort(list, function(a, b) return tonumber(a:match("^(%d+)")) < tonumber(b:match("^(%d+)")) end)
-
-  prof.recipes = { status = status, updatedAt = time(), total = #ids, unreadable = unreadable,
-    format = RECIPE_FORMAT, list = list, categories = categories }
-  if status == "complete" then FC:ConfirmCapability("recipes") end
-  FC:SendMessage("FC_PROFESSIONS_UPDATED", skillLine)
-  return "ok", prof
-end
-
-function Professions:ScheduleCapture()
-  local wait = math.max(0.5, (self.lastCapture or -math.huge) + CAPTURE_INTERVAL - GetTime())
-  FC:Debounce(self, "capturePending", wait, function()
-    if self.windowOpen then self:CaptureRecipes() end
-  end)
-end
-
--------------------------------------------------------------------------------
 -- Events
 -------------------------------------------------------------------------------
 
 function Professions:OnEnable()
+  self.RemoveOldData(FC.db)
   self:Scan()
   self:ScheduleScan(LOGIN_DELAY, true)
 end
 
 Professions:RegisterEvent("SKILL_LINES_CHANGED", function(self) self:ScheduleScan() end)
 Professions:RegisterEvent("CHAT_MSG_SKILL", function(self) self:ScheduleScan() end)
-
-Professions:RegisterEvent("TRADE_SKILL_SHOW", function(self)
-  self.windowOpen = true
-  self:ScheduleCapture()
-end)
-Professions:RegisterEvent("TRADE_SKILL_LIST_UPDATE", function(self)
-  if self.windowOpen then self:ScheduleCapture() end
-end)
-Professions:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED", function(self)
-  if self.windowOpen then self:ScheduleCapture() end
-end)
-Professions:RegisterEvent("TRADE_SKILL_CLOSE", function(self) self.windowOpen = false end)
-
--- A recipe was learned (trainer, recipe item, ...). Its name comes from the recipe or spell API.
-Professions:RegisterEvent("NEW_RECIPE_LEARNED", function(self, _, recipeID)
-  recipeID = Util.Plain(recipeID)
-  if type(recipeID) ~= "number" then return end
-  local name, icon
-  local ok, info = pcall(api("GetRecipeInfo"), recipeID)
-  if ok and type(info) == "table" then name, icon = Util.Plain(info.name), Util.Plain(info.icon) end
-  if type(name) ~= "string" and C_Spell then name = Util.SafeValues(C_Spell.GetSpellName, recipeID) end
-  if type(name) ~= "string" and GetSpellInfo then name, _, icon = Util.SafeValues(GetSpellInfo, recipeID) end
-  FC:Record("recipe_learned", { recipeID = recipeID, name = type(name) == "string" and name or nil,
-    icon = (type(icon) == "number" or type(icon) == "string") and icon or nil })
-  self:ScheduleScan()
-  if self.windowOpen then self:ScheduleCapture() end
-end)
-
--------------------------------------------------------------------------------
--- /fj professions
--------------------------------------------------------------------------------
-
-FC:RegisterCommand("professions", "CMD_PROFESSIONS", function()
-  local found = Professions:Scan()
-  if found == nil then
-    FC:Print(L.PROF_NO_API)
-    return
-  end
-  if Professions.windowOpen then Professions:CaptureRecipes() end
-  local active = Professions:GetActive()
-  if #active == 0 then
-    FC:Print(L.PROF_NONE)
-    return
-  end
-  for _, prof in ipairs(active) do
-    local recipes = prof.recipes
-    local detail = recipes and string.format(L.PROF_RECIPES_LINE, #recipes.list, L["RECIPES_" .. recipes.status:upper()])
-      or L.PROF_RECIPES_NOT_CAPTURED
-    FC:Print(string.format("%s %d/%d - %s", prof.name, prof.rank or 0, prof.maxRank or 0, detail))
-  end
-end, 50)

@@ -7,9 +7,8 @@ from .gallery import GalleryPage
 from .home import HomePage
 from .import_page import ImportPage
 from .overview import OverviewPage
-from .professions import ProfessionsPage
 from .settings import SettingsPage
 from .timeline import TimelinePage
 
-MAIN_PAGES = [HomePage, OverviewPage, TimelinePage, GalleryPage, CinemaPage, ProfessionsPage]
+MAIN_PAGES = [HomePage, OverviewPage, TimelinePage, GalleryPage, CinemaPage]
 MENU_PAGES = [ImportPage, SettingsPage, DiagnosticsPage]

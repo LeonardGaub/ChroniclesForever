@@ -24,7 +24,7 @@ desktop: wow/paths ──► wow/lua_parser (literals only) ──► importing/
   records dropped by the addon's retention cap (`data_gaps`).
 - Events are immutable and de-duplicated by `(character, event id)`. Sessions are updated in place.
 - Snapshots (`char.snapshots[name]`, via `Storage:GetSnapshot`) hold what the character has *now*
-  (professions and recipes). They are replaced over time, and the desktop app mirrors the latest version.
+  (gear; professions only to detect changes). They are replaced over time, and the desktop app mirrors the gear.
 - The character key is the player GUID (globally unique in Forever). The desktop app assigns its own UUID.
 
 ### Characters shown in the window
@@ -107,17 +107,14 @@ minimum gap, maximum age, zone left, taxi and loading screens, capacity) live in
 `Modules/ScreenshotQueue.lua` and are covered by `tests/addon/queue_tests.lua`. The desktop app links
 records to files by their `fileStamp` (`importing/screenshot_matcher.py`, ±2 s, never guesses on a tie).
 
-### Professions and recipes
-`Modules/Professions.lua` keeps `snapshots.professions`: skill, maximum and kind (primary or secondary) per
-skill line, read with the Mainline `GetProfessions`/`GetProfessionInfo` at login, on `SKILL_LINES_CHANGED` /
-`CHAT_MSG_SKILL` and via `/fj professions`. Recipes are only readable while a profession window is open. They are
-captured from the unfiltered `C_TradeSkillUI.GetAllRecipeIDs` list (at most once per 5 s). Linked, guild and NPC
-professions and skill lines the character does not have are skipped. Recipes use the compact format
-`recipeID,categoryID,icon,quality,name` (recipe list format 2), and categories use
-`id,parentID,name`. Status `complete` means every recipe info
-was readable. A `partial` capture never removes recipes, and the desktop app follows the same rule (`replace_recipes`).
-Events: `profession_learned` and `profession_rank` come from the snapshot diff after a baseline, so professions
-known at install are not reported; `recipe_learned` comes from `NEW_RECIPE_LEARNED`.
+### Professions
+Professions are only events: `profession_learned` and `profession_rank` (the cinematic shows both as toasts).
+`Modules/Professions.lua` keeps a small `snapshots.professions` (name, icon, maximum skill and whether it is
+active, per skill line) only to notice what changed. It is read with the Mainline `GetProfessions` /
+`GetProfessionInfo` at login and on `SKILL_LINES_CHANGED` / `CHAT_MSG_SKILL`; events come from the diff after a
+baseline, so professions known at install are not reported. The recipe list, the skill, the professions page and
+`recipe_learned` were removed after 0.15.0: the addon strips them from old saved files, the desktop app skips them
+on import (`RETIRED_EVENT_TYPES`, JSONL `RETIRED`) and migration 14 dropped its profession and recipe tables.
 
 ### Positions and maps
 `Modules/Positions.lua` writes the compact `positions` stream: one string per point,
@@ -156,11 +153,11 @@ Increase `FC.SCHEMA_VERSION` (Core.lua) and add a migration to `MIGRATIONS` in `
 
 | Package | Role |
 |---|---|
-| `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`), game files (`casc.py`), the event, profession and recipe icons (`game_icons.py`), fonts (`game_fonts.py`: Friz Quadrata, Morpheus) and sound effects (`game_sounds.py`) from them (never in git), the cinematic's adventure music from the zones' music (`zone_music.py`, table `zone_music.json` from `tools/extract_zone_music.py`) |
+| `wow/` | locate client and SavedVariables (`paths.py`), safe Lua literal parser (`lua_parser.py`), game files (`casc.py`), the event icons (`game_icons.py`), fonts (`game_fonts.py`: Friz Quadrata, Morpheus) and sound effects (`game_sounds.py`) from them (never in git), the cinematic's adventure music from the zones' music (`zone_music.py`, table `zone_music.json` from `tools/extract_zone_music.py`) |
 | `importing/` | SavedVariables → SQLite, validation, gaps, `.bak` fallback |
 | `storage/` | `database.py` (schema migrations + backups), `repository.py` (all SQL), `jsonl.py` (export/import) |
 | `domain/` | pure logic, no Qt: registries `event_types.py` (how events are shown) and `stats.py` (overview statistics); `route.py`, `route_colors.py`, `maps.py` (the map); `cinematic.py` (what a replay announces, deaths, standstills and teleports), `daylight.py` (the light by time of day), `credits.py` (the end credits' numbers), `experience.py` (the XP bar's fill) |
-| `ui/` | `theme.py` (Classic look, the game's fonts first; the skin from the game's UI textures in `assets/skin/`, built by `tools/build_ui_skin.py`), `motion.py` (page crossfade, hover glow, toasts), `setup_wizard.py` (first start), `widgets.py` (page base class), `cards.py` (home cards and the card list of Chronik and Berufe), `main_window.py` (page stack, tabs at the bottom, gear menu), `pages/` (one file per page; `home.py` is the start page, `gallery.py` the screenshots), `screenshots.py` (thumbnails, Shot, the viewer with banner, favourite and replay), `cinematic.py` + `cinematic_fx.py` (cinematic mode), `cinematic_credits.py` (end credits), `cinematic_hud.py` (the game's XP bar), `cinematic_export.py` (the replay as an MP4 video), `sound.py` (clicks, alerts, music) |
+| `ui/` | `theme.py` (Classic look, the game's fonts first; the skin from the game's UI textures in `assets/skin/`, built by `tools/build_ui_skin.py`), `motion.py` (page crossfade, hover glow, toasts), `setup_wizard.py` (first start), `widgets.py` (page base class), `cards.py` (home cards and the card list of Chronik), `main_window.py` (page stack, tabs at the bottom, gear menu), `pages/` (one file per page; `home.py` is the start page, `gallery.py` the screenshots), `screenshots.py` (thumbnails, Shot, the viewer with banner, favourite and replay), `cinematic.py` + `cinematic_fx.py` (cinematic mode), `cinematic_credits.py` (end credits), `cinematic_hud.py` (the game's XP bar), `cinematic_export.py` (the replay as an MP4 video), `sound.py` (clicks, alerts, music) |
 | `i18n.py` | German (default) / English strings |
 
 ### Sound
@@ -193,7 +190,7 @@ The desktop shows events with the addon's icons: in the Chronik and Übersicht l
 (the addon's pin looks: milestone, danger, normal; they grow on hover and show a small card with the icon, event,
 place and time) and in the replay's pins and achievement banner.
 `event_types.icon_of(event)` picks the icon as the addon does: the fileDataID recorded with the event
-(achievements, professions, recipes), else the type's `icon`. `wow/game_icons.py` finds its PNG in two folders:
+(achievements, professions, mounts), else the type's `icon`. `wow/game_icons.py` finds its PNG in two folders:
 - `forever_chronicle/icons/`: the event types' icons, kept in git. `tools/extract_icons.py` writes them from the
   local game.
 - `%APPDATA%\ForeverChronicle\icons\`: the per-event icons. After each import `AppContext.extract_icons` takes the

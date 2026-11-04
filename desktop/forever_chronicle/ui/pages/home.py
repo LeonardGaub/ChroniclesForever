@@ -32,7 +32,7 @@ from ..widgets import Page, muted
 
 # Moments counted for the last session, in this order (the type's game icon and the count).
 SESSION_TYPES = ("level_up", "quest_completed", "zone_discovered", "achievement_earned", "rare_killed",
-                 "boss_killed", "dungeon_completed", "player_died", "recipe_learned")
+                 "boss_killed", "dungeon_completed", "player_died")
 THUMB = QSize(132, 82)
 JOURNEY = QSize(420, 236)
 MAX_ZONES = 4

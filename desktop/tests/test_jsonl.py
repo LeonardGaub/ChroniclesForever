@@ -193,7 +193,7 @@ def test_restore_migrates_older_backups_and_refuses_bad_files(other_db, tmp_path
     other_db.restore(old)
     assert other_db.version == SCHEMA_VERSION
     assert other_db.conn.execute("SELECT name FROM characters").fetchone()[0] == "Oldie"
-    assert other_db.conn.execute("SELECT COUNT(*) FROM recipes").fetchone()[0] == 0  # migrated tables exist
+    assert other_db.conn.execute("SELECT COUNT(*) FROM group_stretches").fetchone()[0] == 0  # migrated tables exist
 
     garbage = tmp_path / "garbage.db"
     garbage.write_bytes(b"this is not a database at all" * 100)

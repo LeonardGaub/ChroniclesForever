@@ -6,7 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from forever_chronicle import i18n  # noqa: E402
 from forever_chronicle.config import AppConfig  # noqa: E402
-from forever_chronicle.ui.cards import ICON, KIND, TITLE, TITLE_COLOR  # noqa: E402
+from forever_chronicle.ui.cards import ICON, KIND, TITLE  # noqa: E402
 from forever_chronicle.ui.main_window import MainWindow  # noqa: E402
 
 
@@ -22,8 +22,7 @@ def test_main_window_with_data(app, ctx, sv_data, db):
     assert window.char_name.text() == "Blind Bullseye"  # Forever characters have a last name
 
     assert window.current_page() is window.page("tab.home"), "the app starts on the home screen"
-    assert [b.text() for b in window.nav_buttons.values()] == ["Start", "Übersicht", "Chronik", "Galerie", "Kino",
-                                                              "Berufe"]
+    assert [b.text() for b in window.nav_buttons.values()] == ["Start", "Übersicht", "Chronik", "Galerie", "Kino"]
     assert [a.text() for a in window.gear_actions.values()] == ["Import", "Einstellungen", "Diagnose"]
     for page in window.pages:
         window.show_page(page)
@@ -44,22 +43,6 @@ def test_main_window_with_data(app, ctx, sv_data, db):
     gear = [overview.gear.item(i) for i in range(overview.gear.count())]
     assert [g.text() for g in gear] == ["Kopf:  Green Tinted Goggles", "Waffenhand:  Dwarven Hand Cannon"]
     assert gear[0].foreground().color().name() == "#0070dd"                   # rare = blue
-
-    professions = window.page("tab.professions")
-    window.show_page(professions)
-    recipes = professions.recipes.entries()
-    assert len(professions.cards) == 4 and len(recipes) == 4
-    assert professions.cards[1].skill == "126 / 150" and professions.cards[1].rank == "Geselle"
-    cloak = recipes[0]
-    assert cloak.data(TITLE) == "Handstitched Leather Cloak" and cloak.data(TITLE_COLOR) == "#1eff00", \
-        "a recipe's name in the colour of the item it makes"
-    professions.search.setText("hide")
-    assert len(professions.recipes.entries()) == 2 and professions.count.text() == "2 Rezepte"
-    professions._card_clicked(professions.cards[0].skill_line)  # Herbalism: gathering, no recipes
-    assert not professions.recipes.entries() and professions.cards[0].property("selected")
-    professions._card_clicked(professions.cards[0].skill_line)  # again: all professions
-    assert professions.filter.currentIndex() == 0 and not professions.cards[0].property("selected")
-    professions.search.clear()
 
     import_page = window.page("tab.import")
     window.show_page(import_page)

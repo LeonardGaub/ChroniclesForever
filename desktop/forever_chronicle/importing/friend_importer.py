@@ -4,7 +4,7 @@ friend (owners table, characters.owner_id).
 
 - One owner per player folder: share_id "player:<folder name in lower case>", display name the folder's name.
 - A newer copy adds to what the app has of that friend: chronicle entries are kept by ID, route points by time,
-  sessions, stats, gear and professions are updated. A character no longer in their files goes with everything.
+  sessions, stats and gear are updated. A character no longer in their files goes with everything.
   Unchanged copies are skipped.
 - A friend whose folder is gone from the cloud is removed; so are friends of the removed friends sync (their
   share_id has the old form), until they back up into a folder of their own.

@@ -4,7 +4,7 @@ saves them as PNG in desktop/forever_chronicle/icons/, the icons kept in git (fo
     desktop\\.venv\\Scripts\\python tools\\extract_icons.py [--out FOLDER] [--install WOW_FOLDER]
 
 Rerun it after adding an event type or a stat with a new icon (domain/event_types.py, domain/stats.py). The icons
-recorded per event (achievements, recipes, professions) are not kept in git: the app takes them from the game when
+recorded per event (achievements, professions, mounts) are not kept in git: the app takes them from the game when
 needed.
 """
 

@@ -2,18 +2,18 @@
 
 ## Summary (one sentence)
 
-Your character's personal adventure history: a chronicle of every milestone, automatic screenshots, route replay on the map, professions and stats, all in one window.
+Your character's personal adventure history: a chronicle of every milestone, automatic screenshots, route replay on the map and stats, all in one window.
 
 ---
 
 ## Description
 
-**Journey Forever** keeps a diary of your character while you play. Level-ups, quests, deaths, achievements, new zones and rare kills are recorded automatically. You can look back at all of it in one window that matches the game's own interface: a chronicle, your route on the world map, your professions and your statistics.
+**Journey Forever** keeps a diary of your character while you play. Level-ups, quests, deaths, achievements, new zones and rare kills are recorded automatically. You can look back at all of it in one window that matches the game's own interface: a chronicle, your route on the world map and your statistics.
 
 Everything is stored locally in your SavedVariables. The addon never sends anything to other players or the internet, and it has no ads.
 
 ### Chronicle
-- Records level-ups, completed quests, deaths, achievements, newly discovered zones, rare enemies killed, dungeon bosses defeated, completed dungeons, professions learned, profession ranks trained and recipes learned.
+- Records level-ups, completed quests, deaths, achievements, newly discovered zones, rare enemies killed, dungeon bosses defeated, completed dungeons, professions learned and profession ranks trained.
 - Every entry shows when it happened and where you were, grouped by day. Milestones stand out with a gold accent.
 - Deaths name their cause from the game's death recap ("Killed by Hogger", "Drowned"); hover for the killing blow.
 - Search by text or place, and filter by kind of entry (Shift-click to show only one kind).
@@ -43,17 +43,12 @@ Everything is stored locally in your SavedVariables. The addon never sends anyth
   - total played time;
   - number of sessions;
   - enemies killed and experience earned;
-  - rare enemies, quests, deaths, achievements, discovered zones, bosses defeated, dungeons completed and known recipes.
+  - rare enemies, quests, deaths, achievements, discovered zones, bosses defeated and dungeons completed.
 - A 3D model of your character with all equipped gear in the game's item buttons (tooltips, Shift-click to link, Ctrl-click to try on).
 - A graph of the last two hours of play: experience, kills, quests or gold, with values on hover.
 
-### Professions
-- All your professions with skill level and rank.
-- Every known recipe, grouped by category, in the item's quality colour, with a search box.
-- Recipes are captured when you open a profession window. Search filters in that window don't affect the result.
-
 ### All your characters
-- A character chooser at the top of the window shows any character on your account, read-only: their overview, saved gear, chronicle, routes and professions.
+- A character chooser at the top of the window shows any character on your account, read-only: their overview, saved gear, chronicle and routes.
 - The window always opens on the character you are playing, and recording only ever happens for that character.
 
 ### Comfort
@@ -65,7 +60,7 @@ Everything is stored locally in your SavedVariables. The addon never sends anyth
 ### Commands
 - `/fj` or `/chronicle`: open or close the window
 - `/fj help`: all commands
-- `/fj status`, `/fj professions`, `/fj played`, `/fj diag on|off`
+- `/fj status`, `/fj played`, `/fj diag on|off`
 - `/fjshot test`: take a test screenshot
 
 ### Good to know
@@ -77,12 +72,12 @@ Everything is stored locally in your SavedVariables. The addon never sends anyth
 
 ## Beschreibung (Deutsch)
 
-**Journey Forever** führt beim Spielen Tagebuch über deinen Charakter. Stufenaufstiege, Quests, Tode, Erfolge, neue Gebiete und besiegte seltene Gegner werden automatisch festgehalten. Alles kannst du in einem Fenster nachsehen, das aussieht wie die Oberfläche des Spiels: Chronik, deine Route auf der Weltkarte, deine Berufe und deine Statistiken.
+**Journey Forever** führt beim Spielen Tagebuch über deinen Charakter. Stufenaufstiege, Quests, Tode, Erfolge, neue Gebiete und besiegte seltene Gegner werden automatisch festgehalten. Alles kannst du in einem Fenster nachsehen, das aussieht wie die Oberfläche des Spiels: Chronik, deine Route auf der Weltkarte und deine Statistiken.
 
 Alles wird lokal in deinen SavedVariables gespeichert. Das Addon sendet nichts an andere Spieler oder ins Internet und zeigt keine Werbung.
 
 ### Chronik
-- Hält Stufenaufstiege, abgeschlossene Quests, Tode, Erfolge, neu entdeckte Gebiete, besiegte seltene Gegner, besiegte Dungeon-Bosse, abgeschlossene Dungeons, erlernte Berufe, Berufsränge und gelernte Rezepte fest.
+- Hält Stufenaufstiege, abgeschlossene Quests, Tode, Erfolge, neu entdeckte Gebiete, besiegte seltene Gegner, besiegte Dungeon-Bosse, abgeschlossene Dungeons, erlernte Berufe und Berufsränge fest.
 - Jeder Eintrag zeigt, wann und wo es passiert ist, nach Tagen gruppiert. Meilensteine heben sich golden ab.
 - Tode nennen ihre Ursache aus dem Todesbericht des Spiels („Getötet von Hogger“, „Ertrunken“); mit der Maus darüber siehst du den tödlichen Treffer.
 - Suche nach Text oder Ort und Filter nach Art des Eintrags (Shift-Klick zeigt nur eine Art).
@@ -112,17 +107,12 @@ Alles wird lokal in deinen SavedVariables gespeichert. Das Addon sendet nichts a
   - gesamte Spielzeit;
   - Anzahl der Sitzungen;
   - getötete Gegner und gesammelte Erfahrung;
-  - seltene Gegner, Quests, Tode, Erfolge, entdeckte Gebiete, besiegte Bosse, abgeschlossene Dungeons und bekannte Rezepte.
+  - seltene Gegner, Quests, Tode, Erfolge, entdeckte Gebiete, besiegte Bosse und abgeschlossene Dungeons.
 - 3D-Modell deines Charakters mit der gesamten angelegten Ausrüstung in den Gegenstandsfeldern des Spiels (Tooltips, Shift-Klick zum Verlinken, Strg-Klick zum Anprobieren).
 - Ein Verlauf der letzten zwei Spielstunden: Erfahrung, Gegner, Quests oder Gold, mit Werten beim Überfahren.
 
-### Berufe
-- Alle Berufe mit Fertigkeit und Rang.
-- Alle bekannten Rezepte nach Kategorie, in der Qualitätsfarbe des Gegenstands, mit Suche.
-- Rezepte werden beim Öffnen eines Berufsfensters erfasst. Suchfilter in diesem Fenster ändern das Ergebnis nicht.
-
 ### Alle deine Charaktere
-- Über die Charakterauswahl oben im Fenster siehst du jeden Charakter deines Accounts (nur lesen): Übersicht, gespeicherte Ausrüstung, Chronik, Routen und Berufe.
+- Über die Charakterauswahl oben im Fenster siehst du jeden Charakter deines Accounts (nur lesen): Übersicht, gespeicherte Ausrüstung, Chronik und Routen.
 - Das Fenster öffnet immer mit dem Charakter, den du gerade spielst, und aufgezeichnet wird nur für ihn.
 
 ### Komfort
@@ -134,7 +124,7 @@ Alles wird lokal in deinen SavedVariables gespeichert. Das Addon sendet nichts a
 ### Befehle
 - `/fj` oder `/chronicle`: Fenster öffnen oder schließen
 - `/fj help`: alle Befehle
-- `/fj status`, `/fj professions`, `/fj played`, `/fj diag on|off`
+- `/fj status`, `/fj played`, `/fj diag on|off`
 - `/fjshot test`: Test-Screenshot
 
 ### Gut zu wissen

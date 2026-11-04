@@ -106,9 +106,9 @@ class AppContext(QObject):
         return self.last_friend_import
 
     def extract_icons(self) -> int:
-        """Takes the icons recorded with events, professions and recipes that have no picture yet out of the local
-        game (wow/game_icons.py). Opens the game files only when one is missing; returns how many were added."""
-        return game_icons.extract_missing(self.client(), self.repo.event_icons() + self.repo.profession_icons())
+        """Takes the icons recorded with events that have no picture yet out of the local game
+        (wow/game_icons.py). Opens the game files only when one is missing; returns how many were added."""
+        return game_icons.extract_missing(self.client(), self.repo.event_icons())
 
     # -- backups and JSONL transfer (spec F-011) ------------------------------------------
 

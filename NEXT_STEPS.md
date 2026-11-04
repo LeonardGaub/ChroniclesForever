@@ -9,10 +9,9 @@ were written at the time (older entries may describe things that changed later).
   changelog section "0.15.0" in `CHANGELOG.md`, description in `docs/CurseForge.md`), not uploaded yet (last
   CurseForge upload 0.14.1). The friends companion `ForeverChronicle_Share` was removed on 2026-10-27; the
   desktop app installs a newer main addon from the repository at start (WoW closed) and deletes the companion folder.
-- Addon window tabs: Übersicht, Chronik (screenshots shown with their entries), Karte, Berufe, Einstellungen,
-  Diagnose. Slash commands `/fj` and `/fjshot`.
+- Addon window tabs: Übersicht, Chronik (screenshots shown with their entries), Karte, Einstellungen, Diagnose. Slash commands `/fj` and `/fjshot`.
 - Desktop app: starts on the home screen (Start). Tabs at the bottom: Start, Übersicht, Chronik, Galerie, Kino
-  (the way into the cinematic mode: the whole journey and its chapters), Berufe; the gear menu next to them opens
+  (the way into the cinematic mode: the whole journey and its chapters); the gear menu next to them opens
   Import, Einstellungen (sound, route colours), Diagnose. The desktop's map page was removed on 2026-11-02 (user
   decision): the addon's map is the place to browse the route.
   Start it with `desktop/Forever Chronicle.bat`; without a dev venv (friends' clones) `Journey Forever starten.bat`
@@ -39,7 +38,6 @@ were written at the time (older entries may describe things that changed later).
    The friends' characters disappear from the app until each friend has backed up once.
 2. `Journey Forever starten.bat` is not yet tested end to end on a clean PC (Python install and pip download).
 3. Gear: test whether `SetCustomRace` / `TryOn` work in Forever, for a dressed model of other characters.
-4. Short in-game checks for the user: open each profession window once and look at the Berufe tab.
 5. Death cause (2026-10-16): the addon reads `C_DeathRecap.GetRecapEvents()` (no ID = newest recap) at
    `PLAYER_DEAD`, retrying for 5 s, and stores the killing blow (killer, npcID, spell, spellID, environment,
    damage, overkill) in the `player_died` event. Unverified in Forever: whether the recap exists there and is
@@ -70,7 +68,7 @@ were written at the time (older entries may describe things that changed later).
    app ignores the `kills` stream). Ideas taken from the Road to Sixty addon (rewritten, not copied: it has no
    licence). Check in game: kill a few enemies, `/reload`, and look for the `kills` bar under Einstellungen (storage);
    after the next level-up the `level_up` event in the saved file should hold `stats`, `money`, `gear`,
-   `professions`, `playedTotal` and `levelPlayed`. Unverified: whether `CHAT_MSG_COMBAT_XP_GAIN` text is readable
+   `playedTotal` and `levelPlayed`. Unverified: whether `CHAT_MSG_COMBAT_XP_GAIN` text is readable
    (not secret) in Forever, in instances too, and whether German clients use `COMBATLOG_XPGAIN_EXHAUSTION1` for the
    rested bonus. Still missing for the "records" (slowest level, nemesis, most killed, best session, ...): only
    the gear-worn record, which needs an event per gear change. Also new: the in-game map draws the route as curves
@@ -105,8 +103,8 @@ were written at the time (older entries may describe things that changed later).
 - F-005: playback speed base (1× = 60 s of play per second). Position format and implicit seq.
   Map art location and naming.
 - F-009: settings sections; screenshots are shown with their Chronicle entries (no Screenshots tab).
-- F-008: recipe/profession events were added to the chronicle (the spec said snapshots only). The compact recipe
-  format and `snapshots` area.
+- F-008: professions are only events now (learned, new rank); the recipe list, the skill and both profession pages
+  were removed on 2026-11-04.
 
 ## History
 

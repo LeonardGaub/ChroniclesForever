@@ -87,7 +87,6 @@ FC:RegisterStat("achievements", { labelKey = "STAT_ACHIEVEMENTS", order = 23, ic
 --   stats       a copy of every statistic (kills, xp_earned, kill_xp, quest_xp, quests_completed, deaths, ...)
 --   money       gold held, in copper
 --   gear        { [slot ID] = item string ("item:1234:0:..."), ... } of the equipped items
---   professions { [name] = "rank/max", ... }
 -- Modules/Session.lua adds playedTotal and levelPlayed (the server's time played on the level just finished).
 function Progress:LevelSnapshot()
   local char, snap = FC.char, {}
@@ -103,15 +102,6 @@ function Progress:LevelSnapshot()
     for _, entry in ipairs(gear.slots) do
       local item = type(entry.link) == "string" and entry.link:match("|H(item:[^|]+)|h")
       if type(entry.slot) == "number" and item then snap.gear[entry.slot] = item end
-    end
-  end
-  local profs = char.snapshots.professions
-  if type(profs) == "table" and type(profs.list) == "table" and #profs.list > 0 then
-    snap.professions = {}
-    for _, p in ipairs(profs.list) do
-      if type(p.name) == "string" and type(p.rank) == "number" then
-        snap.professions[p.name] = p.rank .. "/" .. tostring(p.maxRank or "?")
-      end
     end
   end
   return snap

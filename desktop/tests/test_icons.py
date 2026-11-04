@@ -80,9 +80,9 @@ def test_pictures_fall_back_to_the_type_icon(monkeypatch):
     from PySide6.QtGui import QGuiApplication
     from forever_chronicle.ui import icons
     QGuiApplication.instance() or QGuiApplication([])
-    lost = event("recipe_learned", {"icon": 7808148})   # recorded, but not taken from the game
+    lost = event("achievement_earned", {"icon": 7808148})   # recorded, but not taken from the game
     assert icons.event_small(lost) is not None and icons.event_pin(lost) is not None
-    assert icons.of_event(7808148, "recipe_learned") is not None
+    assert icons.of_event(7808148, "achievement_earned") is not None
     skull = icons.event_pin(event("player_died"))
     assert skull.width() / skull.devicePixelRatio() == icons.PIN_LOOKS["danger"][1]
     assert icons.event_small(event("something_new")) is None   # unknown types keep their symbol

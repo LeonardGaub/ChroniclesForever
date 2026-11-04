@@ -302,6 +302,16 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (character_id, started_at)
     );
     """,
+    # 14: professions are only events now (learned, new rank): the profession and recipe snapshots and the
+    # recipe events go
+    """
+    DROP TABLE recipes;
+    DROP TABLE recipe_categories;
+    DROP TABLE professions;
+    DELETE FROM screenshot_events WHERE event_id IN (SELECT event_id FROM events WHERE event_type = 'recipe_learned');
+    DELETE FROM events WHERE event_type = 'recipe_learned';
+    DELETE FROM client_capabilities WHERE capability = 'recipes';
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

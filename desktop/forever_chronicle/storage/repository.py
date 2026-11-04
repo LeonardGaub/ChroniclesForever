@@ -126,42 +126,6 @@ def int_or_none(text: Any) -> int | None:
     return None
 
 
-@dataclass(frozen=True)
-class Recipe:
-    recipe_id: int
-    category_id: int | None
-    icon: int | None
-    name: str
-    quality: int | None = None          # item quality of what the recipe creates
-
-    @classmethod
-    def parse(cls, text: str) -> "Recipe | None":
-        """Parses the addon's compact format (recipe list format 2; the name is last and may contain commas):
-        recipeID,categoryID,icon,quality,name."""
-        parts = text.split(",", 4)
-        if len(parts) != 5 or not parts[0].isdigit() or not parts[4]:
-            return None
-        quality = int_or_none(parts[3])
-        if parts[3] and quality is None:
-            return None
-        return cls(int(parts[0]), int_or_none(parts[1]), int_or_none(parts[2]), parts[4], quality)
-
-
-@dataclass(frozen=True)
-class RecipeCategory:
-    category_id: int
-    parent_id: int | None
-    name: str
-
-    @classmethod
-    def parse(cls, text: str) -> "RecipeCategory | None":
-        """Parses id,parentID,name."""
-        parts = text.split(",", 2)
-        if len(parts) != 3 or not parts[0].isdigit() or not parts[2]:
-            return None
-        return cls(int(parts[0]), int_or_none(parts[1]), parts[2])
-
-
 class Repository:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
@@ -317,17 +281,11 @@ class Repository:
                           (character_id, stream, from_seq, to_seq, before_time, import_id, int(time.time())))
 
     def event_icons(self) -> list[int]:
-        """The icons recorded with events (fileDataIDs: achievements, professions, recipes), all characters."""
+        """The icons recorded with events (fileDataIDs: achievements, professions, mounts, ...), all characters."""
         rows = self.conn.execute("""SELECT DISTINCT json_extract(payload_json, '$.icon') FROM events
                                     WHERE json_valid(payload_json)
                                     AND json_type(payload_json, '$.icon') = 'integer'""").fetchall()
         return [r[0] for r in rows if r[0] > 0]
-
-    def profession_icons(self) -> list[int]:
-        """The icons of professions and recipes (fileDataIDs), all characters."""
-        rows = self.conn.execute("""SELECT icon FROM professions WHERE icon > 0 UNION
-                                    SELECT icon FROM recipes WHERE icon > 0""").fetchall()
-        return [r[0] for r in rows]
 
     def gaps(self, character_id: str | None = None) -> list[sqlite3.Row]:
         if character_id:
@@ -528,72 +486,6 @@ class Repository:
                                 (character_id, key)).fetchone()
         return row[0] if row else None
 
-    # -- professions and recipes (snapshots) -------------------------------------
-
-    def upsert_profession(self, character_id: str, prof: dict[str, Any]) -> None:
-        recipes = prof.get("recipes") if isinstance(prof.get("recipes"), dict) else {}
-        self.conn.execute(
-            """INSERT INTO professions (character_id, skill_line, name, icon, kind, rank, max_rank, modifier, active,
-               first_seen_at, updated_at, recipe_status, recipes_updated_at, recipes_total)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (character_id, skill_line) DO UPDATE SET
-               name = excluded.name, icon = excluded.icon, kind = excluded.kind, rank = excluded.rank,
-               max_rank = excluded.max_rank, modifier = excluded.modifier, active = excluded.active,
-               first_seen_at = COALESCE(professions.first_seen_at, excluded.first_seen_at),
-               updated_at = excluded.updated_at,
-               recipe_status = COALESCE(excluded.recipe_status, professions.recipe_status),
-               recipes_updated_at = COALESCE(excluded.recipes_updated_at, professions.recipes_updated_at),
-               recipes_total = COALESCE(excluded.recipes_total, professions.recipes_total)""",
-            (character_id, prof["skillLine"], prof.get("name") or "?", int_or_none(prof.get("icon")), prof.get("kind"),
-             prof.get("rank"), prof.get("maxRank"), prof.get("modifier"), 0 if prof.get("active") is False else 1,
-             prof.get("firstSeenAt"), prof.get("updatedAt"), recipes.get("status"), recipes.get("updatedAt"),
-             recipes.get("total")))
-
-    def replace_recipes(self, character_id: str, skill_line: int, recipes: list["Recipe"], complete: bool,
-                        seen_at: int | None) -> None:
-        """Stores a recipe snapshot. Only a complete snapshot removes recipes that are no longer listed."""
-        if complete:
-            ids = [r.recipe_id for r in recipes]
-            marks = ",".join("?" for _ in ids) or "NULL"
-            self.conn.execute(f"""DELETE FROM recipes WHERE character_id = ? AND skill_line = ?
-                                  AND recipe_id NOT IN ({marks})""", (character_id, skill_line, *ids))
-        for r in recipes:
-            self.conn.execute(
-                """INSERT INTO recipes (character_id, skill_line, recipe_id, name, category_id, icon, quality,
-                   first_seen_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT (character_id, skill_line, recipe_id) DO UPDATE
-                   SET name = excluded.name, category_id = excluded.category_id, icon = excluded.icon,
-                   quality = COALESCE(excluded.quality, recipes.quality)""",
-                (character_id, skill_line, r.recipe_id, r.name, r.category_id, r.icon, r.quality, seen_at))
-
-    def upsert_recipe_category(self, character_id: str, skill_line: int, category_id: int, parent_id: int | None,
-                               name: str) -> None:
-        self._upsert("recipe_categories", {"character_id": character_id, "skill_line": skill_line,
-                                           "category_id": category_id, "parent_id": parent_id, "name": name},
-                     ("character_id", "skill_line", "category_id"))
-
-    def professions(self, character_id: str) -> list[sqlite3.Row]:
-        """The character's active professions, primary first."""
-        return self.conn.execute(
-            """SELECT p.*, (SELECT COUNT(*) FROM recipes r WHERE r.character_id = p.character_id
-               AND r.skill_line = p.skill_line) AS recipe_count FROM professions p
-               WHERE p.character_id = ? AND p.active = 1 ORDER BY p.kind = 'secondary', p.name""",
-            (character_id,)).fetchall()
-
-    def recipes(self, character_id: str, skill_line: int | None = None, search: str | None = None) -> list[sqlite3.Row]:
-        """Recipes of active professions with profession and category names."""
-        sql = """SELECT r.*, p.name AS profession, c.name AS category FROM recipes r
-                 JOIN professions p ON p.character_id = r.character_id AND p.skill_line = r.skill_line
-                 LEFT JOIN recipe_categories c ON c.character_id = r.character_id AND c.skill_line = r.skill_line
-                      AND c.category_id = r.category_id
-                 WHERE r.character_id = ? AND p.active = 1"""
-        args: list[Any] = [character_id]
-        if skill_line is not None:
-            sql += " AND r.skill_line = ?"
-            args.append(skill_line)
-        if search:
-            sql += " AND r.name LIKE ?"
-            args.append(f"%{search}%")
-        return self.conn.execute(sql + " ORDER BY p.name, category, r.name", args).fetchall()
-
     def replace_gear(self, character_id: str, items: list[dict[str, Any]], updated_at: int | None) -> None:
         """The equipped items as of the snapshot (slots not listed are empty)."""
         self.conn.execute("DELETE FROM gear WHERE character_id = ?", (character_id,))
@@ -605,12 +497,6 @@ class Repository:
 
     def gear(self, character_id: str) -> list[sqlite3.Row]:
         return self.conn.execute("SELECT * FROM gear WHERE character_id = ? ORDER BY slot", (character_id,)).fetchall()
-
-    def count_recipes(self, character_id: str) -> int:
-        return self.conn.execute(
-            """SELECT COUNT(*) FROM recipes r JOIN professions p ON p.character_id = r.character_id
-               AND p.skill_line = r.skill_line WHERE r.character_id = ? AND p.active = 1""",
-            (character_id,)).fetchone()[0]
 
     # -- capabilities -----------------------------------------------------------
 

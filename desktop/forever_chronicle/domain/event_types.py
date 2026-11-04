@@ -58,7 +58,7 @@ def detail(event: EventRow) -> str:
 
 def icon_of(event: EventRow, pin: bool = False) -> int | str:
     """The event's icon as the addon shows it: the one recorded with the event (a fileDataID: achievement,
-    profession, recipe), else its type's. pin: the type's map pin texture wins (the death skull)."""
+    profession), else its type's. pin: the type's map pin texture wins (the death skull)."""
     et = get(event.event_type)
     if pin and et.pin_icon:
         return et.pin_icon
@@ -183,11 +183,6 @@ def rank_name(max_rank: int | None) -> str:
     return tr(key) if key else str(max_rank or "?")
 
 
-def _recipe(e: EventRow) -> str:
-    name = e.payload.get("name") or f"#{e.payload.get('recipeID', '?')}"
-    return tr("evt.recipe_learned.text", name=name)
-
-
 register(EventType("profession_learned", "evt.profession_learned", "⚒", "#40c040",
                    lambda e: tr("evt.profession_learned.text", name=e.payload.get("name") or "?"),
                    ICONS + "Trade_BlackSmithing", highlight="milestone"))
@@ -195,7 +190,6 @@ register(EventType("profession_rank", "evt.profession_rank", "⚒", "#40c040",
                    lambda e: tr("evt.profession_rank.text", name=e.payload.get("name") or "?",
                                 rank=rank_name(e.payload.get("maxRank"))),
                    ICONS + "Trade_BlackSmithing"))
-register(EventType("recipe_learned", "evt.recipe_learned", "✎", "#40c040", _recipe, ICONS + "INV_Scroll_03"))
 
 # Since addon 0.16.0: mounts, the hearthstone, notable loot and the player's own moments.
 LOOT_SOURCES = ("boss", "rare", "fishing", "loot", "quest", "craft", "vendor", "mail", "trade", "auction", "other")

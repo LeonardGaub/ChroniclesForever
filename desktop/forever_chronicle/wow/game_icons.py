@@ -1,7 +1,7 @@
 """Event icons from the game: the textures the addon shows, as small PNG files.
 
 An icon is a texture path (the event type's icon, e.g. "Interface\\Icons\\INV_Misc_Note_01") or a fileDataID (the
-icon the addon records with an event: achievement, profession, recipe). Its file is named after the texture
+icon the addon records with an event: achievement, profession, mount). Its file is named after the texture
 ("inv_misc_note_01.png") or the ID ("136243.png"). Two folders, the first one wins:
 - forever_chronicle/icons/: the event types' icons (domain/event_types.py), kept in git; tools/extract_icons.py
   writes them.

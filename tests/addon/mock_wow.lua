@@ -56,8 +56,8 @@ for e in ([[ADDON_LOADED PLAYER_LOGIN PLAYER_ENTERING_WORLD PLAYER_LOGOUT TIME_P
   QUEST_TURNED_IN PLAYER_DEAD ACHIEVEMENT_EARNED ZONE_CHANGED_NEW_AREA PLAYER_CONTROL_GAINED
   LOADING_SCREEN_ENABLED LOADING_SCREEN_DISABLED SCREENSHOT_SUCCEEDED SCREENSHOT_FAILED
   PARTY_KILL PLAYER_XP_UPDATE PLAYER_TARGET_CHANGED UPDATE_MOUSEOVER_UNIT NAME_PLATE_UNIT_ADDED
-  SKILL_LINES_CHANGED CHAT_MSG_SKILL TRADE_SKILL_SHOW TRADE_SKILL_LIST_UPDATE TRADE_SKILL_DATA_SOURCE_CHANGED
-  TRADE_SKILL_CLOSE NEW_RECIPE_LEARNED PLAYER_EQUIPMENT_CHANGED ENCOUNTER_START ENCOUNTER_END BOSS_KILL ZONE_CHANGED ZONE_CHANGED_INDOORS
+  SKILL_LINES_CHANGED CHAT_MSG_SKILL TRADE_SKILL_SHOW
+  TRADE_SKILL_CLOSE PLAYER_EQUIPMENT_CHANGED ENCOUNTER_START ENCOUNTER_END BOSS_KILL ZONE_CHANGED ZONE_CHANGED_INDOORS
   PLAYER_REGEN_ENABLED LOOT_OPENED LOOT_CLOSED UNIT_SPELLCAST_START UNIT_SPELLCAST_SUCCEEDED PLAYER_ALIVE PLAYER_UNGHOST
   RESURRECT_REQUEST CONFIRM_XP_LOSS NEW_MOUNT_ADDED COMPANION_LEARNED PLAYER_MOUNT_DISPLAY_CHANGED HEARTHSTONE_BOUND
   GROUP_ROSTER_UPDATE BAG_UPDATE_DELAYED MERCHANT_SHOW MERCHANT_CLOSED MAIL_SHOW MAIL_CLOSED TRADE_SHOW TRADE_CLOSED
@@ -297,59 +297,6 @@ function GetProfessions()
 end
 function GetProfessionInfo(i) local p = MOCK.professions[i]; if p then return unpack(p) end end
 
-MOCK.recipes = {
-  [165] = {
-    { recipeID = 2881, name = "Light Leather", categoryID = 2550, icon = 134252, learned = true },
-    { recipeID = 3816, name = "Cured Light Hide", categoryID = 2550, icon = 134366, learned = true },
-    { recipeID = 3817, name = "Cured Medium Hide", categoryID = 2550, icon = 134354, learned = true },
-    { recipeID = 9058, name = "Handstitched Leather Cloak", categoryID = 2552, icon = 133150, learned = true },
-    { recipeID = 2149, name = "Handstitched Leather Boots", categoryID = 2553, icon = 132539, learned = false },
-    { recipeID = 3753, name = "Handstitched Leather Belt", categoryID = 2553, icon = 132493, learned = false },
-  },
-  [185] = {
-    { recipeID = 2538, name = "Charred Wolf Meat", categoryID = 2600, icon = 133974, learned = true },
-  },
-}
-MOCK.categories = {
-  [2549] = { categoryID = 2549, name = "Leatherworking", parentCategoryID = nil },
-  [2550] = { categoryID = 2550, name = "Materials", parentCategoryID = 2549 },
-  [2552] = { categoryID = 2552, name = "Cloaks", parentCategoryID = 2549 },
-  [2553] = { categoryID = 2553, name = "Armor", parentCategoryID = 2549 },
-  [2600] = { categoryID = 2600, name = "Cooking", parentCategoryID = nil },
-}
-MOCK.tradeSkill = nil -- skill line shown in the open profession window
-C_TradeSkillUI = {
-  GetAllRecipeIDs = function()
-    local out = {}
-    for _, r in ipairs(MOCK.recipes[MOCK.tradeSkill] or {}) do out[#out + 1] = r.recipeID end
-    return out
-  end,
-  GetRecipeInfo = function(id)
-    for _, list in pairs(MOCK.recipes) do
-      for _, r in ipairs(list) do
-        if r.recipeID == id then
-          if r.broken then error("recipe data not loaded") end
-          return r
-        end
-      end
-    end
-  end,
-  GetBaseProfessionInfo = function() return { professionID = MOCK.tradeSkill or 0 } end,
-  GetCategoryInfo = function(id) return MOCK.categories[id] end,
-  IsTradeSkillReady = function() return true end,
-  IsTradeSkillLinked = function() return MOCK.linked == true, nil end,
-  IsTradeSkillGuild = function() return false end,
-  IsNPCCrafting = function() return false end,
-}
--- Created item: hyperlink (colour = quality), only an item ID (quality from the item cache), or nothing.
-local OUTPUT = {
-  [2881] = { itemID = 2318, hyperlink = "|cffffffff|Hitem:2318::::::::22:::::|h[Light Leather]|h|r" },
-  [3816] = { itemID = 4231 },
-  [3817] = { itemID = 4233, hyperlink = "|cffffffff|Hitem:4233::::::::22:::::|h[Cured Medium Hide]|h|r" },
-  [9058] = { itemID = 7276, hyperlink = "|cff1eff00|Hitem:7276::::::::22:::::|h[Handstitched Leather Cloak]|h|r" },
-  [2149] = { itemID = 2302, hyperlink = "|cff1eff00|Hitem:2302::::::::22:::::|h[Handstitched Leather Boots]|h|r" },
-}
-C_TradeSkillUI.GetRecipeOutputItemData = function(id) return OUTPUT[id] or {} end
 -- Encounter journal: Orgrimmar lists the Ragefire Chasm entrance (journal 226 = instance 389).
 C_EncounterJournal = {
   GetDungeonEntrancesForMap = function(mapID)
@@ -436,13 +383,3 @@ C_Item.GetItemInfoInstant = function(id)
 end
 C_Item.GetItemMaxStackSizeByID = function(id) return (MOCK.items[id] or {}).maxStack or 1 end
 
--- Opens / closes the profession window of a skill line.
-function MOCK.openProfession(skillLine)
-  MOCK.tradeSkill = skillLine
-  MOCK.fire("TRADE_SKILL_SHOW")
-  MOCK.fire("TRADE_SKILL_LIST_UPDATE")
-end
-function MOCK.closeProfession()
-  MOCK.tradeSkill = nil
-  MOCK.fire("TRADE_SKILL_CLOSE")
-end
