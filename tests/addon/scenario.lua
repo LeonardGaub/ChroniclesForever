@@ -1482,4 +1482,192 @@ if PHASE == 17 then
   check(errors == 0, "no errors logged")
 end
 
+if PHASE == 18 then
+  print("phase 18: PvP kills, killers, duels, battlegrounds")
+  -- The client's PvP events, strings and functions (not in the shared mock).
+  local PVP_EVENTS = { CHAT_MSG_SYSTEM = true, CHAT_MSG_COMBAT_HONOR_GAIN = true, PVP_MATCH_COMPLETE = true,
+    UPDATE_BATTLEFIELD_SCORE = true, PLAYER_LEAVING_WORLD = true }
+  local isValid = C_EventUtils.IsEventValid
+  C_EventUtils.IsEventValid = function(e) return PVP_EVENTS[e] or isValid(e) end
+  MOCK.allEventsValid = true
+  COMBATLOG_HONORGAIN = "%s dies, honorable kill Rank: %s (%d Honor Points)"
+  COMBATLOG_HONORGAIN_NO_RANK = "%s dies, honorable kill (%d Honor Points)"
+  DUEL_WINNER_KNOCKOUT = "%1$s has defeated %2$s in a duel"
+  DUEL_WINNER_RETREAT = "%2$s has fled from %1$s in a duel"
+  local ROGUE, MAGE, DEAD = "Player-4619-0BADF00D", "Player-4619-0C0FFEE0", "Player-4619-0DEAD000"
+  local PET = "Pet-0-4619-1-1-1-0000PET"
+  local infos = {
+    [ROGUE] = { "Rogue", "ROGUE", "Human", "Human", 2, "Gankzor", "" },
+    [MAGE] = { "Mage", "MAGE", "Gnome", "Gnome", 3, "Frosty", "OtherRealm" },
+    [DEAD] = { "Priest", "PRIEST", "Dwarf", "Dwarf", 2, "Deadguy", "" },
+  }
+  function GetPlayerInfoByGUID(guid) local p = infos[guid]; if p then return unpack(p) end end
+  local isPlayer, level, class, isInInstance, position = UnitIsPlayer, UnitLevel, UnitClass, IsInInstance, UnitPosition
+  local function enemy(u) return u == "nameplate1" or (u == "target" and MOCK.units.target ~= nil) end
+  function UnitIsPlayer(u) return enemy(u) or isPlayer(u) end
+  function UnitIsEnemy(_, u) return enemy(u) end
+  function UnitLevel(u) if u == "nameplate1" then return 31 end return level(u) end
+  function UnitClass(u) if u == "nameplate1" then return "Rogue", "ROGUE", 4 end return class(u) end
+  function UnitRace(u) if u == "nameplate1" then return "Human", "Human", 1 end return "Tauren", "Tauren", 6 end
+  function UnitFactionGroup(u) if enemy(u) then return "Alliance", "Alliance" end return "Horde", "Horde" end
+  function GetGuildInfo(u) if u == "nameplate1" then return "Deathwatch", "Member", 5 end end
+  function IsInInstance() if MOCK.pvp then return true, MOCK.pvp end return isInInstance() end
+  function UnitPosition(u) if MOCK.pvp then return 1000, 1000, 0, 489 end return position(u) end
+  C_PvP = { GetScoreInfoByPlayerGuid = function(guid)
+    if guid == ME then return { killingBlows = 4, honorableKills = 11, deaths = 2, honorGained = 250, faction = 0 } end
+  end }
+  function GetBattlefieldWinner() return nil end
+
+  local FC = startClient(true, false)
+  local char = ForeverChronicleDB.characters[ME]
+  local function kills() return eventsOfType("pvp_kill") end
+
+  -- Open world: the player's own killing blow on a rogue seen as a nameplate; the honor message adds its rank.
+  MOCK.units.nameplate1 = { guid = ROGUE, name = "Gankzor" }
+  MOCK.fire("NAME_PLATE_UNIT_ADDED", "nameplate1")
+  MOCK.fire("PARTY_KILL", ME, ROGUE)
+  MOCK.advance(1)
+  MOCK.fire("CHAT_MSG_COMBAT_HONOR_GAIN", "Gankzor dies, honorable kill Rank: Private (12 Honor Points)")
+  local k = kills()
+  check(#k == 1, "one PvP kill for the kill and its honor message")
+  local d = k[1].data
+  check(d.name == "Gankzor" and d.class == "ROGUE" and d.race == "Human" and d.level == 31 and d.guild == "Deathwatch"
+    and d.faction == "Alliance", "victim: name, class, race, level, guild, faction")
+  check(d.blow == "self" and d.rank == "Private" and d.honor == 12, "own killing blow, honor rank")
+  check(FC:DescribeEvent(k[1]) == "Gankzor besiegt", "kill text")
+  local lines = FC:EventDetails(k[1])
+  check(lines and lines[1] == "Stufe 31 Human Rogue <Deathwatch>", "kill tooltip: who it was")
+
+  -- The honor message first, PARTY_KILL after it: the pet's killing blow fills in the same kill.
+  MOCK.advance(20)
+  MOCK.units.pet = { guid = PET }
+  MOCK.fire("CHAT_MSG_COMBAT_HONOR_GAIN", "Frosty dies, honorable kill (8 Honor Points)")
+  MOCK.fire("PARTY_KILL", PET, MAGE)
+  k = kills()
+  check(#k == 2 and k[2].data.name == "Frosty" and k[2].data.honor == 8 and k[2].data.rank == nil, "honor message alone")
+  check(k[2].data.blow == "pet" and k[2].data.class == "MAGE" and k[2].data.realm == "OtherRealm", "pet's blow merged in")
+
+  -- Creatures are no PvP kills; hidden GUIDs fall back to the dead player in the target frame.
+  MOCK.fire("PARTY_KILL", ME, "Creature-0-4619-1-1-3100-0000ABCD")
+  MOCK.fire("PARTY_KILL", MOCK.SECRET, MOCK.SECRET)
+  check(#kills() == 2, "no kill without a player victim")
+  MOCK.units.target = { guid = DEAD, name = "Deadguy", dead = true }
+  MOCK.fire("PARTY_KILL", MOCK.SECRET, MOCK.SECRET)
+  MOCK.units.target = nil
+  k = kills()
+  check(#k == 3 and k[3].data.name == "Deadguy" and k[3].data.blow == nil and k[3].data.class == "PRIEST",
+    "secret GUIDs: the dead player target")
+  check(char.stats.pvp_kills == 3 and char.stats.pvp_killing_blows == 1, "PvP kill statistics")
+
+  -- Killed by the rogue: the death names who it was.
+  MOCK.advance(30)
+  MOCK.deathRecap = { { timestamp = time() - 0.1, event = "SPELL_DAMAGE", sourceName = "Gankzor", sourceGUID = ROGUE,
+    spellName = "Eviscerate", spellId = 2098, amount = 300 } }
+  MOCK.fire("PLAYER_DEAD")
+  local deaths = eventsOfType("player_died")
+  local death = deaths[#deaths].data
+  check(death.killer == "Gankzor" and death.killerType == "player" and death.killerClass == "ROGUE"
+    and death.killerLevel == 31 and death.killerGuild == "Deathwatch" and death.battleground == nil, "killed by a player")
+  lines = FC:EventDetails(deaths[#deaths])
+  local found = false
+  for _, l in ipairs(lines or {}) do if l == "Stufe 31 Human Rogue <Deathwatch>" then found = true end end
+  check(found, "death tooltip names the killer")
+  check(char.stats.pvp_deaths == 1, "PvP death statistic")
+  MOCK.fire("PLAYER_ALIVE") -- came back before releasing (not a ghost)
+
+  -- Duels: only the player's own, won, fled from and lost.
+  MOCK.fire("CHAT_MSG_SYSTEM", "Blind has defeated Frosty in a duel")
+  MOCK.fire("CHAT_MSG_SYSTEM", "Gankzor has fled from Blind in a duel")
+  MOCK.fire("CHAT_MSG_SYSTEM", "Thrall has defeated Garrosh in a duel")
+  MOCK.fire("CHAT_MSG_SYSTEM", "Gankzor has defeated Blind in a duel")
+  MOCK.fire("CHAT_MSG_SYSTEM", "You have learned a new ability.")
+  local duels = eventsOfType("duel")
+  check(#duels == 3, "three duels of the player")
+  check(duels[1].data.won and duels[1].data.name == "Frosty" and not duels[1].data.fled, "duel won")
+  check(duels[2].data.won and duels[2].data.fled and duels[2].data.class == "ROGUE", "duel won, the opponent fled")
+  check(duels[3].data.won == false and FC:DescribeEvent(duels[3]) == "Duell gegen Gankzor verloren", "duel lost")
+  check(char.stats.duels_won == 2 and char.stats.duels_lost == 1, "duel statistics")
+
+  -- A battleground with a friend: strangers of the battleground raid are no companions.
+  MOCK.group = { { name = "Gigel", class = "WARRIOR", guid = "Player-4619-0F00F001" } }
+  MOCK.fire("GROUP_ROSTER_UPDATE")
+  MOCK.advance(3)
+  local function lastStretch()
+    local g = S(char.streams.group).records
+    return FC:GetModule("Group").Parse(g[#g])
+  end
+  check(#lastStretch().members == 1, "grouped with the friend")
+  local stretches = #S(char.streams.group).records
+  MOCK.pvp, MOCK.zone, MOCK.mapID = "pvp", "Warsong Gulch", 1460
+  MOCK.fire("PLAYER_ENTERING_WORLD", false, false)
+  check(char.pvpMatch and char.pvpMatch.kind == "pvp" and char.pvpMatch.instanceID == 489
+    and char.pvpMatch.name == "Warsong Gulch", "match started")
+  table.insert(MOCK.group, { name = "Stranger", class = "MAGE", guid = "Player-4619-0F00F002" })
+  table.insert(MOCK.group, { name = "Other", class = "PRIEST", guid = "Player-4619-0F00F003" })
+  MOCK.fire("GROUP_ROSTER_UPDATE")
+  MOCK.advance(3)
+  check(#S(char.streams.group).records == stretches and #lastStretch().members == 1, "battleground raid: only the friend")
+
+  -- Dying inside: marked as a battleground death, and the spirit guide brings the player back.
+  MOCK.deathRecap = { { timestamp = time() - 0.1, sourceName = "Frosty", sourceGUID = MAGE, spellName = "Frostbolt", amount = 500 } }
+  MOCK.fire("PLAYER_DEAD")
+  deaths = eventsOfType("player_died")
+  death = deaths[#deaths].data
+  check(death.battleground == "pvp" and death.killerType == "player" and death.killerClass == "MAGE", "battleground death")
+  MOCK.ghost = true
+  MOCK.fire("PLAYER_ALIVE")
+  MOCK.advance(25)
+  MOCK.ghost = false
+  MOCK.fire("PLAYER_UNGHOST")
+  check(death.revive == "spirit_healer", "revived by the spirit guide")
+  check(char.stats.pvp_deaths == 1 and char.stats.pvp_deaths_matches == 1, "match deaths counted apart")
+  MOCK.fire("PARTY_KILL", ME, ROGUE)
+  check(#kills() == 3, "kills inside a match are left to the score board")
+
+  MOCK.advance(600)
+  MOCK.fire("PVP_MATCH_COMPLETE", 0, 900)
+  local bgs = eventsOfType("battleground")
+  check(#bgs == 1, "match recorded at its end")
+  local bg = bgs[1].data
+  check(bg.result == "won" and bg.killingBlows == 4 and bg.honorableKills == 11 and bg.deaths == 2 and bg.honor == 250
+    and bg.duration == 900 and bg.mapID == 1460 and bg.faction == "Horde", "match: result and score")
+  check(FC:DescribeEvent(bgs[1]) == "Sieg in Warsong Gulch", "match text")
+  local Shots = FC:GetModule("Screenshots")
+  check(Shots:IsTriggerEnabled("pvp") and Shots:IsTriggerEnabled("battleground"), "PvP screenshots on by default")
+  check(Shots.triggers.battleground.filter(bgs[1]) and not Shots.triggers.battleground.filter({ data = { result = "lost" } }),
+    "screenshot for a won match only")
+  check(not Shots.triggers.death.filter(deaths[#deaths]), "no death screenshots inside a match")
+  MOCK.fire("PLAYER_LEAVING_WORLD")
+  MOCK.pvp, MOCK.zone, MOCK.mapID = nil, nil, nil
+  MOCK.fire("PLAYER_ENTERING_WORLD", false, false)
+  check(char.pvpMatch == nil and #eventsOfType("battleground") == 1, "leaving after the end adds nothing")
+  check(char.stats.battlegrounds == 1 and char.stats.battlegrounds_won == 1, "battleground statistics")
+
+  -- A match left before its end, through a /reload in between: recorded where it was left.
+  MOCK.pvp, MOCK.zone, MOCK.mapID = "pvp", "Warsong Gulch", 1460
+  MOCK.fire("PLAYER_ENTERING_WORLD", false, false)
+  MOCK.advance(120)
+  MOCK.fire("UPDATE_BATTLEFIELD_SCORE")
+  MOCK.fire("PLAYER_LEAVING_WORLD")
+  MOCK.pvp, MOCK.zone, MOCK.mapID = nil, nil, nil
+  MOCK.advance(5)
+  MOCK.fire("PLAYER_ENTERING_WORLD", false, false)
+  bgs = eventsOfType("battleground")
+  check(#bgs == 2 and bgs[2].data.result == "left" and bgs[2].location.zone == "Warsong Gulch"
+    and bgs[2].data.duration == 120 and bgs[2].data.killingBlows == 4, "match left early")
+  check(char.stats.battlegrounds == 2 and char.stats.battlegrounds_won == 1, "a left match is no win")
+
+  -- What the samples say, for checking the sources in Forever.
+  local pvp = ForeverChronicleDB.diagnostics.pvp
+  check(pvp.counts.party_kill >= 5 and pvp.counts.honor_message == 2 and pvp.counts.match_entered == 2
+    and #pvp.samples <= 40, "signal counts and samples kept")
+  for _, key in ipairs({ "pvp_kills", "pvp_deaths", "duels", "battlegrounds" }) do
+    check(ForeverChronicleDB.diagnostics.capabilities[key].status == "confirmed", "capability confirmed: " .. key)
+  end
+  MOCK.fire("PLAYER_LOGOUT")
+  local errors = 0
+  for _, l in ipairs(ForeverChronicleDB.diagnostics.log) do if l:find("%[error%]") then errors = errors + 1; print("    " .. l) end end
+  check(errors == 0, "no errors logged")
+end
+
 print("PHASE " .. PHASE .. " PASSED")

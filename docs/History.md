@@ -4,6 +4,17 @@ The session notes that used to be the "History" section of `NEXT_STEPS.md`, newe
 at the time: older entries may describe things that changed or were removed later. The current state is in
 `NEXT_STEPS.md`.
 
+### PvP moments (2026-11-04)
+- Investigation first: the death recap already named player killers (only the name; the GUID was not kept), kills
+  of players need `PARTY_KILL` / the honor message, and battlegrounds replayed badly (a death scene per death, the
+  whole battleground raid as companions, the match played at full length on the battleground's own map art).
+- The user asked for everything at once, untested ("track the data already"): addon `Modules/PvP.lua` (events
+  `pvp_kill`, `duel`, `battleground`, killer details on deaths, match deaths marked, spirit-guide revives),
+  `Modules/Group.lua` keeps only the pre-match group inside matches, `Modules/Screenshots.lua` gets the "pvp"
+  option (PvP kills and won matches) and no death screenshots inside matches. Desktop: event types, icons
+  (`tools/extract_icons.py`), cinematic toasts and `match_spans` (the replay jumps to the match result and on).
+  Tests: addon phase 18, `desktop/tests/test_pvp.py`. Open item 9 in `NEXT_STEPS.md` lists what to check.
+
 ### Kino tab replaces the desktop map page (2026-11-02)
 - User decision: the desktop map page lacked screenshot pins and the replay's moments, and the cinematic mode is
   always better; the addon's map is the place to browse the route. `ui/pages/map_page.py` is gone, with its

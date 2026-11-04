@@ -8,6 +8,8 @@
 - Deaths (death_spans): when the character lay dead, ran back as a ghost and came back to life. Since addon
   0.16.0 the death's event says so (releasedAt, revivedAt, how and by whom); older deaths are read from the route.
 - Companions (Companions): who the player was grouped with, from the addon's group stream (since 0.16.0).
+- Battlegrounds and arenas (match_spans): the replay jumps over a match and shows only its result (the
+  battleground event, addon Modules/PvP.lua) and its screenshot; deaths inside a match are no death scenes.
 - Standstills (still_spans): stretches in which the character did not move at all (AFK, waiting), which the
   replay can run through faster or skip.
 - Teleports (teleports): hearthstone, portals and the ghost's release to the graveyard, which the replay shows as a
@@ -32,9 +34,11 @@ from .route import WORLD_PER_CONTINENT, Route, too_fast
 # Event types the replay announces. Quests are left out: there are too many for a replay at speed.
 CUE_EVENT_TYPES = ("level_up", "player_died", "zone_discovered", "achievement_earned", "rare_killed",
                    "boss_killed", "dungeon_completed", "profession_learned", "profession_rank", "mount_learned",
-                   "hearth_set", "item_obtained", "moment")
+                   "hearth_set", "item_obtained", "moment", "pvp_kill", "duel", "battleground")
 # Cues that name the companions the player was grouped with.
-WITH_COMPANIONS = ("boss_killed", "dungeon_completed", "rare_killed")
+WITH_COMPANIONS = ("boss_killed", "dungeon_completed", "rare_killed", "pvp_kill", "battleground")
+MATCH_AFTER = 120          # a match without a later route point outside it ends this long after its result
+MATCH_AFTER_MAX = 600      # a later point is looked for at most this long after the result
 GAP_SKIP = 30              # breaks without points longer than this are skipped by the replay: no playing time
 
 
@@ -78,6 +82,9 @@ BANNER_TITLES: dict[str, Callable[[EventRow], Any]] = {
     "item_obtained": event_types.item_name,
     "moment": lambda e: e.payload.get("text") or tr("cine.moment_untitled"),
     "player_revived": lambda e: e.payload.get("reviver"),
+    "pvp_kill": lambda e: e.payload.get("name"),
+    "duel": lambda e: e.payload.get("name"),
+    "battleground": lambda e: e.payload.get("name"),
 }
 
 
@@ -91,6 +98,10 @@ def _heading_key(event: EventRow) -> str:
             return "cine.banner.item_equipped"
         if isinstance(p.get("quality"), int) and p["quality"] >= 4:
             return "cine.banner.item_epic"
+    if event.event_type == "duel":
+        return "cine.banner.duel.won" if p.get("won") else "cine.banner.duel.lost"
+    if event.event_type == "battleground" and p.get("result") in event_types.MATCH_RESULTS:
+        return f"cine.banner.battleground.{p['result']}"
     return f"cine.banner.{event.event_type}"
 
 
@@ -120,7 +131,7 @@ def build_cues(events: Iterable[EventRow], screenshots: Iterable[Any], start: in
     with_shot = {r["first_event_id"] for r in shots}
     cues: list[Cue] = []
     for e in events:
-        if e.event_type not in CUE_EVENT_TYPES or not start <= e.occurred_at <= end:
+        if e.event_type not in CUE_EVENT_TYPES or not start <= e.occurred_at <= end or in_match(e):
             continue
         et = event_types.get(e.event_type)
         level = e.payload.get("level") if e.event_type == "level_up" else None
@@ -157,6 +168,38 @@ def build_cues(events: Iterable[EventRow], screenshots: Iterable[Any], start: in
     order = {"level": 0, "event": 0, "screenshot": 1}
     cues.sort(key=lambda c: (c.time, order[c.kind]))
     return cues
+
+
+def in_match(e: EventRow) -> bool:
+    """A death inside a battleground or arena (addon 0.16.0): no death scene, no death toast."""
+    return e.event_type == "player_died" and e.payload.get("battleground") in ("pvp", "arena")
+
+
+def match_spans(events: Iterable[EventRow], route: Route, start: float, end: float) -> list[tuple[float, float, str]]:
+    """(from, to, name) of the battleground and arena matches within [start, end], in time order: from entering
+    the match to the first route point outside it after its end (the score board stays open a while), else
+    MATCH_AFTER seconds after the end. The replay jumps over them; the moments inside are still shown."""
+    spans: list[tuple[float, float, str]] = []
+    for e in sorted((e for e in events if e.event_type == "battleground"), key=lambda e: e.occurred_at):
+        p = e.payload
+        began = p.get("startedAt")
+        if not isinstance(began, int) or began > e.occurred_at:
+            duration = p.get("duration")
+            began = e.occurred_at - duration if isinstance(duration, int) and duration > 0 else e.occurred_at
+        map_id, instance_id = p.get("mapID"), p.get("instanceID")
+        until = e.occurred_at + MATCH_AFTER
+        for pt in route.points[bisect.bisect_right(route.times, e.occurred_at):]:
+            inside = (map_id is not None and pt.map_id == map_id) or (
+                instance_id is not None and pt.instance_id == instance_id)
+            if not inside:
+                until = pt.time
+                break
+            if pt.time > e.occurred_at + MATCH_AFTER_MAX:
+                break
+        a, b = max(float(began), start), min(float(until), end)
+        if b > a:
+            spans.append((a, b, str(p.get("name") or e.zone_name or "")))
+    return spans
 
 
 def _shown(row, start: int, end: int) -> bool:
@@ -241,7 +284,8 @@ def death_spans(events: Iterable[EventRow], route: Route) -> list[Death]:
     body, or after SPIRIT_HEALER seconds at the graveyard when it never walks back. Without a release the player
     was brought back where the body lay and is alive again on moving on."""
     result: list[Death] = []
-    for e in sorted((e for e in events if e.event_type == "player_died"), key=lambda e: e.occurred_at):
+    for e in sorted((e for e in events if e.event_type == "player_died" and not in_match(e)),
+                    key=lambda e: e.occurred_at):
         t = e.occurred_at
         p = e.payload
         revived, released = p.get("revivedAt"), p.get("releasedAt")

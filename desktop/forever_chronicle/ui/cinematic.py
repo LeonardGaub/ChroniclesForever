@@ -78,7 +78,7 @@ from PySide6.QtWidgets import (QGraphicsOpacityEffect, QGraphicsPathItem, QGraph
 from ..domain import credits as journey_credits
 from ..domain import daylight, maps
 from ..domain.cinematic import (GAP_SKIP, Companions, Cue, Death, Levels, Teleport, build_cues, CUE_EVENT_TYPES,
-                                death_spans, played_time, still_spans, teleports)
+                                death_spans, match_spans, played_time, still_spans, teleports)
 from ..domain import event_types
 from ..domain.experience import Experience
 from ..domain.route import Route, Timeline
@@ -455,6 +455,9 @@ class CinematicWindow(QWidget):
         self.speed = speed if speed in SPEEDS else 4
         self.still_spans = still_spans(self.route, self.start, self.end)
         self.still_starts = [a for a, _ in self.still_spans]
+        # Battlegrounds and arenas: jumped over, only their result is shown (addon 0.16.0).
+        self.match_spans = match_spans(events, self.route, self.start, self.end)
+        self.match_starts = [a for a, _, _ in self.match_spans]
         mode = still or ctx.config.extra.get("cine_still")
         self.still_mode = mode if mode in STILL_MODES else "fast"
         self.t = float(self.route.next_time_after(start - 1) or start)
@@ -932,6 +935,7 @@ class CinematicWindow(QWidget):
             t = self.t + self.speed * BASE_SPEED * dt * self.pace()
         t = self._skip_gap(t)
         t = self._skip_still(t)
+        t = self._skip_match(t)
         while self.cue_index < len(self.cues) and self.cues[self.cue_index].time <= t:
             cue = self.cues[self.cue_index]
             self.cue_index += 1
@@ -1078,6 +1082,29 @@ class CinematicWindow(QWidget):
             return
         tau = ZONE_EASE_IN if target < self.zone_share else ZONE_EASE_OUT
         self.zone_share += (target - self.zone_share) * smooth(dt, tau)
+
+    # -- battlegrounds and arenas ---------------------------------------------------------------
+
+    def _match_at(self, t: float) -> tuple[float, float, str] | None:
+        i = bisect.bisect_right(self.match_starts, t) - 1
+        if i >= 0 and t < self.match_spans[i][1]:
+            return self.match_spans[i]
+        return None
+
+    def _skip_match(self, t: float) -> float:
+        """A match is jumped over, up to its end or the next moment inside it (its result, its screenshot)."""
+        span = self._match_at(t)
+        if span is None:
+            return t
+        target = span[1]
+        if self.cue_index < len(self.cues):
+            target = min(target, max(t, self.cues[self.cue_index].time - 1))
+        if target > t:
+            self.still_note = STILL_NOTE
+            self.still_label.setText(tr("cine.match_skipped", name=span[2],
+                                        time=format_duration(int(span[1] - span[0]))))
+            self._layout_still()
+        return max(t, target)
 
     # -- standstills -------------------------------------------------------------------------
 

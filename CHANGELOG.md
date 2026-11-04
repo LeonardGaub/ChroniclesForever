@@ -6,6 +6,16 @@ then turn "Unreleased" into the uploaded version and date.
 
 ## Unreleased
 
+- PvP in the chronicle (new filter "PvP"):
+  - Enemy players you or your group defeat in the open world, with their level, race, class and guild, who
+    landed the killing blow and the honor it gave. A PvP kill takes a screenshot (new setting "On PvP kills and
+    won battlegrounds", on by default).
+  - Deaths by another player's hand say who it was: hover the entry ("Level 31 Human Rogue <Deathwatch>").
+  - Duels you win, lose or flee from.
+  - Battlegrounds and arenas as one entry per match: victory or defeat, your killing blows, honorable kills,
+    deaths and honor. A won match takes a screenshot of the score board. Deaths inside a match take no
+    screenshot, and the players of the battleground raid no longer count as your group (only the friends you
+    queued with).
 - The Professions tab is gone, and with it the recipe list, the "Known recipes" statistic, recipe entries in the
   chronicle and `/fj professions`. Learning a profession and training a new rank still appear in the chronicle
   (and in the desktop app's cinematic). Old recipe entries are removed from the saved file.

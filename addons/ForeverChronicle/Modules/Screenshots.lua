@@ -11,7 +11,7 @@ local Util = FC.Util
 local L = FC.L
 
 -- The triggers players can switch on and off, in the order of the settings and /fjshot. Quest and death start off.
-local TRIGGER_OPTIONS = { "level", "achievement", "rare", "dungeon", "mount", "loot", "zone", "quest", "death" }
+local TRIGGER_OPTIONS = { "level", "achievement", "rare", "dungeon", "mount", "loot", "pvp", "zone", "quest", "death" }
 local triggerDefaults = {}
 for _, name in ipairs(TRIGGER_OPTIONS) do triggerDefaults[name] = name ~= "quest" and name ~= "death" end
 
@@ -79,7 +79,16 @@ Shots:RegisterTrigger("zone", { eventType = "zone_discovered", priority = 4, max
   identity = function(r) return "zone:" .. tostring(r.data.zoneKey) end })
 Shots:RegisterTrigger("quest", { eventType = "quest_completed", priority = 5, maxAge = 60,
   identity = function(r) return "quest:" .. tostring(r.data.questID) end })
-Shots:RegisterTrigger("death", { eventType = "player_died", priority = 6, maxAge = 30 })
+-- Deaths inside a battleground or arena come too often for screenshots (the match gets its own, below).
+Shots:RegisterTrigger("death", { eventType = "player_died", priority = 6, maxAge = 30,
+  filter = function()
+    local _, kind = Util.SafeValues(IsInInstance)
+    return kind ~= "pvp" and kind ~= "arena"
+  end })
+-- PvP (Modules/PvP.lua): an enemy player killed in the open world, and a won match (its score board shows).
+Shots:RegisterTrigger("pvp", { eventType = "pvp_kill", priority = 3, maxAge = 20, bypassable = true })
+Shots:RegisterTrigger("battleground", { eventType = "battleground", option = "pvp", priority = 2, maxAge = 20,
+  bypassable = true, filter = function(r) return r.data.result == "won" end })
 Shots:RegisterTrigger("mount", { eventType = "mount_learned", priority = 2, maxAge = 20, bypassable = true,
   identity = function(r) return "mount:" .. tostring(r.data.mountID) end })
 -- Loot: epic and better only (rare items are recorded, but would take too many screenshots).
@@ -111,7 +120,7 @@ function Shots:IsTriggerEnabled(name)
   local s = self:GetSettings()
   local def = self.triggers[name]
   if def and def.always then return true end
-  return s.triggers[name] == true
+  return s.triggers[def and def.option or name] == true -- option: a trigger switched by another one's setting
 end
 
 local function newRecord(req, status)

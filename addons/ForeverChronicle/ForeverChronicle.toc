@@ -32,6 +32,7 @@ Modules\Kills.lua
 Modules\Rares.lua
 Modules\Pastimes.lua
 Modules\Dungeons.lua
+Modules\PvP.lua
 Modules\Mounts.lua
 Modules\Professions.lua
 Modules\Gear.lua

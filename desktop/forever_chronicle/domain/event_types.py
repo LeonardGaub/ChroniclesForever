@@ -65,12 +65,14 @@ def icon_of(event: EventRow, pin: bool = False) -> int | str:
     own = event.payload.get("icon")
     if isinstance(own, int) and not isinstance(own, bool) and own > 0:
         return own
+    if event.event_type == "battleground":           # the banner of the player's faction
+        return BANNERS.get(event.payload.get("faction"), et.icon)
     return et.icon
 
 
 def all_icons() -> list[str]:
     """Every texture the event types use (the icons kept in git, tools/extract_icons.py)."""
-    found = [SCREENSHOT_ICON]
+    found = [SCREENSHOT_ICON] + list(BANNERS.values())
     for et in REGISTRY.values():
         found += [p for p in (et.icon, et.pin_icon) if p and p not in found]
     return found
@@ -137,8 +139,25 @@ def revival(e: EventRow) -> str:
     return tr(f"evt.player_died.revive.{p['revive']}") if p.get("revive") in REVIVES else ""
 
 
+def player_line(p: dict, prefix: str = "") -> str:
+    """Who another player was (addon Modules/PvP.lua): "Level 31 Human Rogue <Deathwatch>". prefix "killer"
+    reads a death's killerLevel, killerRaceName, ... instead of level, raceName, ..."""
+    def f(key: str):
+        value = p.get(prefix + key[0].upper() + key[1:] if prefix else key)
+        return value if isinstance(value, (str, int)) and not isinstance(value, bool) and value != "" else None
+    parts = []
+    level = f("level")
+    if isinstance(level, int):
+        parts.append(tr("evt.pvp.level", level=level if level > 0 else "??"))
+    parts += [x for x in (f("raceName") or f("race"), f("className") or f("class")) if x]
+    if f("guild"):
+        parts.append(f"<{f('guild')}>")
+    return " ".join(str(x) for x in parts)
+
+
 def _death_detail(e: EventRow) -> str:
-    return "  ·  ".join(line for line in (_killing_blow(e), revival(e)) if line)
+    killer = player_line(e.payload, "killer") if e.payload.get("killerType") == "player" else ""
+    return "  ·  ".join(line for line in (_killing_blow(e), killer, revival(e)) if line)
 
 
 def _achievement(e: EventRow) -> str:
@@ -229,6 +248,53 @@ register(EventType("item_obtained", "evt.item_obtained", "◈", "#a335ee", _item
                    detail=_item_source))
 register(EventType("moment", "evt.moment", "✦", "#ffd100", _moment, ICONS + "INV_Misc_Spyglass_03",
                    highlight="milestone"))
+# PvP (addon Modules/PvP.lua): enemy players defeated in the open world, duels, battleground and arena matches.
+BANNERS = {"Horde": ICONS + "INV_BannerPVP_01", "Alliance": ICONS + "INV_BannerPVP_02"}
+MATCH_RESULTS = ("won", "lost", "left")
+
+
+def _pvp_kill_detail(e: EventRow) -> str:
+    p = e.payload
+    lines = [player_line(p)]
+    if p.get("blow") == "group" and p.get("by"):
+        lines.append(tr("evt.pvp_kill.blow_by", name=p["by"]))
+    elif p.get("blow") == "pet":
+        lines.append(tr("evt.pvp_kill.blow_pet"))
+    if isinstance(p.get("honor"), int):
+        lines.append(tr("evt.pvp_kill.honor_rank", rank=p["rank"], honor=p["honor"]) if p.get("rank")
+                     else tr("evt.pvp_kill.honor", honor=p["honor"]))
+    return "  ·  ".join(line for line in lines if line)
+
+
+def _duel(e: EventRow) -> str:
+    p = e.payload
+    key = ("won_fled" if p.get("fled") else "won") if p.get("won") else ("fled" if p.get("fled") else "lost")
+    return tr(f"evt.duel.{key}", name=p.get("name") or "?")
+
+
+def _battleground(e: EventRow) -> str:
+    result = e.payload.get("result")
+    return tr(f"evt.battleground.{result if result in MATCH_RESULTS else 'played'}",
+              name=e.payload.get("name") or e.zone_name or "?")
+
+
+def _battleground_detail(e: EventRow) -> str:
+    p, lines = e.payload, []
+    if any(isinstance(p.get(k), int) for k in ("killingBlows", "honorableKills", "deaths")):
+        lines.append(tr("evt.battleground.score", kb=p.get("killingBlows", "?"), hk=p.get("honorableKills", "?"),
+                        deaths=p.get("deaths", "?")))
+    if isinstance(p.get("honor"), (int, float)) and p["honor"] > 0:
+        lines.append(tr("evt.battleground.honor", honor=int(p["honor"])))
+    return "  ·  ".join(lines)
+
+
+register(EventType("pvp_kill", "evt.pvp_kill", "⚔", "#ff4d4d",
+                   lambda e: tr("evt.pvp_kill.text", name=e.payload.get("name") or "?"),
+                   ICONS + "Ability_DualWield", highlight="milestone", detail=_pvp_kill_detail))
+register(EventType("duel", "evt.duel", "⚔", "#ffb366", _duel, ICONS + "Ability_Warrior_Challange",
+                   detail=lambda e: player_line(e.payload)))
+register(EventType("battleground", "evt.battleground", "⚑", "#ff4d4d", _battleground, BANNERS["Horde"],
+                   highlight="milestone", detail=_battleground_detail))
 # Never recorded: the cinematic's toast when another player brought the character back to life.
 register(EventType("player_revived", "evt.player_revived", "✚", "#ffe680",
                    lambda e: revival(e) or tr("evt.player_died.revive.player"), ICONS + "Spell_Holy_Resurrection"))

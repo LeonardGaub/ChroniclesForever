@@ -74,6 +74,22 @@ were written at the time (older entries may describe things that changed later).
    the gear-worn record, which needs an event per gear change. Also new: the in-game map draws the route as curves
    from zoom 1.5 on (`Route.CurvePoint`, `UI/MapCanvas.lua`); check in game that zooming stays smooth on a long
    route and that the replay marker sits on the curve. The desktop app still draws straight lines.
+9. PvP (2026-11-04, addon "Unreleased" `Modules/PvP.lua`, desktop: chronicle entries and cinematic), built
+   without any check in game: the user could not test, and asked for the data to be recorded already. Events
+   `pvp_kill`, `duel`, `battleground`; deaths get `killerType = "player"` and the killer's class/race/level/guild,
+   and `battleground = "pvp" | "arena"` inside a match. The desktop cinematic shows kills, duels and the match
+   result as toasts, gives match deaths no death scene and jumps over the match time (`match_spans`).
+   Passive check: after some PvP, read `ForeverChronicleDB.diagnostics.pvp` in the saved file (`counts` per
+   signal, up to 40 `samples`; first sightings also in the Diagnose log as "pvp signal: ..."). Unverified in
+   Forever: `PARTY_KILL` arguments (player GUIDs readable or secret; does it fire for the whole battleground raid,
+   which would inflate the "kills" statistic?), `CHAT_MSG_COMBAT_HONOR_GAIN` and the `COMBATLOG_HONORGAIN*`
+   formats (honor per kill may not exist in Forever), the death recap's `sourceGUID` for players,
+   `GetPlayerInfoByGUID`, the duel strings `DUEL_WINNER_KNOCKOUT`/`DUEL_WINNER_RETREAT` in `CHAT_MSG_SYSTEM`,
+   `IsInInstance` = "pvp"/"arena", positions inside battlegrounds (`match_position` sample), `PVP_MATCH_COMPLETE`
+   (winner index vs. `C_PvP.GetScoreInfoByPlayerGuid(...).faction`) and the score fields. Ideas not built yet:
+   one "skirmish" cue for several kills and deaths close together, a revenge banner, PvP lines in the credits
+   (ask first: credits are long-term stats only).
+
 ## Confirmed client facts
 - Install: `C:\Program Files (x86)\World of Warcraft\_forever_\` (`Wow.exe`, flavor `wowf`, client 1.60.1). The beta
   (`_classic_beta_\`, `WowB.exe`, TOC Interface 16001) was uninstalled on 2026-10-27.

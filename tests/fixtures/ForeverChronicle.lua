@@ -286,17 +286,36 @@ ForeverChronicleDB = {
 			"2026-10-14 08:56:40 [info] capability confirmed: mounts", -- [2]
 			"2026-10-14 08:56:40 [info] capability confirmed: professions", -- [3]
 			"2026-10-14 08:56:40 [info] capability confirmed: gear", -- [4]
-			"2026-10-14 08:56:41 [info] capability confirmed: positions", -- [5]
-			"2026-10-14 08:56:50 [info] capability confirmed: played_time", -- [6]
-			"2026-10-14 08:57:53 [info] capability confirmed: quests", -- [7]
-			"2026-10-14 08:58:23 [info] capability confirmed: deaths", -- [8]
-			"2026-10-14 08:58:53 [info] capability confirmed: level_up", -- [9]
-			"2026-10-14 08:58:53 [info] capability confirmed: achievements", -- [10]
-			"2026-10-14 08:58:53 [info] capability confirmed: kills", -- [11]
-			"2026-10-14 08:58:53 [info] capability confirmed: xp", -- [12]
-			"2026-10-14 08:58:53 [info] capability confirmed: jumps", -- [13]
-			"2026-10-14 08:58:53 [info] capability confirmed: fishing", -- [14]
-			"2026-10-14 08:58:58 [info] capability confirmed: screenshots", -- [15]
+			"2026-10-14 08:56:40 [warn] capability missing: duels", -- [5]
+			"2026-10-14 08:56:40 [warn] capability missing: battlegrounds", -- [6]
+			"2026-10-14 08:56:41 [info] capability confirmed: positions", -- [7]
+			"2026-10-14 08:56:50 [info] capability confirmed: played_time", -- [8]
+			"2026-10-14 08:57:53 [info] capability confirmed: quests", -- [9]
+			"2026-10-14 08:58:23 [info] capability confirmed: deaths", -- [10]
+			"2026-10-14 08:58:23 [info] pvp signal: death_recap source=Creature", -- [11]
+			"2026-10-14 08:58:53 [info] capability confirmed: level_up", -- [12]
+			"2026-10-14 08:58:53 [info] capability confirmed: achievements", -- [13]
+			"2026-10-14 08:58:53 [info] capability confirmed: kills", -- [14]
+			"2026-10-14 08:58:53 [info] pvp signal: party_kill attacker=Player target=Creature", -- [15]
+			"2026-10-14 08:58:53 [info] capability confirmed: xp", -- [16]
+			"2026-10-14 08:58:53 [info] capability confirmed: jumps", -- [17]
+			"2026-10-14 08:58:53 [info] capability confirmed: fishing", -- [18]
+			"2026-10-14 08:58:58 [info] capability confirmed: screenshots", -- [19]
+			"2026-10-14 09:13:20 [warn] capability missing: duels", -- [20]
+			"2026-10-14 09:13:20 [warn] capability missing: battlegrounds", -- [21]
+			"2026-10-15 09:56:40 [warn] capability missing: duels", -- [22]
+			"2026-10-15 09:56:40 [warn] capability missing: battlegrounds", -- [23]
+		},
+		["pvp"] = {
+			["counts"] = {
+				["death_recap"] = 1,
+				["party_kill"] = 2,
+			},
+			["samples"] = {
+				"2026-10-14 08:58:23 death_recap source=Creature", -- [1]
+				"2026-10-14 08:58:53 party_kill attacker=Player target=Creature", -- [2]
+				"2026-10-14 08:58:53 party_kill attacker=Player target=Creature", -- [3]
+			},
 		},
 	},
 	["entrances"] = {
@@ -366,6 +385,8 @@ ForeverChronicleDB = {
 			},
 			["Progress"] = {
 			},
+			["PvP"] = {
+			},
 			["Rares"] = {
 			},
 			["Screenshots"] = {
@@ -382,6 +403,7 @@ ForeverChronicleDB = {
 					["level"] = true,
 					["loot"] = true,
 					["mount"] = true,
+					["pvp"] = true,
 					["quest"] = false,
 					["rare"] = true,
 					["zone"] = true,

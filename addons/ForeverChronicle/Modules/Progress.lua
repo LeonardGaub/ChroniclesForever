@@ -52,6 +52,10 @@ FC:RegisterEventType("player_died", {
         and string.format(L.DEATH_BLOW_OVERKILL, how or "?", dmg, Util.FormatNumber(d.overkill))
         or string.format(L.DEATH_BLOW, how or "?", dmg)
     end
+    -- Killed by another player (Modules/PvP.lua): who they were.
+    local pvp = d.killerType == "player" and FC:GetModule("PvP")
+    local killer = pvp and pvp.PlayerLine(d, "killer")
+    if killer then lines[#lines + 1] = killer end
     if d.revive == "player" and d.reviver then
       lines[#lines + 1] = string.format(L.DEATH_REVIVED_BY, d.reviver)
     elseif d.revive then

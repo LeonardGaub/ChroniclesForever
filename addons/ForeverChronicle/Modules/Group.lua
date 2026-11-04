@@ -24,6 +24,18 @@ function Group:Members()
   local count = Util.SafeValue("number", GetNumGroupMembers) or 0
   if count == 0 then return {}, "" end
   local raid = Util.SafeValue("boolean", IsInRaid) == true
+  -- A battleground or arena puts everyone on the player's side in one raid: only those who were in the group
+  -- before the match count (the friends the player queued with), not strangers.
+  local _, instanceType = Util.SafeValues(IsInInstance)
+  if instanceType == "pvp" or instanceType == "arena" then
+    if not self.home then
+      self.home = {}
+      for _, m in ipairs(self.open and self.open.members or {}) do self.home[m.guid] = true end
+    end
+  else
+    self.home = nil
+  end
+  local home = self.home
   local units = {}
   if raid then
     for i = 1, count do units[#units + 1] = "raid" .. i end
@@ -33,7 +45,7 @@ function Group:Members()
   local members = {}
   for _, unit in ipairs(units) do
     local guid = Util.SafeValue("string", UnitGUID, unit)
-    if guid and guid:find("^Player%-") and guid ~= FC.char.info.guid
+    if guid and guid:find("^Player%-") and guid ~= FC.char.info.guid and (not home or home[guid])
         and Util.SafeValue("boolean", UnitIsPlayer, unit) ~= false then
       local name, realm = Util.SafeValues(UnitName, unit)
       if type(name) == "string" and name ~= "" and name ~= UNKNOWNOBJECT then
