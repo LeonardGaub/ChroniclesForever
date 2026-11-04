@@ -4,10 +4,12 @@ Start here. "Current state" and "Open items" are kept up to date; `docs/History.
 were written at the time (older entries may describe things that changed later). Architecture and extension guide:
 `ARCHITECTURE.md`. Player-facing addon changes for the next upload: `CHANGELOG.md`.
 
-## Current state (2026-10-27)
-- Main addon `addons/ForeverChronicle` 0.15.0, packaged on 2026-10-20 (`dist/curseforge/JourneyForever-0.15.0.zip`,
-  changelog section "0.15.0" in `CHANGELOG.md`, description in `docs/CurseForge.md`), not uploaded yet (last
-  CurseForge upload 0.14.1). The friends companion `ForeverChronicle_Share` was removed on 2026-10-27; the
+## Current state (2026-11-04)
+- Main addon `addons/ForeverChronicle` 0.16.0 (changelog section "0.16.0" in `CHANGELOG.md`), shared with friends
+  on 2026-11-04 as `dist/friends/JourneyForever-0.16.0-Komplett.zip` (addon + desktop app, built by
+  `tools/package_for_friends.py`; `Journey Forever starten.bat` installs everything, README "Install and run").
+  CurseForge: 0.15.0 was packaged on 2026-10-20 but never uploaded (last upload 0.14.1; description in
+  `docs/CurseForge.md`). The friends companion `ForeverChronicle_Share` was removed on 2026-10-27; the
   desktop app installs a newer main addon from the repository at start (WoW closed) and deletes the companion folder.
 - Addon window tabs: Übersicht, Chronik (screenshots shown with their entries), Karte, Einstellungen, Diagnose. Slash commands `/fj` and `/fjshot`.
 - Desktop app: starts on the home screen (Start). Tabs at the bottom: Start, Übersicht, Chronik, Galerie, Kino

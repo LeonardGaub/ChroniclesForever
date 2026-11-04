@@ -17,8 +17,14 @@ German UI by default, English switchable.
 - Addon: copy `addons/ForeverChronicle` into `<WoW>\<client folder>\Interface\AddOns\` (the live client's is
   `_forever_`). The desktop app installs newer versions from the repository at start.
 - Desktop: `cd desktop`, `python -m venv .venv`, `.venv\Scripts\pip install -e .[dev]`, then start
-  `desktop\Forever Chronicle.bat` (or `.venv\Scripts\python -m forever_chronicle`). Without a dev venv (friends'
-  clones), `Journey Forever starten.bat` in the repository root sets up Python, installs the addon and starts the app.
+  `desktop\Forever Chronicle.bat` (or `.venv\Scripts\python -m forever_chronicle`).
+- Sharing with friends: `desktop\.venv\Scripts\python tools\package_for_friends.py` builds
+  `dist\friends\JourneyForever-<version>-Komplett.zip` (about 33 MB, for Google Drive or similar). The friend unzips it
+  and double-clicks `Journey Forever starten.bat`. That sets up Python (winget, else python.org) and its packages in
+  `%LOCALAPPDATA%\ForeverChronicle\venv`, copies the app and the addon to `%LOCALAPPDATA%\ForeverChronicle\app`,
+  installs the addon in WoW Forever, asks once whether to put a "Journey Forever" shortcut on the desktop and in
+  the start menu (the answer is kept in `%LOCALAPPDATA%\ForeverChronicle`), and starts the app.
+  For a new version, they unzip the new zip and run the same file again.
 
 ## Tests
 

@@ -4,7 +4,10 @@ Player-facing changes to the main addon (`addons/ForeverChronicle`), collected f
 Add an entry with every addon change. When uploading, paste the section into the CurseForge changelog field,
 then turn "Unreleased" into the uploaded version and date.
 
-## Unreleased
+## 0.16.0 – 2026-11-04
+
+Shared with friends as `dist/friends/JourneyForever-0.16.0-Komplett.zip` (addon + desktop app), not uploaded to
+CurseForge yet.
 
 - PvP in the chronicle (new filter "PvP"):
   - Enemy players you or your group defeat in the open world, with their level, race, class and guild, who

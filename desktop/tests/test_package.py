@@ -70,3 +70,24 @@ def test_setup_main_asks_when_not_found(tmp_path, monkeypatch):
     # Nothing found and the user gives up.
     monkeypatch.setenv("FOREVER_CHRONICLE_HOME", str(tmp_path / "home2"))
     assert setup_addon.main([str(REPO / "addons" / "ForeverChronicle")], ask=lambda _p: "") == 1
+
+
+def test_friends_zip(tmp_path):
+    """tools/package_for_friends.py: one top folder with the launcher (CRLF), the readme, the addon and the app."""
+    import importlib.util
+    import zipfile
+
+    spec = importlib.util.spec_from_file_location("package_for_friends", REPO / "tools" / "package_for_friends.py")
+    package = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(package)
+    path = package.build(tmp_path / "friends.zip")
+    with zipfile.ZipFile(path) as zf:
+        names = set(zf.namelist())
+        top = "Journey Forever/"
+        assert all(name.startswith(top) for name in names)
+        assert {top + "Journey Forever starten.bat", top + "LIES MICH.txt",
+                top + "addons/ForeverChronicle/ForeverChronicle.toc",
+                top + "desktop/forever_chronicle/__main__.py", top + "desktop/forever_chronicle/maps/1412.jpg"} <= names
+        assert not any("__pycache__" in name or name.endswith(".pyc") for name in names)
+        assert b"\r\n" in zf.read(top + "Journey Forever starten.bat")
+        assert package.version() in zf.read(top + "LIES MICH.txt").decode("ascii")

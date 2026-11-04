@@ -3,7 +3,7 @@
 ```
 addons/ForeverChronicle/        in-game addon (Lua, TOC Interface 16001, 16002, 16003, 16100), the CurseForge upload
 desktop/                        desktop app (Python 3.12 + PySide6 + SQLite), also the cloud backup and friends
-tools/                          CurseForge packaging; extract/build from the game files (maps, world map, icons, UI
+tools/                          CurseForge packaging; the friends' zip (package_for_friends.py); extract/build from the game files (maps, world map, icons, UI
                                 skin, zone music; shared setup in db2.py); beta-to-live settings port; sound generation
 tests/addon/                    addon tests in a mocked WoW client (Node + fengari)
 tests/fixtures/                 SavedVariables written by the addon tests, used by desktop tests
