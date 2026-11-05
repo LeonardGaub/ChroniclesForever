@@ -32,7 +32,7 @@ local CONFIRM_TIMEOUT = 5
 local HIDE_BEFORE_CAPTURE = 0.15    -- seconds between hiding the countdown and taking the screenshot
 local HIDE_UI_BEFORE_CAPTURE = 0.25 -- same, when the whole interface is hidden
 local UI_RESTORE_TIMEOUT = 1.5      -- the interface is shown again at the latest after this time
-local POPUP_SETTLE = 1.0            -- "popups": the screenshot waits this long after the popup appeared
+local POPUP_SETTLE = 2.0            -- "popups": the screenshot waits this long after the popup appeared
 local POPUP_WAIT = 3                -- "popups": how long to look for a popup after the event
 local SNAPSHOT_EVERY = 1            -- "popups": seconds between snapshots of the visible interface
 -- Frames that show an event's popup (level-up banner, toasts). Others are found as frames that appeared

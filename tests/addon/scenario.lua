@@ -454,8 +454,10 @@ if PHASE == 5 then
   MOCK.fire("PLAYER_LEVEL_UP", MOCK.level)
   C_Timer.After(0.5, function() EventToastManagerFrame:Show() end)
   local levelUpAt = MOCK.now
-  MOCK.advance(2.2)
-  check(#MOCK.screenshots == before + 1 and MOCK.screenshots[#MOCK.screenshots] - levelUpAt < 2.2,
+  MOCK.advance(2.4)
+  check(#MOCK.screenshots == before, "not taken the moment the banner appears (it settles for 2 s)")
+  MOCK.advance(1.0)
+  check(#MOCK.screenshots == before + 1 and MOCK.screenshots[#MOCK.screenshots] - levelUpAt < 3.4,
     "taken soon after the banner appeared, not after the 5 s delay")
   check(MOCK.uiAlphaAtCapture == 0 and MOCK.toastVisibleAtCapture, "everything hidden except the banner")
   check(UIParent:GetAlpha() == 1 and not EventToastManagerFrame:IsIgnoringParentAlpha(), "restored afterwards")

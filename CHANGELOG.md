@@ -4,6 +4,11 @@ Player-facing changes to the main addon (`addons/ForeverChronicle`), collected f
 Add an entry with every addon change. When uploading, paste the section into the CurseForge changelog field,
 then turn "Unreleased" into the uploaded version and date.
 
+## Unreleased
+
+- Screenshots with "Keep popups": the screenshot now waits 2 seconds after the popup (level-up banner,
+  achievement toast) appears instead of 1, so it no longer fires the instant you level up.
+
 ## 0.16.0 – 2026-11-04
 
 Shared with friends as `dist/friends/JourneyForever-0.16.0-Komplett.zip` (addon + desktop app), not uploaded to
