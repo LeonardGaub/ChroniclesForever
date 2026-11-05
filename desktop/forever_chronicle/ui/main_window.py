@@ -29,7 +29,7 @@ from .pages import MAIN_PAGES, MENU_PAGES
 from .backup_runner import GameWatcher
 from .motion import HoverGlow, PageFader, ToastQueue
 from .sound import install_game_sounds
-from .widgets import Page, heading, muted, panel
+from .widgets import ElidedLabel, Page, heading, muted, panel
 
 
 class CharacterItem(QWidget):
@@ -41,10 +41,11 @@ class CharacterItem(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 5, 8, 5)
         layout.setSpacing(1)
-        name = QLabel(char.full_name)
+        name = ElidedLabel(char.full_name)
         name.setStyleSheet(theme.font_css(12, theme.class_color(char.class_file)))
-        details = muted()
-        details.setText(tr("sidebar.char_line", level=char.level or "?", realm=char.realm or ""))
+        # One line, so a long realm name ends in "…" (full name on hover) instead of wrapping out of the row.
+        details = ElidedLabel(tr("sidebar.char_line", level=char.level or "?", realm=char.realm or ""))
+        details.setObjectName("Muted")
         details.setStyleSheet("background: transparent;")
         layout.addWidget(name)
         layout.addWidget(details)
