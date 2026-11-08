@@ -18,7 +18,7 @@ local Util = FC.Util
 
 local Kills = FC:NewModule("Kills", { order = 31 })
 
-FC.Storage:DefineStream("kills", 50000, "Interface\\Icons\\Ability_DualWield")
+FC.Storage:DefineStream("kills", 100000, "Interface\\Icons\\Ability_DualWield")
 
 FC:RegisterCapability("kill_xp", "CAP_KILL_XP", function()
   return FC.eventStatus.CHAT_MSG_COMBAT_XP_GAIN == "registered" and type(COMBATLOG_XPGAIN_FIRSTPERSON) == "string"

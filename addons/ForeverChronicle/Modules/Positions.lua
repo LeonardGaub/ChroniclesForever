@@ -21,11 +21,11 @@ local Util = FC.Util
 
 local Positions = FC:NewModule("Positions", { order = 26, defaults = { enabled = true, interval = 2 } })
 
--- ~55 hours of movement at 2 s; standing still adds no points. Older points are not lost: they are thinned
+-- ~110 hours of movement at 2 s; standing still adds no points. Older points are not lost: they are thinned
 -- out (FC.Route.Thin) and kept in the route archive, many points per record.
-FC.Storage:DefineStream("positions", 100000, "Interface\\Icons\\INV_Boots_05", {
+FC.Storage:DefineStream("positions", 200000, "Interface\\Icons\\INV_Boots_05", {
   quiet = true, onTrim = function(records) Positions:Archive(records) end })
-FC.Storage:DefineStream("routeArchive", 500, "Interface\\Icons\\INV_Misc_Map02")
+FC.Storage:DefineStream("routeArchive", 2000, "Interface\\Icons\\INV_Misc_Map02")
 
 local MOVE_THRESHOLD = 0.002 -- 0.2 % of the map size
 

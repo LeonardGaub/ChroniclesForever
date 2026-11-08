@@ -8,6 +8,9 @@ then turn "Unreleased" into the uploaded version and date.
 
 - Screenshots with "Keep popups": the screenshot now waits 2 seconds after the popup (level-up banner,
   achievement toast) appears instead of 1, so it no longer fires the instant you level up.
+- More history per character: the route keeps 200,000 points before the oldest are thinned into the archive
+  (was 100,000, roughly 110 hours of movement instead of 55), the route archive holds four times as much, and
+  the kill log keeps 100,000 kills (was 50,000).
 
 ## 0.16.0 – 2026-11-04
 

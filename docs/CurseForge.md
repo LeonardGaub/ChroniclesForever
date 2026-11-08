@@ -66,7 +66,7 @@ Everything is stored locally in your SavedVariables. The addon never sends anyth
 ### Good to know
 - Made for **WoW Forever**. Some game features may change while Forever develops; the diagnostics page shows what works on your client.
 - Data is saved when you log out or type `/reload`.
-- History in the game is limited so logins stay fast. Routes, for example, cover roughly the last 55 hours of movement.
+- History in the game is limited so logins stay fast. Routes, for example, cover roughly the last 110 hours of movement.
 
 ---
 
