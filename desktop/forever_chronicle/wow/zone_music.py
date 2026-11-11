@@ -100,10 +100,18 @@ def adventure_file_ids(chapter_index: int, race: str | None = None) -> tuple[int
     return pool[chapter_index // 2 % len(pool)]
 
 
+_found: dict[tuple[Path, int], Path] = {}     # files once found (the replay asks every frame)
+
+
 def find(fdid: int) -> Path | None:
+    folder = cache_dir()
+    known = _found.get((folder, fdid))
+    if known is not None:
+        return known
     for suffix in (".mp3", ".ogg"):
-        path = cache_dir() / f"{fdid}{suffix}"
+        path = folder / f"{fdid}{suffix}"
         if path.is_file():
+            _found[(folder, fdid)] = path
             return path
     return None
 

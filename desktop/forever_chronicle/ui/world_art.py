@@ -4,7 +4,8 @@ tools/build_world_map.py).
 
 The scene's unit is the world unit (the world map 947 at ART_WIDTH x ART_HEIGHT, as every map of the replay).
 Under everything lies the whole world at BASE_PX; where the camera is close, the sharp detail tiles come in, loaded
-when they first come near the view and let go when the view has moved on. City maps (much finer than their zone's
+when they first come near the view (decoded in the background, the coarse base shows meanwhile; the video
+export decodes them at once) and let go when the view has moved on. City maps (much finer than their zone's
 painting of them) fade in where they belong while the player is inside the city, and out on leaving it: they
 do not fit the zone art round them, so they show only where the replay is. Outside, the tiles show each city as
 its zone's Classic map paints it, with the zone's name banner for it (tools/build_world_map.py).
@@ -15,12 +16,13 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap
+from PySide6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPixmap
 from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene
 
 from ..domain import maps
 from ..wow import map_art
 from .cinematic_fx import clamp
+from .image_loader import ImageLoader
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
 DETAIL_FROM = map_art.BASE_PX * 1.1   # screen px per world unit where the detail tiles come in
@@ -53,8 +55,12 @@ def soft_edges(pixmap: QPixmap) -> QPixmap:
 
 
 class WorldArt:
-    def __init__(self, scene: QGraphicsScene):
+    def __init__(self, scene: QGraphicsScene, background: bool = True):
+        """background: tiles are decoded in worker threads (False: at once, for the video export)."""
         self.scene = scene
+        self.loader = ImageLoader(scene) if background else None
+        self.pending: set[tuple[int, int]] = set()
+        self.wanted: set[tuple[int, int]] = set()
         self.base = None
         path = map_art.world_base()
         if path is not None:
@@ -95,24 +101,42 @@ class WorldArt:
                 for j in range(math.floor(near.top() / unit), math.floor(near.bottom() / unit) + 1):
                     if (i, j) in self.known:
                         wanted.add((i, j))
-        for key in wanted - self.tiles.keys():
+        self.wanted = wanted
+        for key in wanted - self.tiles.keys() - self.pending:
             path = map_art.world_tile(*key)
-            pixmap = QPixmap(str(path)) if path else QPixmap()
-            if pixmap.isNull():
+            if path is None:
                 self.known.discard(key)
-                continue
-            item = self.scene.addPixmap(pixmap)
-            item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-            item.setScale(1 / map_art.TILE_PX)
-            margin = map_art.TILE_MARGIN / map_art.TILE_PX
-            item.setPos(key[0] * unit - margin, key[1] * unit - margin)
-            item.setZValue(Z_TILES)
-            self.tiles[key] = item
+            elif self.loader is None:
+                self._add_tile(key, QImage(str(path)))
+            else:
+                self.pending.add(key)
+                self.loader.request(str(path), lambda image, key=key: self._loaded(key, image))
         keep = visible.adjusted(-unit * KEEP, -unit * KEEP, unit * KEEP, unit * KEEP)
         for key in [k for k in self.tiles if k not in wanted]:
             i, j = key
             if scale < DETAIL_FROM or not keep.intersects(QRectF(i * unit, j * unit, unit, unit)):
                 self.scene.removeItem(self.tiles.pop(key))
+        self._fade_cities(zone, dt)
+
+    def _loaded(self, key: tuple[int, int], image: QImage | None) -> None:
+        self.pending.discard(key)
+        if key in self.wanted and key not in self.tiles:
+            self._add_tile(key, image)
+
+    def _add_tile(self, key: tuple[int, int], image: QImage | None) -> None:
+        if image is None or image.isNull():
+            self.known.discard(key)
+            return
+        unit = map_art.TILE_UNITS
+        item = self.scene.addPixmap(QPixmap.fromImage(image))
+        item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        item.setScale(1 / map_art.TILE_PX)
+        margin = map_art.TILE_MARGIN / map_art.TILE_PX
+        item.setPos(key[0] * unit - margin, key[1] * unit - margin)
+        item.setZValue(Z_TILES)
+        self.tiles[key] = item
+
+    def _fade_cities(self, zone: int | None, dt: float) -> None:
         for map_id, item in self.cities.items():
             target = 1.0 if map_id == zone else 0.0
             step = dt / CITY_FADE if dt > 0 else 1.0

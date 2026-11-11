@@ -6,17 +6,22 @@
   (as in cinematic mode, ui/world_art.py); without the art a dark parchment instead. Darkened for the text.
 - draw_route(): the route in the route colours (domain/route_colors.py), flight paths dashed: "dim" thin and quiet
   under everything, "bright" with a soft glow for the part being looked at.
+- journey_colors() gives the colours with a key that changes when they could; with the Route from Route.cached
+  (the same object while no point changed) callers keep finished pictures instead of painting tens of thousands of
+  points on every refresh (cached_picture() for the home card, the Kino banner its own layers).
 """
 
 from __future__ import annotations
 
 import math
+from weakref import WeakKeyDictionary
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 
 from ..domain import maps
-from ..domain.route import Route
+from ..domain.cinematic import Levels
+from ..domain.route import Route, Segment
 from ..domain.route_colors import RouteColors
 from ..wow import map_art
 from . import theme
@@ -27,7 +32,22 @@ MIN_SIZE = 70              # world units the frame shows at least (a journey in 
 MAX_SCALE = 14.0           # screen px per world unit at most
 MAX_TILES = 48             # more detail tiles than this and the base picture is enough
 _base: tuple | None = None    # (path, picture) of the world's base picture
+_run_memo: "WeakKeyDictionary[RouteColors, dict]" = WeakKeyDictionary()   # colours -> {id(segment): (segment, runs)}
+_pictures: dict[tuple, tuple[tuple, Route, QPixmap | None]] = {}           # see cached_picture
 
+
+def journey_colors(ctx, character_id: str, char=None, sessions=None) -> tuple[RouteColors, tuple]:
+    """A character's route colours (the chosen mode, its level-ups and sessions) and a key that changes whenever
+    they could. sessions: repo.sessions(character_id) if already at hand."""
+    repo = ctx.repo
+    level_ups = repo.events(character_id, types=("level_up",))
+    if sessions is None:
+        sessions = repo.sessions(character_id)
+    starts = [s["started_at"] for s in sessions]
+    level = char.level if char else None
+    colors = RouteColors(ctx.map_colors, Levels(level_ups, level), starts)
+    key = (ctx.map_colors, level, tuple((e.event_id, e.occurred_at) for e in level_ups), tuple(starts))
+    return colors, key
 
 def bounds(route: Route, start: int | None = None, end: int | None = None) -> QRectF | None:
     """The part of the world map (world units) the route of [start, end] crosses; None if nothing of it is on it."""
@@ -135,8 +155,7 @@ def draw_route(painter: QPainter, f: Frame, route: Route, colors: RouteColors, s
         last = pts[-1]
         if len(pts) < 2:
             continue
-        times = [t for t, _, _ in seg.points]
-        runs = colors.runs(times, seg.taxi)
+        runs = _runs(colors, seg)
         if bright:      # a dark edge, then a soft glow under the whole segment
             path = QPainterPath(pts[0])
             for p in pts[1:]:
@@ -156,6 +175,17 @@ def draw_route(painter: QPainter, f: Frame, route: Route, colors: RouteColors, s
             painter.setPen(pen)
             painter.drawPath(path)
     return last
+
+
+def _runs(colors: RouteColors, seg: Segment) -> list[tuple[int, int, str]]:
+    """colors.runs for a segment, kept while both live (the dim and the bright route share them)."""
+    memo = _run_memo.get(colors)
+    if memo is None:
+        memo = _run_memo[colors] = {}
+    hit = memo.get(id(seg))
+    if hit is None or hit[0] is not seg:
+        hit = memo[id(seg)] = (seg, colors.runs([t for t, _, _ in seg.points], seg.taxi))
+    return hit[1]
 
 
 def _pen(color: QColor, width: float) -> QPen:
@@ -196,3 +226,16 @@ def picture(route: Route, colors: RouteColors, size: QSize) -> QPixmap | None:
     painter.drawRect(QRectF(0.5, 0.5, size.width() - 1, size.height() - 1))
     painter.end()
     return QPixmap.fromImage(image)
+
+
+def cached_picture(character_id: str, route: Route, colors: RouteColors, colors_key: tuple,
+                   size: QSize) -> QPixmap | None:
+    """picture(), painted again only when the route (a new Route from Route.cached), its colours, the size or the
+    world art changed."""
+    key = (colors_key, size.width(), size.height(), map_art.world_base())
+    hit = _pictures.get(character_id)
+    if hit is not None and hit[0] == key and hit[1] is route:
+        return hit[2]
+    pixmap = picture(route, colors, size)
+    _pictures[character_id] = (key, route, pixmap)
+    return pixmap

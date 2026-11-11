@@ -74,7 +74,20 @@ class Timeline:
         return self.offsets[1:]
 
 
+SEGMENT_MEMO = 24          # Route.segments results kept per route (the whole journey, a few chosen chapters)
+
+# Fingerprint of what Route.load reads: changes whenever a point is added or changed, or the map data changes.
+_FINGERPRINT_POINTS = """SELECT COUNT(*), MAX(occurred_at), TOTAL(until_at), TOTAL(jump), TOTAL(on_taxi), TOTAL(mounted),
+                                TOTAL(map_id), TOTAL(x) FROM positions WHERE character_id = ?"""
+_FINGERPRINT_MAPS = """SELECT (SELECT COUNT(*) || ':' || TOTAL(min_x) || ':' || TOTAL(max_y) FROM map_info),
+                              (SELECT COUNT(*) FROM instances), (SELECT COUNT(*) FROM instance_entrances)"""
+_loaded: dict[str, tuple[tuple, "Route"]] = {}     # character ID -> (fingerprint, route), for Route.cached
+
+
 class Route:
+    """A character's route. Read-only once made (pages share one through Route.cached), so the segments of a view
+    are worked out once and kept."""
+
     def __init__(self, points: list[PositionPoint], map_infos: dict | None = None,
                  instance_names: dict[int, str] | None = None,
                  entrances: dict[int, tuple[int, float, float]] | None = None):
@@ -84,11 +97,28 @@ class Route:
         self.instance_names = instance_names or {}
         self.recorded_entrances = entrances or {}
         self._derived_entrances: dict[int, tuple[int, float, float]] | None = None
+        self._segments: dict[tuple, list[Segment]] = {}
+        self._end: int | None = None
 
     @classmethod
     def load(cls, repo, character_id: str) -> "Route":
         """A character's whole route with the map, instance and entrance data (repo: storage.repository)."""
         return cls(repo.positions(character_id), repo.map_infos(), repo.instance_names(), repo.entrances())
+
+    @classmethod
+    def cached(cls, repo, character_id: str) -> "Route":
+        """Route.load, but the same Route again while the character's points and the map data are unchanged (a
+        quick count instead of reading tens of thousands of points on every page refresh). Treat it as read-only."""
+        conn = repo.conn
+        key = (id(conn), conn.execute("PRAGMA database_list").fetchone()[2],
+               tuple(conn.execute(_FINGERPRINT_POINTS, (character_id,)).fetchone()),
+               tuple(conn.execute(_FINGERPRINT_MAPS).fetchone()))
+        hit = _loaded.get(character_id)
+        if hit is not None and hit[0] == key:
+            return hit[1]
+        route = cls.load(repo, character_id)
+        _loaded[character_id] = (key, route)
+        return route
 
     def __bool__(self) -> bool:
         return bool(self.points)
@@ -99,7 +129,9 @@ class Route:
 
     @property
     def end(self) -> int | None:
-        return max(p.end for p in self.points) if self.points else None
+        if self._end is None and self.points:
+            self._end = max(p.end for p in self.points)
+        return self._end
 
     # -- projection --------------------------------------------------------------------
 
@@ -249,6 +281,17 @@ class Route:
     # -- segments ----------------------------------------------------------------------
 
     def segments(self, view: int, start: int | None = None, end: int | None = None) -> list[Segment]:
+        """The route's lines on the view map within [start, end]. Kept per (view, start, end): the segments are
+        shared, read them only."""
+        key = (view, start, end)
+        cached = self._segments.get(key)
+        if cached is None:
+            cached = self._segments[key] = self._make_segments(view, start, end)
+            while len(self._segments) > SEGMENT_MEMO:
+                self._segments.pop(next(iter(self._segments)))
+        return list(cached)
+
+    def _make_segments(self, view: int, start: int | None, end: int | None) -> list[Segment]:
         result: list[Segment] = []
         current: Segment | None = None
         prev: PositionPoint | None = None

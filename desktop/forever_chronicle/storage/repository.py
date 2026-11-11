@@ -73,6 +73,37 @@ class EventRow:
                    row["instance_id"])
 
 
+# Some servers send PLAYER_DEAD twice for one death; addons up to 0.16.0 recorded both (the first with the killer,
+# the second with the release and revival). A death this many seconds after a death not revived yet is that echo.
+DEATH_ECHO = 3
+
+
+def _echo_of(kept: EventRow, death: EventRow) -> bool:
+    revived = kept.payload.get("revivedAt")
+    return (death.character_id == kept.character_id and 0 <= death.occurred_at - kept.occurred_at <= DEATH_ECHO
+            and not (isinstance(revived, int) and revived <= death.occurred_at))
+
+
+def merge_death_echoes(rows: list[EventRow]) -> list[EventRow]:
+    """rows (in recording order) with each death's echo (DEATH_ECHO) folded into the death: one event that has both
+    halves' data, the first one's where both have a value."""
+    deaths = [r for r in rows if r.event_type == "player_died"]
+    if len(deaths) < 2:
+        return rows
+    merged: dict[int, EventRow] = {}         # id of the kept row -> the kept row with its echo's data
+    dropped: set[int] = set()
+    kept: EventRow | None = None
+    for death in sorted(deaths, key=lambda r: (r.character_id, r.occurred_at)):   # stable: ties keep their order
+        current = merged.get(id(kept)) if kept is not None else None
+        if kept is not None and _echo_of(current or kept, death):
+            base = current or kept
+            merged[id(kept)] = EventRow(**{**base.__dict__, "payload": {**death.payload, **base.payload}})
+            dropped.add(id(death))
+        else:
+            kept = death
+    return [merged.get(id(r), r) for r in rows if id(r) not in dropped]
+
+
 @dataclass(frozen=True)
 class PositionPoint:
     time: int
@@ -226,7 +257,8 @@ class Repository:
             args += [f"%{search}%"] * 3
         sql += " ORDER BY occurred_at DESC, seq DESC LIMIT ?"
         args.append(limit)
-        return [EventRow.from_row(r) for r in self.conn.execute(sql, args).fetchall()]
+        rows = [EventRow.from_row(r) for r in self.conn.execute(sql, args).fetchall()]
+        return merge_death_echoes(rows[::-1])[::-1]
 
     def events_of_imports(self, import_ids: Iterable[int]) -> list[EventRow]:
         """The events these imports added, in time order (all characters)."""
@@ -234,8 +266,8 @@ class Repository:
         if not ids:
             return []
         marks = ",".join("?" for _ in ids)
-        rows = self.conn.execute(f"SELECT * FROM events WHERE import_id IN ({marks}) ORDER BY occurred_at", ids)
-        return [EventRow.from_row(r) for r in rows]
+        rows = self.conn.execute(f"SELECT * FROM events WHERE import_id IN ({marks}) ORDER BY occurred_at, seq", ids)
+        return merge_death_echoes([EventRow.from_row(r) for r in rows])
 
     def event_types_for(self, character_id: str) -> list[str]:
         rows = self.conn.execute("SELECT DISTINCT event_type FROM events WHERE character_id = ? ORDER BY 1",
@@ -243,6 +275,14 @@ class Repository:
         return [r[0] for r in rows]
 
     def count_events(self, character_id: str, event_type: str) -> int:
+        if event_type == "player_died":                     # without the echoes (merge_death_echoes)
+            return self.conn.execute(
+                """SELECT COUNT(*) FROM events e WHERE e.character_id = ? AND e.event_type = 'player_died'
+                   AND NOT EXISTS (SELECT 1 FROM events p WHERE p.character_id = e.character_id
+                       AND p.event_type = 'player_died' AND p.seq < e.seq
+                       AND p.occurred_at BETWEEN e.occurred_at - ? AND e.occurred_at
+                       AND COALESCE(json_extract(p.payload_json, '$.revivedAt'), e.occurred_at + 1) > e.occurred_at)""",
+                (character_id, DEATH_ECHO)).fetchone()[0]
         return self.conn.execute("SELECT COUNT(*) FROM events WHERE character_id = ? AND event_type = ?",
                                  (character_id, event_type)).fetchone()[0]
 
@@ -391,16 +431,25 @@ class Repository:
 
     # -- positions and maps -------------------------------------------------------
 
+    _UPSERT_POSITION = """INSERT INTO positions (character_id, occurred_at, until_at, map_id, x, y, instance_id,
+        on_taxi, jump, mounted, cause) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (character_id, occurred_at) DO UPDATE
+        SET until_at = excluded.until_at, jump = excluded.jump, mounted = excluded.mounted, cause = excluded.cause
+        WHERE excluded.until_at IS NOT positions.until_at OR excluded.jump != positions.jump
+        OR excluded.mounted != positions.mounted OR excluded.cause IS NOT positions.cause"""
+
     def upsert_position(self, character_id: str, p: "PositionPoint") -> None:
         """Inserts a point. A stationary point may have grown (until_at) since the last import."""
-        self.conn.execute(
-            """INSERT INTO positions (character_id, occurred_at, until_at, map_id, x, y, instance_id, on_taxi, jump,
-               mounted, cause) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (character_id, occurred_at) DO UPDATE SET
-               until_at = excluded.until_at, jump = excluded.jump, mounted = excluded.mounted, cause = excluded.cause
-               WHERE excluded.until_at IS NOT positions.until_at OR excluded.jump != positions.jump
-               OR excluded.mounted != positions.mounted OR excluded.cause IS NOT positions.cause""",
+        self.upsert_positions(character_id, (p,))
+
+    def upsert_positions(self, character_id: str, points: Iterable["PositionPoint"]) -> None:
+        """upsert_position for many points in one statement (the import writes tens of thousands)."""
+        self.conn.executemany(self._UPSERT_POSITION, (
             (character_id, p.time, p.until, p.map_id, p.x, p.y, p.instance_id, int(p.taxi), int(p.jump),
-             int(p.mounted), p.cause))
+             int(p.mounted), p.cause) for p in points))
+
+    def has_position(self, character_id: str, occurred_at: int) -> bool:
+        return self.conn.execute("SELECT 1 FROM positions WHERE character_id = ? AND occurred_at = ?",
+                                 (character_id, occurred_at)).fetchone() is not None
 
     def positions(self, character_id: str) -> list["PositionPoint"]:
         rows = self.conn.execute("SELECT * FROM positions WHERE character_id = ? ORDER BY occurred_at",

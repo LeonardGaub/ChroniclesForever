@@ -1,6 +1,6 @@
 import pytest
 
-from forever_chronicle.wow.lua_parser import LuaParseError, as_list, parse_saved_variables
+from forever_chronicle.wow.lua_parser import LuaParseError, as_list, parse_saved_variables, parse_value
 from conftest import PROBE_SV
 
 
@@ -28,6 +28,40 @@ def test_mixed_and_numeric_keys():
 def test_string_escapes_and_utf8():
     v = parse_saved_variables(r'S = "line\nnext \"q\" \\ \065\066 Übersicht"')["S"]
     assert v == 'line\nnext "q" \\ AB Übersicht'
+
+
+@pytest.mark.parametrize("lua, expected", [
+    (r'"Ä\195\164x"', "Ääx"),                      # plain umlaut, then one written as decimal byte escapes
+    (r'"\xC3\xA4"', "ä"),                           # hex byte escapes forming one UTF-8 character
+    (r'"\xc3" ', "�"),                         # half a UTF-8 character: replaced, as before
+    ('"Grüße aus Köln"', "Grüße aus Köln"),         # no escapes at all
+    ("'Grüße \\'n\\' Köln'", "Grüße 'n' Köln"),
+    (r'"a\\nb"', "a\\nb"),                          # an escaped backslash, then a plain n
+    (r'"a\\\nb\\"', "a\\\nb\\"),
+    (r'"x\n\"y\"\tz"', 'x\n"y"\tz'),
+    ('"a\\z  \n  b"', "ab"),                        # \z skips the whitespace after it, newlines included
+    ('"a\\n\\z\n b\\195\\164"', "a\nbä"),           # simple escapes mixed with \z and byte escapes
+    ('"line\\\nnext"', "line\nnext"),               # backslash-newline is a newline
+    ('"ü\\065\\66\\0677"', "üABC7"),
+])
+def test_string_escapes_mixed_with_non_ascii(lua, expected):
+    assert parse_value(lua) == expected
+
+
+@pytest.mark.parametrize("lua", ['"a\nb"', '"ä\\n\nb"', '"abc', '"ä\\', '"\\256"', '"\\xZZ"', '"\\q"'])
+def test_rejects_bad_strings(lua):
+    with pytest.raises(LuaParseError):
+        parse_value(lua)
+
+
+def test_whitespace_and_comments_between_values():
+    text = "﻿A = { -- one\n 1 ,--[[ two ]]\t2;--[==[ three\n]==] 3 -- end\n}\r\nB = 'x'--"
+    assert parse_saved_variables(text) == {"A": [1, 2, 3], "B": "x"}
+
+
+def test_array_followed_by_keys():
+    v = parse_saved_variables('A = { "a", "b", [2] = "B", k = 1, "c" }')["A"]
+    assert v == {1: "a", 2: "B", "k": 1, 3: "c"}
 
 
 def test_multiple_variables_and_identifier_keys():

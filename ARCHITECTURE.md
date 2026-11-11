@@ -184,6 +184,25 @@ export drives a silent `MusicPlayer(audible=False)` frame by frame and mixes the
   (marker `.ready_sound`, optional like the icon packages); if that failed, the app offers the same download at
   start and in Settings (`ui/audio_setup.py`) and restarts itself afterwards. Tests set `FOREVER_CHRONICLE_SILENT=1`; `ctx.sound.played` still records what would have played.
 
+### Self-update (installed app only)
+
+- `updater.py` (no Qt) and `ui/update_dialog.py`. Only the launcher's install
+  (`%LOCALAPPDATA%\ForeverChronicle\app`, `updater.installed_root`) updates itself; a git checkout never does.
+- At start a background thread reads `releases/latest` of the public repository (GitHub API, no login; offline or
+  private repository = no answer, no message). A release counts when its tag is `v<version>` and it carries
+  `JourneyForever-<version>-Komplett.zip` plus `<zip>.sha256`; the version is the bundled addon's TOC version, so
+  a desktop-only change needs a version raise too (a fourth number like `0.17.0.1` is fine).
+- "Jetzt aktualisieren": download into `update\` (checksum checked), unpack only `addons/ForeverChronicle/` and
+  `desktop/forever_chronicle/` into `app.new`, close the app. `app.main` then starts
+  `python -m forever_chronicle.updater apply <pid> <app>` (cwd outside the app folder), which waits for the old
+  process, renames `app` -> `app.old` and `app.new` -> `app` (the old version is put back if that fails; a folder
+  opened in Explorer or a terminal blocks the rename), relaunches the app and writes `update\result.json`, which
+  the new app shows once. The new addon then goes into WoW through `setup_addon.update_addon`.
+- New Python packages are not installed by the updater: a version that needs one installs it itself, like
+  `ui/audio_setup.py`.
+- Releases: `tools/package_for_friends.py --release` (token from `GITHUB_TOKEN` or git's credential manager; the
+  notes are CHANGELOG.md's section for the version).
+
 ### Event icons
 
 The desktop shows events with the addon's icons: in the Chronik and Übersicht lists, as round pins on the map

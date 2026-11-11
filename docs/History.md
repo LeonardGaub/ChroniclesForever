@@ -4,6 +4,16 @@ The session notes that used to be the "History" section of `NEXT_STEPS.md`, newe
 at the time: older entries may describe things that changed or were removed later. The current state is in
 `NEXT_STEPS.md`.
 
+### Cinematic: screenshots at the side (2026-11-09)
+- The user found the screenshot pauses too long (about 8 s each: slow down, 5.5 s polaroid, speed up; ~60
+  screenshots made ~8 minutes of standing still). After 16 questions (`docs/Cinematic_Side_Pictures.md`) the
+  replay plays them at the side: `SideShots` in `ui/cinematic_fx.py` (first built as two stacks of two, left
+  and right by turns; after the first look the user wanted one pile on the right holding up to five, each one
+  under the newest peeking out lower; they fly in from where they were taken and fade after 25 s), queued `SIDE_GAP` apart, `domain/cinematic.is_big` for the moments
+  that slow it to `SIDE_SLOW`. Alerts moved to the top centre (the standstill note to the bottom), the camera
+  keeps the marker off the right while pictures stand there, a click shows a picture large. Option "cine_side_photos" in the
+  settings' cinematic box (on by default; off keeps the old pauses). Tests: `desktop/tests/test_cinematic_side.py`.
+
 ### PvP moments (2026-11-04)
 - Investigation first: the death recap already named player killers (only the name; the GUID was not kept), kills
   of players need `PARTY_KILL` / the honor message, and battlegrounds replayed badly (a death scene per death, the

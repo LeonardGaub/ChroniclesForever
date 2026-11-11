@@ -120,6 +120,20 @@ STRINGS: dict[str, dict[str, str]] = {
         "audio_setup.failed": "Die Installation hat nicht geklappt (Internetverbindung?). Du kannst es später unter "
                               "Einstellungen erneut versuchen, oder in der Python-Umgebung selbst ausführen:\n"
                               "{command}",
+        "update.title": "Neue Version von Journey Forever",
+        "update.ask": "Journey Forever {version} ist da (du hast {current}). Das Update lädt ca. {mb} MB, startet "
+                      "die App neu und bringt auch das neue Addon mit (es wird installiert, sobald WoW geschlossen "
+                      "ist). Deine Daten bleiben erhalten.",
+        "update.now": "Jetzt aktualisieren",
+        "update.later": "Später",
+        "update.cancel": "Abbrechen",
+        "update.close": "Schließen",
+        "update.downloading": "Version {version} wird heruntergeladen …",
+        "update.restarting": "Version {version} ist bereit. Die App startet gleich neu.",
+        "update.failed": "Das Update hat nicht geklappt. Beim nächsten Start fragt die App erneut.\n\n{error}",
+        "update.applied": "Journey Forever wurde auf Version {version} aktualisiert.",
+        "update.apply_failed": "Das Update konnte nicht eingespielt werden, die alte Version läuft weiter. Beim "
+                               "nächsten Start fragt die App erneut.\n\n{error}",
         "settings.clicks": "Klick-Geräusch bei Schaltflächen",
         "settings.events": "Hinweis-Klänge im Kino-Modus (Stufenaufstieg, Screenshot, Erfolge, Tod)",
         "settings.volume": "Lautstärke",
@@ -142,6 +156,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "toast.entries": "{n} neue Einträge",
         "settings.cine_daylight": "Tageszeit: Morgenrot, Abenddämmerung und Nacht färben die Karte",
         "settings.cine_daylight_tip": "Nach der Uhrzeit, zu der du gespielt hast (Nacht von 21 bis 6 Uhr).",
+        "settings.cine_side_photos": "Screenshots am Rand, während die Reise weiterläuft",
+        "settings.cine_side_photos_tip": "Die Bilder stapeln sich rechts (bis zu fünf); nur große Momente bremsen "
+                                         "kurz. Ein Klick auf ein Bild zeigt es groß.\nAus: Die Wiedergabe hält bei "
+                                         "jedem Screenshot an und zeigt ihn groß in der Mitte.",
         "settings.cine_credits": "Abspann am Ende, mit dem, was die Reise ergeben hat",
         "settings.cine_credits_tip": "Spielzeit, Strecke, Flüge, Gebiete, Dungeons, Taten und Tode des Zeitraums.",
         "settings.cine_ambience": "Umgebungsgeräusche der Gebiete und Wind auf Flugrouten",
@@ -375,7 +393,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "cine.music_off": "Musik ausschalten (M)",
         "cine.keys_tip": "Leertaste: Pause/Weiter\n1–4: Tempo 1×, 2×, 4×, 10×\n→: nächster Moment\n"
                          "←: 5 Minuten zurück\nS: Stillstand normal / schneller / überspringen\nM: Musik an/aus\n"
-                         "Esc: beenden",
+                         "Klick auf ein Bild am Rand: groß zeigen\nEsc: beenden",
         "cine.still.normal": "Stillstand: normal",
         "cine.still.fast": "Stillstand: ▶▶ schneller",
         "cine.still.skip": "Stillstand: ▶▶| überspringen",
@@ -734,6 +752,20 @@ STRINGS: dict[str, dict[str, str]] = {
         "audio_setup.restart": "Restart now",
         "audio_setup.failed": "The installation did not work (internet connection?). You can try again later in "
                               "Settings, or run this in the Python environment yourself:\n{command}",
+        "update.title": "New version of Journey Forever",
+        "update.ask": "Journey Forever {version} is available (you have {current}). The update downloads about "
+                      "{mb} MB, restarts the app and brings the new addon along (installed once WoW is closed). "
+                      "Your data stays.",
+        "update.now": "Update now",
+        "update.later": "Later",
+        "update.cancel": "Cancel",
+        "update.close": "Close",
+        "update.downloading": "Downloading version {version} …",
+        "update.restarting": "Version {version} is ready. The app restarts in a moment.",
+        "update.failed": "The update did not work. The app asks again at the next start.\n\n{error}",
+        "update.applied": "Journey Forever was updated to version {version}.",
+        "update.apply_failed": "The update could not be applied; the old version keeps running. The app asks again "
+                               "at the next start.\n\n{error}",
         "settings.clicks": "Click sound on buttons",
         "settings.events": "Alert sounds in cinematic mode (level up, screenshot, achievements, death)",
         "settings.volume": "Volume",
@@ -756,6 +788,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "toast.entries": "{n} new entries",
         "settings.cine_daylight": "Time of day: dawn, dusk and night tint the map",
         "settings.cine_daylight_tip": "By the time of day you played (night from 9 pm to 6 am).",
+        "settings.cine_side_photos": "Screenshots at the side while the journey goes on",
+        "settings.cine_side_photos_tip": "Pictures pile up on the right (up to five); only big moments slow it down "
+                                         "briefly. Click a picture to see it large.\nOff: the replay stops at each "
+                                         "screenshot and shows it large in the middle.",
         "settings.cine_credits": "End credits with what the journey added up to",
         "settings.cine_credits_tip": "Playtime, distance, flights, zones, dungeons, deeds and deaths of the range.",
         "settings.cine_ambience": "Zone ambience and wind on flight paths",
@@ -987,7 +1023,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "cine.music_on": "Turn music on (M)",
         "cine.music_off": "Turn music off (M)",
         "cine.keys_tip": "Space: pause/continue\n1–4: speed 1×, 2×, 4×, 10×\n→: next moment\n"
-                         "←: 5 minutes back\nS: standstills normal / faster / skipped\nM: music on/off\nEsc: close",
+                         "←: 5 minutes back\nS: standstills normal / faster / skipped\nM: music on/off\n"
+                         "Click a picture at the side: show it large\nEsc: close",
         "cine.still.normal": "Standstills: normal",
         "cine.still.fast": "Standstills: ▶▶ faster",
         "cine.still.skip": "Standstills: ▶▶| skip",

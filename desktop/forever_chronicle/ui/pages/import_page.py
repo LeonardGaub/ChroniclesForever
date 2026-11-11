@@ -10,8 +10,8 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
-from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
-                               QMessageBox, QPushButton, QTableWidgetItem, QVBoxLayout)
+from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QHeaderView, QInputDialog, QLabel,
+                               QLineEdit, QMessageBox, QPushButton, QTableWidgetItem, QVBoxLayout)
 
 from ... import cloud_backup
 from ...i18n import format_datetime, tr
@@ -263,6 +263,21 @@ class ImportPage(Page):
         self.history.setHorizontalHeaderLabels([tr("import.col.when"), tr("import.col.source"),
                                                 tr("import.col.status"), tr("import.col.result")])
         runs = self.ctx.repo.import_runs()
+        # Columns sized to their contents are measured once at the end, not again after every cell.
+        header = self.history.horizontalHeader()
+        fitted = [c for c in range(self.history.columnCount())
+                  if header.sectionResizeMode(c) == QHeaderView.ResizeMode.ResizeToContents]
+        for c in fitted:
+            header.setSectionResizeMode(c, QHeaderView.ResizeMode.Fixed)
+        self.history.setUpdatesEnabled(False)
+        try:
+            self._fill_history_rows(runs)
+        finally:
+            for c in fitted:
+                header.setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
+            self.history.setUpdatesEnabled(True)
+
+    def _fill_history_rows(self, runs) -> None:
         self.history.setRowCount(len(runs))
         for i, r in enumerate(runs):
             source = r["account"] or Path(r["source_path"]).name

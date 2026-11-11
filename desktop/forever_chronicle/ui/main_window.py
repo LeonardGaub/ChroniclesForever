@@ -55,6 +55,7 @@ class MainWindow(QMainWindow):
     def __init__(self, ctx: AppContext):
         super().__init__()
         self.ctx = ctx
+        self._quiet = True      # while building (and inside reload): the shown page is loaded once, at the end
         try:
             game_fonts.install(ctx.client())
         except Exception:  # the game's fonts are a nicety: the app keeps its fallback fonts
@@ -183,7 +184,8 @@ class MainWindow(QMainWindow):
         i18n.on_language_changed(self.retranslate)
         self.retranslate()
         self.reload()
-        self.show_page(self.pages[0])
+        self._quiet = False
+        self.show_page(self.pages[0])           # the one refresh at start
 
     # -- pages ------------------------------------------------------------------------
 
@@ -276,9 +278,9 @@ class MainWindow(QMainWindow):
     # -- cloud backup -----------------------------------------------------------------
 
     def _game_closed(self) -> None:
-        """WoW was closed: its saved file is new, so into the app first, then into the cloud."""
-        self.ctx.import_all(skip_unchanged=True)
-        self.ctx.backup.run()
+        """WoW was closed: its saved file is new, so into the app first (read in the background), then into the
+        cloud."""
+        self.ctx.import_all_in_background(skip_unchanged=True, done=lambda _results: self.ctx.backup.run())
 
     def start_backup(self) -> None:
         """At app start: the hint about my other PC, then a catch-up backup if something changed meanwhile."""
@@ -342,6 +344,16 @@ class MainWindow(QMainWindow):
     def reload(self) -> None:
         """Reload the character list (after an import) and keep the selection. My characters come first;
         friends' characters follow under a heading per friend. At start my own character is shown."""
+        quiet, self._quiet = self._quiet, True     # choosing the row again loads the page once, below
+        try:
+            self._reload_list()
+        finally:
+            self._quiet = quiet
+        self._update_status()
+        if not quiet:
+            self._refresh_current()
+
+    def _reload_list(self) -> None:
         chars = self.ctx.repo.list_characters()
         selected = self.current_character_id()
         if selected is None:  # app start: the last character, if it is mine, else my most recent one
@@ -373,7 +385,6 @@ class MainWindow(QMainWindow):
             self._character_selected(self.characters.currentItem())
         else:
             self._show_character(None)
-        self._update_status()
 
     def _add_group_heading(self, text: str) -> None:
         item = QListWidgetItem(text)
@@ -415,7 +426,8 @@ class MainWindow(QMainWindow):
             self.char_details.setText("")
         for page in self.pages:
             page.character_id = char.character_id if char else None
-        self._refresh_current()
+        if not self._quiet:
+            self._refresh_current()
 
     def _refresh_current(self) -> None:
         page = self.current_page()

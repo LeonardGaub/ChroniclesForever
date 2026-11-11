@@ -3,8 +3,9 @@
 - An event cue is shown as a short toast while the replay goes on; a level-up gets a large title instead.
   An event whose screenshot is shown gets no toast: the picture's banner names it.
   Toasts and screenshots carry a banner like the game's achievement alert (heading, title, place).
-- A screenshot cue pauses the replay and shows the picture taken at that moment. Only screenshots whose file
-  was found are used.
+- A screenshot cue shows the picture taken at that moment: at the sides while the replay goes on, or in the
+  middle while it pauses (option). Only screenshots whose file was found are used. Big moments (is_big:
+  level-ups, dungeons and bosses, the player's own screenshots and moments) slow the replay down at the sides.
 - Deaths (death_spans): when the character lay dead, ran back as a ghost and came back to life. Since addon
   0.16.0 the death's event says so (releasedAt, revivedAt, how and by whom); older deaths are read from the route.
 - Companions (Companions): who the player was grouped with, from the addon's group stream (since 0.16.0).
@@ -37,6 +38,10 @@ CUE_EVENT_TYPES = ("level_up", "player_died", "zone_discovered", "achievement_ea
                    "hearth_set", "item_obtained", "moment", "pvp_kill", "duel", "battleground")
 # Cues that name the companions the player was grouped with.
 WITH_COMPANIONS = ("boss_killed", "dungeon_completed", "rare_killed", "pvp_kill", "battleground")
+# Screenshots the replay slows down for while it shows them at the sides: these events, and the ones the player
+# took (manual) or marked (/fj moment).
+BIG_EVENT_TYPES = ("level_up", "dungeon_completed", "boss_killed", "moment")
+BIG_TRIGGERS = ("manual", "moment")
 MATCH_AFTER = 120          # a match without a later route point outside it ends this long after its result
 MATCH_AFTER_MAX = 600      # a later point is looked for at most this long after the result
 GAP_SKIP = 30              # breaks without points longer than this are skipped by the replay: no playing time
@@ -63,6 +68,13 @@ class Cue:
     event_type: str = ""        # the event's type ("" for a screenshot without its event)
     has_screenshot: bool = False  # an event whose screenshot is shown too (its banner says the same)
     cause: str = ""             # a death's cause ("Killed by Hogger"), "" if unknown
+    trigger: str = ""           # a screenshot's trigger type ("level", "zone", "manual", ...)
+
+
+def is_big(cue: Cue) -> bool:
+    """A screenshot of a big moment (BIG_EVENT_TYPES, BIG_TRIGGERS): the replay slows down for it."""
+    return cue.kind == "screenshot" and (cue.level is not None or cue.event_type in BIG_EVENT_TYPES
+                                         or cue.trigger in BIG_TRIGGERS)
 
 
 # Screenshot banner, like the game's achievement alert: a short heading and the name of what happened.
@@ -163,7 +175,7 @@ def build_cues(events: Iterable[EventRow], screenshots: Iterable[Any], start: in
         cues.append(Cue(t, "screenshot", text, et.glyph if et else "", et.color if et else "#ffd100",
                         event_types.icon_of(event) if event else event_types.SCREENSHOT_ICON, path=path,
                         level=level if isinstance(level, int) else None, heading=heading, title=title, place=place,
-                        event_type=event.event_type if event else ""))
+                        event_type=event.event_type if event else "", trigger=row["trigger_type"] or ""))
     # At the same second the event comes first, then its screenshot.
     order = {"level": 0, "event": 0, "screenshot": 1}
     cues.sort(key=lambda c: (c.time, order[c.kind]))

@@ -6,6 +6,8 @@ then turn "Unreleased" into the uploaded version and date.
 
 ## Unreleased
 
+- Deaths are no longer recorded twice: on servers that report a death twice, the chronicle showed two
+  deaths (one with the killer, one with the corpse run). Now it is one death with both.
 - Screenshots with "Keep popups": the screenshot now waits 2 seconds after the popup (level-up banner,
   achievement toast) appears instead of 1, so it no longer fires the instant you level up.
 - More history per character: the route keeps 200,000 points before the oldest are thinned into the archive

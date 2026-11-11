@@ -234,7 +234,13 @@ function Progress:FillDeathCause(record, attempt)
   end
 end
 
+-- Some servers send PLAYER_DEAD twice for one death (0 to 2 seconds apart): a second one while the newest death
+-- is not revived yet and only this many seconds old is the same death, not a new event.
+local DEATH_ECHO = 3
+
 Progress:RegisterEvent("PLAYER_DEAD", function(self)
+  local open = self:OpenDeath()
+  if open and time() - open.time <= DEATH_ECHO then return end
   self.dead, self.offer, self.healerAt = true, nil, nil
   local record = FC:Record("player_died", {})
   if record then self:FillDeathCause(record, 1) end

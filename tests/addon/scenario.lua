@@ -299,7 +299,7 @@ elseif PHASE == 4 then
   print("phase 4: retention cap drops oldest records")
   local FC = startClient(true, false)
   FC.Storage.streams.events.cap = 5
-  for i = 1, 10 do MOCK.fire("PLAYER_DEAD") end
+  for i = 1, 10 do MOCK.fire("PLAYER_DEAD"); MOCK.advance(6) end   -- apart: not one death sent twice
   local stream = ForeverChronicleDB.characters[ME].streams.events
   check(#stream.records <= 5 * 1.1 + 1, "stream trimmed (" .. #stream.records .. " records)")
   MOCK.fire("PLAYER_LOGOUT")
@@ -1212,7 +1212,25 @@ if PHASE == 15 then
   MOCK.fire("PLAYER_DEAD")
   MOCK.advance(5)
   check(lastDeath().data.spell == nil, "secret recap is ignored")
-  check(char.stats.deaths == 5, "every death counted")
+
+  -- PLAYER_DEAD sent twice for one death (some servers do): one event, its cause and revival together.
+  MOCK.advance(30)
+  local before = #eventsOfType("player_died")
+  MOCK.deathRecap = { { timestamp = time(), event = "SWING_DAMAGE", sourceName = "Bruuz",
+    sourceGUID = "Creature-0-4619-0-1-209797-00000001", amount = 55 } }
+  MOCK.fire("PLAYER_DEAD")
+  MOCK.advance(2)
+  MOCK.fire("PLAYER_DEAD")
+  MOCK.ghost = true
+  MOCK.fire("PLAYER_ALIVE")
+  MOCK.advance(40)
+  MOCK.ghost = false
+  MOCK.fire("PLAYER_UNGHOST")
+  local echo = eventsOfType("player_died")
+  check(#echo == before + 1, "a death sent twice is recorded once (" .. #echo - before .. ")")
+  check(lastDeath().data.killer == "Bruuz" and lastDeath().data.releasedAt and lastDeath().data.revive == "corpse",
+    "the one event has the killer and the revival")
+  check(char.stats.deaths == 6, "every death counted, the echo not")
 end
 
 if PHASE == 16 then

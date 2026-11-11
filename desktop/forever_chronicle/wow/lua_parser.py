@@ -20,8 +20,18 @@ _NUMBER = re.compile(
     r"-?(?:0[xX][0-9a-fA-F]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|inf|nan)"
 )
 _LONG_BRACKET = re.compile(r"\[(=*)\[")
+# Whitespace and line comments (not "--[[" long comments) in one match; long comments are handled in skip().
+_SPACE = re.compile(r"(?:[ \t\r\n\ufeff]+|--(?!\[=*\[)[^\n]*)*")
+_SKIP_START = frozenset(" \t\r\n\ufeff-")
+_KEYWORDS = {"true": True, "false": False, "nil": None}
 _ESCAPES = {"n": 10, "t": 9, "r": 13, "a": 7, "b": 8, "f": 12, "v": 11,
             "\\": 92, '"': 34, "'": 39, "\n": 10}
+# A run of ordinary characters inside a string: up to the next quote, backslash or newline.
+_STRING_RUN = {'"': re.compile(r'[^"\\\n]*'), "'": re.compile(r"[^'\\\n]*")}
+# A string body whose escapes are all one-character ones from _ESCAPES (\n, \", \\, ...). Each of them gives one
+# ASCII character, so such a body can be unescaped as text, without going through bytes.
+_SIMPLE_BODY = {q: re.compile(rf"(?:[^{q}\\\n]+|\\[ntrabfv\\\"'\n])*") for q in "\"'"}
+_SIMPLE_ESCAPES = [("\\" + k, chr(v)) for k, v in _ESCAPES.items() if k != "\\"]
 
 
 class LuaParseError(ValueError):
@@ -73,25 +83,21 @@ class _Parser:
     # -- whitespace and comments ---------------------------------------------
 
     def skip(self) -> None:
-        s, n = self.s, self.n
-        while self.i < n:
-            c = s[self.i]
-            if c in " \t\r\n﻿":
-                self.i += 1
-            elif s.startswith("--", self.i):
-                self.i += 2
-                m = _LONG_BRACKET.match(s, self.i)
-                if m:
-                    close = "]" + m.group(1) + "]"
-                    end = s.find(close, m.end())
-                    if end < 0:
-                        raise self.error("unterminated comment")
-                    self.i = end + len(close)
-                else:
-                    end = s.find("\n", self.i)
-                    self.i = n if end < 0 else end + 1
-            else:
+        s = self.s
+        if self.i < self.n and s[self.i] not in _SKIP_START:
+            return   # the common case: a value or separator follows right away
+        while True:
+            self.i = _SPACE.match(s, self.i).end()
+            if not s.startswith("--", self.i):
                 return
+            # A long comment "--[[ ... ]]" (line comments were taken by _SPACE).
+            self.i += 2
+            m = _LONG_BRACKET.match(s, self.i)
+            close = "]" + m.group(1) + "]"
+            end = s.find(close, m.end())
+            if end < 0:
+                raise self.error("unterminated comment")
+            self.i = end + len(close)
 
     def expect(self, ch: str) -> None:
         self.skip()
@@ -134,14 +140,9 @@ class _Parser:
         m = _IDENT.match(self.s, self.i)
         if m:
             word = m.group(0)
-            self.i = m.end()
-            if word == "true":
-                return True
-            if word == "false":
-                return False
-            if word == "nil":
-                return None
-            self.i = m.start()
+            if word in _KEYWORDS:
+                self.i = m.end()
+                return _KEYWORDS[word]
             raise self.error(f"unexpected identifier '{word}' (only literal data is allowed)")
         raise self.error(f"unexpected character {c!r}")
 
@@ -160,8 +161,19 @@ class _Parser:
 
     def string(self, quote: str) -> str:
         s, n = self.s, self.n
-        self.i += 1
-        out = bytearray()
+        run = _STRING_RUN[quote]
+        start = self.i + 1
+        end = run.match(s, start).end()
+        if end < n and s[end] == quote:   # no escapes: the text as it is
+            self.i = end + 1
+            return s[start:end]
+        simple_end = _SIMPLE_BODY[quote].match(s, start).end()
+        if simple_end < n and s[simple_end] == quote:   # only escapes like \n or \"
+            self.i = simple_end + 1
+            return _unescape_simple(s[start:simple_end])
+        # Other escapes give raw bytes (e.g. "\195\164" is "ä"), so the string is built as UTF-8 and decoded at the end.
+        out = bytearray(s[start:end].encode("utf-8"))
+        self.i = end
         while True:
             if self.i >= n:
                 raise self.error("unterminated string")
@@ -172,8 +184,9 @@ class _Parser:
             if c == "\n":
                 raise self.error("newline in string")
             if c != "\\":
-                out += c.encode("utf-8")
-                self.i += 1
+                end = run.match(s, self.i).end()
+                out += s[self.i:end].encode("utf-8")
+                self.i = end
                 continue
             self.i += 1
             if self.i >= n:
@@ -222,17 +235,19 @@ class _Parser:
         if self.depth > MAX_DEPTH:
             raise self.error("tables nested too deeply")
         self.i += 1  # {
-        items: dict[Any, Any] = {}
+        s = self.s
+        array: list[Any] = []                # values without keys, as long as no key was given
+        items: dict[Any, Any] | None = None  # once a key was given: all entries by key
         next_index = 1
         while True:
             self.skip()
             if self.i >= self.n:
                 raise self.error("unterminated table")
-            c = self.s[self.i]
+            c = s[self.i]
             if c == "}":
                 self.i += 1
                 break
-            if c == "[" and not _LONG_BRACKET.match(self.s, self.i):
+            if c == "[" and not _LONG_BRACKET.match(s, self.i):
                 self.i += 1
                 key = self.value()
                 if key is None:
@@ -243,23 +258,32 @@ class _Parser:
                     key = int(key)
                 self.expect("]")
                 self.expect("=")
+                if items is None:
+                    items = dict(enumerate(array, 1))
                 items[key] = self.value()
             else:
-                m = _IDENT.match(self.s, self.i)
+                m = _IDENT.match(s, self.i)
                 after = m and self._peek_after(m.end())
-                if m and after == "=" and m.group(0) not in ("true", "false", "nil"):
+                if m and after == "=" and m.group(0) not in _KEYWORDS:
                     self.i = m.end()
                     self.expect("=")
+                    if items is None:
+                        items = dict(enumerate(array, 1))
                     items[m.group(0)] = self.value()
+                elif items is None:
+                    array.append(self.value())
+                    next_index += 1
                 else:
                     items[next_index] = self.value()
                     next_index += 1
             self.skip()
-            if self.i < self.n and self.s[self.i] in ",;":
+            if self.i < self.n and s[self.i] in ",;":
                 self.i += 1
-            elif self.i < self.n and self.s[self.i] != "}":
+            elif self.i < self.n and s[self.i] != "}":
                 raise self.error("expected ',' or '}'")
         self.depth -= 1
+        if items is None:
+            return array if array else {}
         return _to_python(items)
 
     def _peek_after(self, pos: int) -> str:
@@ -270,6 +294,18 @@ class _Parser:
         is_assign = ch == "=" and not self.s.startswith("==", self.i)
         self.i = saved
         return "=" if is_assign else ch
+
+
+def _unescape_simple(body: str) -> str:
+    """Resolves the escapes of a body matched by _SIMPLE_BODY. Split at the "\\\\" pairs first (left to right, as
+    the escapes are read), so the backslash of an escaped backslash never starts another escape."""
+    parts = body.split("\\\\")
+    for i, part in enumerate(parts):
+        if "\\" in part:
+            for escape, char in _SIMPLE_ESCAPES:
+                part = part.replace(escape, char)
+            parts[i] = part
+    return "\\".join(parts)
 
 
 def _to_python(items: dict[Any, Any]) -> list[Any] | dict[Any, Any]:

@@ -196,9 +196,9 @@ def wait_for(ctx):
     from PySide6.QtCore import QCoreApplication, QElapsedTimer
     clock = QElapsedTimer()
     clock.start()
-    while ctx.backup.running and clock.elapsed() < 30_000:
+    while (ctx.backup.running or ctx.importing) and clock.elapsed() < 30_000:
         QCoreApplication.processEvents()
-    assert not ctx.backup.running
+    assert not ctx.backup.running and not ctx.importing
 
 
 def test_button_backs_up_without_blocking(window, world):

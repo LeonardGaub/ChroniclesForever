@@ -163,20 +163,44 @@ def test_cinema_banner_on_the_world_map(ctx, imported, tmp_path, app):
     page.resize(1100, 700)
     page.character_id = ctx.repo.list_characters()[0].character_id
     page.refresh()
-    page.banner.resize(1100, 320)
+    assert page.banner.stale and page.banner.layer is None, "painted when first painted, at its size then"
+    page.layout().activate()                                    # the banner at its size in the page
     page.banner._rebuild()
     route = Route.load(ctx.repo, page.character_id)
     area = journey_art.bounds(route)
     assert area is not None and page.banner.layer is not None and page.banner.marker is not None
-    assert 0 <= page.banner.marker.x() <= 1100 and 0 <= page.banner.marker.y() <= 320
+    assert 0 <= page.banner.marker.x() <= page.banner.width() and 0 <= page.banner.marker.y() <= 320
     whole = page.banner.marker
     page.list.setCurrentItem(page.list.entries()[-1])          # the oldest chapter ends elsewhere
     assert page.banner.span is not None and page.banner.lit is not None
     page.banner.grab()                                          # paints without errors
     page.list.clearSelection()
     assert page.banner.span is None and page.banner.marker == whole
+    layer = page.banner.layer
+    page.refresh()                                              # nothing new: the pictures are kept
+    assert page.banner.layer is layer and page.banner.marker == whole and not page.banner.stale
     home_picture = journey_art.picture(route, page.banner.colors, QSize(420, 236))
     assert home_picture is not None and home_picture.width() == 420
+
+
+def test_route_cache_follows_the_data(ctx, imported):
+    """Pages share one Route while no point changed; its segments are worked out once and match a fresh route's."""
+    from forever_chronicle.domain import maps
+    cid = ctx.repo.list_characters()[0].character_id
+    route = Route.cached(ctx.repo, cid)
+    assert Route.cached(ctx.repo, cid) is route, "nothing changed: the same route"
+    segs = route.segments(maps.WORLD)
+    assert [s is t for s, t in zip(segs, route.segments(maps.WORLD))] == [True] * len(segs), "kept"
+    fresh = Route.load(ctx.repo, cid)
+    assert [(s.points, s.taxi) for s in fresh.segments(maps.WORLD)] == [(s.points, s.taxi) for s in segs]
+    assert route.end == fresh.end
+    last = route.points[-1]
+    ctx.repo.upsert_position(cid, PositionPoint(last.end + 30, None, last.map_id, last.x, last.y, None, False))
+    newer = Route.cached(ctx.repo, cid)
+    assert newer is not route and len(newer.points) == len(route.points) + 1, "a new point: loaded again"
+    ctx.repo.upsert_position(cid, PositionPoint(last.end + 30, last.end + 90, last.map_id, last.x, last.y, None,
+                                                False))
+    assert Route.cached(ctx.repo, cid).end == last.end + 90, "a point that grew longer counts as a change"
 
 
 def test_chronicle_plays_from_the_chosen_moment(ctx, imported):

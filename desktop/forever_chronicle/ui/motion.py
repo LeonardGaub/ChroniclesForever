@@ -97,24 +97,31 @@ class HoverGlow(QObject):
             return                                  # the widget has an effect of its own
         effect.setEnabled(True)
         animation = self.animations.get(widget)
-        start = animation.currentValue() if animation is not None else 0.0
-        if animation is not None:
+        if animation is None:
+            # One animation per widget, made (and its connections made) at the first hover; it goes with the widget.
+            animation = QVariantAnimation(widget)
+            animation.setDuration(GLOW_MS)
+
+            def step(value, e=effect) -> None:
+                e.setBlurRadius(GLOW_RADIUS * value)
+                e.setColor(QColor(255, 196, 60, int(190 * value)))
+
+            def finished(a=animation, e=effect) -> None:
+                if not a.endValue():            # faded out: the effect is switched off again
+                    e.setEnabled(False)
+
+            animation.valueChanged.connect(step)
+            animation.finished.connect(finished)
+            self.animations[widget] = animation
+            widget.destroyed.connect(lambda *_, key=widget: self.animations.pop(key, None))
+            start = 0.0
+        else:
+            start = animation.currentValue() if animation.state() == QVariantAnimation.State.Running \
+                else animation.endValue()
             animation.stop()
-        animation = QVariantAnimation(self)
-        animation.setDuration(GLOW_MS)
         animation.setStartValue(float(start or 0.0))
         animation.setEndValue(1.0 if on else 0.0)
         animation.setEasingCurve(QEasingCurve.Type.OutCubic if on else QEasingCurve.Type.InCubic)
-
-        def step(value, e=effect) -> None:
-            e.setBlurRadius(GLOW_RADIUS * value)
-            e.setColor(QColor(255, 196, 60, int(190 * value)))
-
-        animation.valueChanged.connect(step)
-        if not on:
-            animation.finished.connect(lambda e=effect: e.setEnabled(False))
-        self.animations[widget] = animation
-        widget.destroyed.connect(lambda *_: self.animations.pop(widget, None))
         animation.start()
 
 

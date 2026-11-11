@@ -69,6 +69,7 @@ def test_cinematic_window_plays_with_screenshots(app, ctx, imported, tmp_path, m
     if not start <= shot_time <= end:
         start = min(start, shot_time)
 
+    ctx.config.extra["cine_side_photos"] = False     # the style that pauses (tests/test_cinematic_side.py: the other)
     window = CinematicWindow(ctx, cid, start, end, speed=10)
     window.resize(1200, 800)
     window.show()
@@ -90,6 +91,7 @@ def test_cinematic_window_plays_with_screenshots(app, ctx, imported, tmp_path, m
     window.view.scene().render(painter)          # exercises the route painting
     painter.end()
     assert window.pins.shown, "events leave pins on the map"
+    window.images.wait()                         # the polaroids' pictures are decoded in the background
     assert any(pin.thumb is not None for pin in window.pins.pins), "a screenshot leaves a small polaroid"
     event = next((c for c in window.cues if c.kind == "event" and c.event_type != "player_died"), None)
     if event:
@@ -279,7 +281,7 @@ def test_flights_fly_at_one_speed_along_their_course():
     points = ([P(t, 0.1, 0.5, 1) for t in range(0, 600, 5)] + flight + [P(642, 0.3, 0.5, 2), P(990, 0.3, 0.5, 2)]
               + [taxi(1000, 0.30, map_id=2), taxi(1010, 0.32, map_id=2)] + [P(1012, 0.32, 0.5, 3), P(3000, 0.32, 0.5, 3)])
     window = SimpleNamespace(route=Flat(points), start=0, end=3000, speed=4, t=0.0, ramp=10.0, still_mode="play",
-                             cues=[], cue_index=0, zone_share=0.1)
+                             cues=[], cue_index=0, zone_share=0.1, side_style=True, side_ramp=cine.SIDE_RAMP)
     window._measure_flight = lambda times: cine.CinematicWindow._measure_flight(window, times)
     flights = cine.CinematicWindow._flight_paths(window)
     assert [(f.begin, f.end) for f in flights] == [(600, 642), (1000, 1012)], "to the first point after landing"
@@ -652,3 +654,112 @@ def test_cinematic_ambience_and_flights(app, ctx, imported, tmp_path, monkeypatc
     window._set_flying(True, jump=True)
     assert not played or played[-1] != call, "a jump into a flight is no take-off"
     window.close()
+
+
+def test_old_route_layer_is_never_shown_blown_up(app):
+    """Zooming in on and on (the dive after a teleport) never shows the old route's cached layer from far out,
+    enlarged and blurred: it is drawn directly until the camera holds still for a sharp layer."""
+    from types import SimpleNamespace
+
+    from PySide6.QtWidgets import QGraphicsScene, QGraphicsView
+
+    from forever_chronicle.domain.route_colors import RouteColors
+    from forever_chronicle.ui.cinematic_fx import LAYER_ZOOM, RouteItem
+
+    pts = [(t, 0.3 + 0.4 * t / 2000, 0.5 + 0.1 * math.sin(t / 50)) for t in range(0, 2000, 2)]
+    item = RouteItem([SimpleNamespace(taxi=False, points=pts)], RouteColors("plain", Levels([]), []))
+    scene = QGraphicsScene()
+    scene.addItem(item)
+    view = QGraphicsView(scene)
+    view.resize(800, 500)
+    view.show()
+    item.set_time(1990, None)
+    center = item.segs[0][1][800]
+
+    def frame(scale):
+        view.resetTransform()
+        view.scale(scale, scale)
+        view.centerOn(center)
+        view.grab()
+
+    scale = 0.3
+    for _ in range(3):
+        frame(scale)
+    assert item.layer is not None, "held still: the old route is on a layer"
+    for _ in range(40):
+        scale *= 1.05                       # more than LAYER_STEADY per frame: never steady
+        frame(scale)
+        layer = item.layer
+        assert layer is None or layer.ratio(view.viewportTransform()) <= LAYER_ZOOM ** 2, \
+            f"a layer from scale {layer.scale:.2f} shown at {scale:.2f}"
+    for _ in range(2):
+        frame(scale)
+    assert item.layer is not None and abs(item.layer.ratio(view.viewportTransform()) - 1) < 0.01, \
+        "steady again: a sharp layer at this zoom"
+    view.close()
+
+
+def test_old_flight_paths_are_cached_on_the_layer(app):
+    """Old flight paths are on the layer (dashes standing still), so a frame no longer draws every flight ever taken;
+    only the trail's dashes move."""
+    from types import SimpleNamespace
+
+    from PySide6.QtWidgets import QGraphicsScene, QGraphicsView
+
+    from forever_chronicle.domain.route_colors import RouteColors
+    from forever_chronicle.ui.cinematic_fx import RouteItem
+
+    flight = [(t, 0.2 + 0.6 * t / 1000, 0.4) for t in range(0, 1000, 2)]
+    walk = [(t, 0.8, 0.4 + 0.2 * (t - 5000) / 1000) for t in range(5000, 6000, 2)]
+    item = RouteItem([SimpleNamespace(taxi=True, points=flight), SimpleNamespace(taxi=False, points=walk)],
+                     RouteColors("plain", Levels([]), []))
+    scene = QGraphicsScene()
+    scene.addItem(item)
+    view = QGraphicsView(scene)
+    view.resize(800, 500)
+    view.show()
+    item.set_time(5990, None)              # the flight ended long before the trail (TRAIL_SECONDS) begins
+    view.fitInView(item.boundingRect())
+    view.grab()
+    view.grab()
+    layer = item.layer
+    assert layer is not None and layer.done[0] == len(flight) - 1, "the whole old flight is on the layer"
+    p = layer.to_layer.map(item.segs[0][1][250])
+    near = [QColor.fromRgba(layer.lines.pixel(int(p.x() + dx), int(p.y()))).alpha() for dx in range(-12, 13)]
+    assert max(near) > 0 and min(near) < max(near) / 2, "drawn there, dashed"
+    view.close()
+
+
+def test_old_route_layer_blits_only_what_is_on_screen(app):
+    """The layer reaches past the view; drawing only its visible part looks exactly like drawing all of it."""
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QTransform
+
+    from forever_chronicle.ui.cinematic_fx import _OldLayer
+
+    view = QTransform.fromScale(2.0, 2.0) * QTransform.fromTranslate(-150, -80)
+    layer = _OldLayer(view, QRectF(-100, -60, 600, 360), 1.0, 1)
+    p = QPainter(layer.lines)
+    p.setTransform(layer.to_layer)
+    p.fillRect(QRectF(60, 30, 180, 120), QColor(200, 120, 40, 160))
+    p.fillRect(QRectF(120, 70, 30, 20), QColor(40, 200, 90, 255))
+    p.end()
+
+    def render(clipped: bool) -> QImage:
+        image = QImage(400, 240, QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(0)
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.setWorldTransform(view * QTransform.fromScale(1.07, 1.07))   # a little zoomed since it was drawn
+        if clipped:
+            layer.draw(painter, layer.lines)
+        else:
+            painter.setWorldTransform(layer.from_layer * painter.worldTransform())
+            painter.drawImage(0, 0, layer.lines)
+        painter.end()
+        return image
+
+    a, b = render(True), render(False)
+    worst = max(abs(qa - qb) for y in range(0, 240, 3) for x in range(0, 400, 3)
+                for qa, qb in zip(QColor(a.pixel(x, y)).getRgb(), QColor(b.pixel(x, y)).getRgb()))
+    assert worst <= 2, "the same picture"

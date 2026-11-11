@@ -395,6 +395,8 @@ end
 PvP:RegisterEvent("PLAYER_DEAD", function(self)
   local death = self:NewestDeath()
   if not death or time() - (death.time or 0) > 5 then return end
+  if death == self.deathRead then return end   -- PLAYER_DEAD again for the same death (Progress ignores it too)
+  self.deathRead = death
   death.data.battleground = self:MatchKind()
   self:ReadKiller(death, 1)
 end)

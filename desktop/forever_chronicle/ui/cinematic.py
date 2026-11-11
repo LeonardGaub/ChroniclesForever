@@ -15,9 +15,17 @@
   the bottom bar holds the game's experience bar (ui/cinematic_hud.py).
 - Events slide in as achievement alerts and flash a burst on the map (profession ranks too); level-ups get a large
   title. Quests are too many for alerts: where one was handed in, the game's yellow question mark pops up over the
-  marker and rises away (several at once one after the other). At each
-  screenshot the replay pauses: the picture flies out from the marker as a polaroid under an achievement
-  banner (domain/cinematic.py decides which moments). The visual pieces are in ui/cinematic_fx.py.
+  marker and rises away (several at once one after the other). The visual pieces are in ui/cinematic_fx.py.
+- Screenshots (option "cine_side_photos", on by default): the replay goes on while they play in a pile over the
+  right edge of the map: each flashes where it was taken and flies from there to the top of the pile under a
+  small achievement banner; the ones before go under it (up to five show), older ones fall off, and pictures
+  fade after a while. A burst of them lands SIDE_GAP apart. Big moments
+  (domain/cinematic.is_big: level-ups, dungeons and bosses, the player's own screenshots and moments) slow the
+  replay gently to SIDE_SLOW; a level-up's title shows in the middle at the same time. The camera keeps the
+  marker away from the right while pictures stand there, and the alerts drop in at the top centre.
+  A click on a picture pauses and shows it large (click or Space goes on). Option off (the earlier style): at
+  each screenshot the replay slows down and pauses, and the picture flies out from the marker as a large
+  polaroid under an achievement banner (domain/cinematic.py decides which moments).
 - Deaths: the replay slows down before one and holds a moment on a dark red title while the world turns grey
   (the game's spirit world). The body is a headstone; after the release the ghost is a pale wisp and the corpse
   run a pale dotted line. Back at the body the colour returns with rising light.
@@ -35,7 +43,8 @@
   route, the map dims, the music changes to the chosen theme and credits roll with what the journey added up to
   (domain/credits.py) while the screenshots drift by.
 - Breaks without route points (logouts, long pauses) are skipped. The replay slows down shortly before each
-  screenshot and gets back to speed afterwards. Standstills (AFK, waiting) play normally, much faster or are
+  screenshot it pauses for (each big one at the side) and gets back to speed afterwards. Standstills (AFK,
+  waiting) play normally, much faster or are
   skipped (option; the moments inside them are still shown).
 - Music: the adventure music from the game (wow/zone_music.py: one outdoor theme after another, every other one
   from the character's people's lands, the next at the level-up that begins a new chapter), or the music chosen
@@ -78,7 +87,7 @@ from PySide6.QtWidgets import (QGraphicsOpacityEffect, QGraphicsPathItem, QGraph
 from ..domain import credits as journey_credits
 from ..domain import daylight, maps
 from ..domain.cinematic import (GAP_SKIP, Companions, Cue, Death, Levels, Teleport, build_cues, CUE_EVENT_TYPES,
-                                death_spans, match_spans, played_time, still_spans, teleports)
+                                death_spans, is_big, match_spans, played_time, still_spans, teleports)
 from ..domain import event_types
 from ..domain.experience import Experience
 from ..domain.route import Route, Timeline
@@ -91,9 +100,11 @@ from .world_art import WorldArt
 from .cinematic_credits import CreditsOverlay
 from .cinematic_hud import XpBar
 from .cinematic_fx import (ARCANE_COLOR, FADE_SECONDS, GHOST_COLOR, AchievementToast, CinemaFrame, CinemaView,
-                           CloudCover, CompanionItem, MarkerItem, PhotoOverlay, Pin, PinsItem, RouteItem, SkyItem, TitleCard, clamp,
+                           CloudCover, CompanionItem, MarkerItem, PhotoOverlay, Pin, PinsItem, RouteItem, SideShots,
+                           SIDE_WIDTH, SkyItem, TitleCard, clamp,
                            ease_in, ease_in_out, ease_out, geo_mix, lerp_point, scatter, smooth, with_alpha)
-from .screenshots import load_thumbnail
+from .image_loader import ImageLoader
+from .screenshots import file_exists, load_thumbnail
 
 W, H = maps.ART_WIDTH, maps.ART_HEIGHT
 TICK_MS = 33
@@ -128,6 +139,13 @@ CONTROLS_HEIGHT = 58
 SLOW_SECONDS = 1.5         # real seconds before a screenshot in which the replay slows down
 SLOW_MIN = 0.2             # share of the speed right before a screenshot
 RAMP_SECONDS = 1.0         # real seconds to get back to speed after a screenshot
+# Screenshots at the side (option "cine_side_photos"; ui/cinematic_fx.py SideShots).
+SIDE_GAP = 1.5             # real seconds at least between two pictures landing (a burst of them waits its turn)
+SIDE_SLOW = 0.5            # share of the speed a big moment's picture slows the replay to ...
+SIDE_SLOW_SECONDS = 1.0    # ... over this many real seconds before it ...
+SIDE_RAMP = 1.0            # ... and back to full speed over this many after it
+SIDE_KEEP_INSIDE = 0.18    # the marker stays this close to the middle (share of the width) towards the pictures
+SIDE_KEEP_SECONDS = 0.8    # time constant of the camera making room for the pile
 ZONE_SECONDS = 2.0         # real seconds a zone stays on screen at least: the replay slows down through short
 ZONE_MIN_SPEED = 1         # visits, but never below this speed (×), and not for visits shorter than ZONE_BLIP
 ZONE_BLIP = 30             # game seconds; a step into a zone and back is part of the visit around it
@@ -498,6 +516,12 @@ class CinematicWindow(QWidget):
         self._art: dict[int, QPixmap] = {}
         self._soft: dict[int, QPixmap | None] = {}
         self._thumbs: dict[str, QPixmap | None] = {}
+        # Pictures are decoded in worker threads while playing (at once for the video export): the pins'
+        # polaroids show blank until theirs arrives, a side picture lands once it is there.
+        self.images = ImageLoader(self) if not exporting else None
+        self._thumb_pins: dict[str, list[Pin]] = {}           # pins waiting for their picture
+        self._side_pictures: dict[str, QPixmap | None] = {}   # decoded for landing (absent: still decoding)
+        self._side_pending: set[str] = set()
 
         # Adventure music: the files of the range's chapters come out of the game in the background (the export
         # takes them first); until a chapter's files are there, the music playing goes on. ("zone" is the
@@ -514,6 +538,7 @@ class CinematicWindow(QWidget):
         self.ambience_next: tuple[Path, ...] | None = None    # wanted, for ambience_wait seconds
         self.ambience_wait = 0.0
         self._ambience_paths: dict[tuple[int, ...], tuple[Path, ...]] = {}
+        self._music_paths: dict[tuple[int, ...], tuple[Path, ...]] = {}
         places = {(r.map_id, r.instance_id) for r in self.route.zone_runs(self.start, self.end)}
         ambience_files = list(dict.fromkeys(
             f for m, i in places for night in (False, True)
@@ -563,6 +588,14 @@ class CinematicWindow(QWidget):
         self.cover_effect = _faded(self.cover)
         self.cover_age = FADE_SECONDS * 2
         self.frame = CinemaFrame(self)
+        # Screenshots at the side while the replay goes on (option off: one in the middle while it pauses).
+        self.side_style = ctx.config.flag("cine_side_photos")
+        self.side = SideShots(self)
+        self.side_queue: list[Cue] = []     # pictures waiting to land (a burst lands SIDE_GAP apart)
+        self.side_gap = SIDE_GAP            # real seconds since the last one landed
+        self.side_ramp = SIDE_RAMP          # real seconds since a big moment's picture came
+        self.keep_right = KEEP_INSIDE       # how far the marker may stray right of the middle (pictures there)
+        self.enlarged = False               # a side picture shown large in the middle (clicked)
 
         # In the top bar: the character on the left, zone and moment on the right; the experience bar below.
         fonts = ", ".join(f'"{f}"' for f in theme.HEADING_FONTS)
@@ -596,6 +629,7 @@ class CinematicWindow(QWidget):
         self.clock = QElapsedTimer()
         self.timer = QTimer(self)
         self.timer.setInterval(TICK_MS)
+        self.timer.setTimerType(Qt.TimerType.PreciseTimer)   # a coarse timer ticks every 31 or 47 ms on Windows
         self.timer.timeout.connect(self._tick)
         # Mouse movement anywhere shows the controls.
         for widget in (self, self.view, self.view.viewport(), self.controls):
@@ -691,8 +725,10 @@ class CinematicWindow(QWidget):
 
     def _layout(self) -> None:
         r = self.rect()
-        for widget in (self.view, self.snapshot, self.clouds, self.cover, self.frame, self.title, self.photo):
+        for widget in (self.view, self.snapshot, self.clouds, self.cover, self.frame, self.side, self.title,
+                       self.photo):
             widget.setGeometry(r)
+        self.side.area = self.picture_area()
         if self.credits is not None:
             self.credits.setGeometry(r)
             self.credits.area = self.picture_area()
@@ -703,9 +739,11 @@ class CinematicWindow(QWidget):
         self._layout_still()
 
     def _layout_still(self) -> None:
+        """Under the top bar; at the bottom where the alerts take the top centre (screenshots at the side)."""
         self.still_label.adjustSize()
-        self.still_label.move((self.width() - self.still_label.width()) // 2,
-                              CinemaFrame.target_bar(self.width(), self.height()) + 14)
+        bar = CinemaFrame.target_bar(self.width(), self.height())
+        y = self.height() - bar - 14 - self.still_label.height() if self.side_style else bar + 14
+        self.still_label.move((self.width() - self.still_label.width()) // 2, y)
 
     def _layout_bars(self) -> None:
         """The bars' contents, fading in with the bars: character, zone and moment in the top bar, the experience
@@ -728,9 +766,9 @@ class CinematicWindow(QWidget):
         w = int(min(470, max(340, r.width() * 0.3)))
         h = int(max(80, min(100, r.height() * 0.095)))
         y = CinemaFrame.target_bar(r.width(), r.height()) + 18
-        for toast in self.toasts:
+        for toast in self.toasts:           # top right; top centre where the screenshots stand at the side
             toast.resize(w, h)
-            toast.place_at(r.width() - 24, y)
+            toast.place_at((r.width() + w) / 2 if self.side_style else r.width() - 24, y, self.side_style)
             y += h + 6
 
     def picture_area(self) -> QRectF:
@@ -776,6 +814,11 @@ class CinematicWindow(QWidget):
         self._stop_credits()
         self._hide_photo()
         self.pending_photo = None
+        self.side.clear()
+        self.side_queue.clear()
+        self._side_pictures.clear()
+        self.side_gap = SIDE_GAP
+        self.side_ramp = SIDE_RAMP
         if self.voyage is not None and self.voyage.line is not None:
             self.view.scene().removeItem(self.voyage.line)
         self.voyage = None
@@ -799,6 +842,9 @@ class CinematicWindow(QWidget):
         self.seek(t)
 
     def toggle_pause(self) -> None:
+        if self.enlarged:                   # a picture shown large: Space goes on
+            self._close_enlarged()
+            return
         if self.ended:
             self.paused = False
             self.seek(self.start)
@@ -854,6 +900,10 @@ class CinematicWindow(QWidget):
     def eventFilter(self, obj, event) -> bool:
         if event.type() == QEvent.Type.MouseMove:
             self.wake_controls()
+        elif (event.type() == QEvent.Type.MouseButtonPress and obj is not self.controls
+              and event.button() == Qt.MouseButton.LeftButton):
+            pos = event.position().toPoint()
+            self._clicked(QPointF(obj.mapTo(self, pos) if obj is not self else pos))
         return False
 
     def wake_controls(self) -> None:
@@ -897,6 +947,8 @@ class CinematicWindow(QWidget):
         self._update_music()
         self._update_ambience(dt)
         self._update_flight_sounds(dt)
+        if self.side_style and not self.paused and not self.photo_on:
+            self._advance_side(dt)
         if self.photo_on:
             if not self.photo.advance(dt):
                 self._hide_photo()
@@ -939,6 +991,9 @@ class CinematicWindow(QWidget):
         while self.cue_index < len(self.cues) and self.cues[self.cue_index].time <= t:
             cue = self.cues[self.cue_index]
             self.cue_index += 1
+            if cue.kind == "screenshot" and self.side_style:
+                self._queue_side(cue)       # at the side: the replay goes on
+                continue
             if cue.kind == "screenshot":
                 t = cue.time               # stop exactly there while the picture is shown
                 self.t = t
@@ -962,24 +1017,32 @@ class CinematicWindow(QWidget):
 
     def pace(self, flight: _FlightPath | None = None) -> float:
         """Share of the chosen speed: slower shortly before a screenshot or a death, back to full speed after
-        one; slower through short zone visits; much faster through a standstill ("fast" mode). On a flight
-        (share of its own steady speed) only screenshots and deaths count."""
+        one (at the side only big moments' pictures count, and they slow it less); slower through short zone
+        visits; much faster through a standstill ("fast" mode). On a flight (share of its own steady speed) only
+        screenshots and deaths count."""
         factor = min(1.0, SLOW_MIN + (1 - SLOW_MIN) * self.ramp / RAMP_SECONDS)
-        rate = self.speed * BASE_SPEED                      # game seconds per real second at full speed
+        if self.side_style:                                 # back to speed after a big moment's picture
+            factor = min(factor, SIDE_SLOW + (1 - SIDE_SLOW) * self.side_ramp / SIDE_RAMP)
+        rate = self.speed * BASE_SPEED                     # game seconds per real second at full speed
         if flight is None:
             factor = min(factor, self.zone_share)
             if self.still_mode == "fast" and self._still_at(self.t) is not None:
                 factor *= STILL_FASTER
         else:
             rate = (flight.end - flight.begin) / flight.length * FLIGHT_SPEED * self.speed / FLIGHT_AT
-        upcoming = next((c for c in self.cues[self.cue_index:]
-                         if c.kind == "screenshot" or c.event_type == "player_died"), None)
+        upcoming = next((c for c in self.cues[self.cue_index:] if self._slows_for(c)), None)
         if upcoming is not None:
-            window = rate * SLOW_SECONDS                    # game time covered in SLOW_SECONDS at full speed
+            side = self.side_style and upcoming.kind == "screenshot"
+            low, seconds = (SIDE_SLOW, SIDE_SLOW_SECONDS) if side else (SLOW_MIN, SLOW_SECONDS)
+            window = rate * seconds                         # game time covered in that time at full speed
             distance = upcoming.time - self.t
             if distance < window:
-                factor = min(factor, SLOW_MIN + (1 - SLOW_MIN) * max(0.0, distance) / window)
+                factor = min(factor, low + (1 - low) * max(0.0, distance) / window)
         return factor
+
+    def _slows_for(self, cue: Cue) -> bool:
+        """A death, or a screenshot the replay pauses for (at the side: a big moment's)."""
+        return cue.event_type == "player_died" or (cue.kind == "screenshot" and (not self.side_style or is_big(cue)))
 
     # -- zone visits -------------------------------------------------------------------------
 
@@ -1178,7 +1241,12 @@ class CinematicWindow(QWidget):
         if not self.adventure_music:
             return None
         files = zone_music.adventure_file_ids(zone_music.chapter(self.levels.at(self.t)), self.race)
-        return tuple(zone_music.paths(files)) or self.music_now
+        found = self._music_paths.get(files)
+        if found is None:
+            found = tuple(zone_music.paths(files))
+            if len(found) == len(files):
+                self._music_paths[files] = found      # all there: no need to look again
+        return found or self.music_now
 
     def _update_music(self) -> None:
         """Changes to the next chapter's music at the level-up that begins it (fading under its fanfare)."""
@@ -1433,8 +1501,11 @@ class CinematicWindow(QWidget):
             # Never let the marker drift out of the middle of the picture.
             scale = self._scale()
             area = self.picture_area()
-            max_dx, max_dy = KEEP_INSIDE * area.width() / scale, KEEP_INSIDE * area.height() / scale
-            self.camera = QPointF(min(max(self.camera.x(), head.x() - max_dx), head.x() + max_dx),
+            # Less room to the right while screenshots stand there.
+            left = KEEP_INSIDE * area.width() / scale
+            right = self.keep_right * area.width() / scale
+            max_dy = KEEP_INSIDE * area.height() / scale
+            self.camera = QPointF(min(max(self.camera.x(), head.x() - right), head.x() + left),
                                   min(max(self.camera.y(), head.y() - max_dy), head.y() + max_dy))
         self._apply_zoom()
 
@@ -1493,7 +1564,7 @@ class CinematicWindow(QWidget):
         self.zone_now = None
         self.frame_size = None
         scene.setSceneRect(QRectF(-W, -H, 3 * W, 3 * H))       # room to centre anywhere
-        self.world = WorldArt(scene)
+        self.world = WorldArt(scene, background=not self.exporting)
         cities = {r.map_id for r in self.route.zone_runs(self.start, self.end) if r.map_id in maps.CITIES}
         for city in sorted(cities):
             rect = maps.world_rect(city, self.route.map_infos)
@@ -1698,6 +1769,9 @@ class CinematicWindow(QWidget):
     def _finish(self) -> None:
         """The replay has reached its end: the credits roll (or the end title shows with the playing time)."""
         self._sync_controls()
+        self.side_queue.clear()
+        self._side_pictures.clear()
+        self.side.fade_all()                        # the credits show their own pictures
         if self.credits_on and self._start_credits():
             return
         # Playing time in the range, breaks left out (as the level-up title's time since the level before).
@@ -1844,18 +1918,41 @@ class CinematicWindow(QWidget):
             xy = self.route.project(*spot, view) if spot else None
             if xy is None:
                 continue
-            thumb = self._thumb(cue.path) if cue.kind == "screenshot" else None
-            if cue.kind == "screenshot" and thumb is None:
+            photo = cue.kind == "screenshot"
+            if photo and not self._has_thumb(cue.path):
                 continue
             tilt = (scatter(cue.time) & 0xFF) / 255 * 16 - 8
-            pins.append(Pin(cue.time, QPointF(xy[0] * W, xy[1] * H), cue.glyph or "•", QColor(cue.color), thumb,
-                            tilt, icons.of_event(cue.icon, cue.event_type) if thumb is None else None))
+            pin = Pin(cue.time, QPointF(xy[0] * W, xy[1] * H), cue.glyph or "•", QColor(cue.color),
+                      self._thumbs.get(cue.path) if photo else None, tilt,
+                      None if photo else icons.of_event(cue.icon, cue.event_type), photo)
+            if photo and pin.thumb is None:
+                self._thumb_pins.setdefault(cue.path, []).append(pin)
+            pins.append(pin)
         return pins
 
-    def _thumb(self, path: str | None) -> QPixmap | None:
-        if path not in self._thumbs:
+    def _has_thumb(self, path: str | None) -> bool:
+        """Whether a screenshot's pin picture is (or will be) there; starts decoding it if needed."""
+        if path in self._thumbs:
+            return self._thumbs[path] is not None
+        if self.images is None:
             self._thumbs[path] = load_thumbnail(path, QSize(96, 60), fill=True)
-        return self._thumbs[path]
+            return self._thumbs[path] is not None
+        if not file_exists(path):
+            self._thumbs[path] = None
+            return False
+        if path not in self._thumb_pins:
+            self._thumb_pins[path] = []
+            self.images.request(path, lambda image, path=path: self._thumb_loaded(path, image), QSize(96, 60),
+                                fill=True)
+        return True
+
+    def _thumb_loaded(self, path: str, image) -> None:
+        thumb = QPixmap.fromImage(image) if image is not None else None
+        self._thumbs[path] = thumb
+        for pin in self._thumb_pins.pop(path, []):
+            pin.thumb = thumb
+        if self.pins is not None:
+            self.pins.update()
 
     def _soft_pixmap(self, view: int) -> QPixmap | None:
         """A map's art fading out towards its edges, to lie on a coarser map without showing its frame."""
@@ -1997,7 +2094,102 @@ class CinematicWindow(QWidget):
         if self.photo_on:
             self.ramp = 0.0                 # get back to speed gently
         self.photo_on = False
+        self.enlarged = False
+        self.photo.life = PHOTO_SECONDS
         self.photo.hide()
+
+    # -- screenshots at the side --------------------------------------------------------------
+
+    def _queue_side(self, cue: Cue) -> None:
+        self.side_queue.append(cue)
+        if is_big(cue):
+            self.side_ramp = 0.0            # slowed down before it; back to speed gently after it
+        if (self.images is not None and cue.path and cue.path not in self._side_pictures
+                and cue.path not in self._side_pending):
+            self._side_pending.add(cue.path)
+            width = self._side_width()
+            self.images.request(cue.path, lambda image, path=cue.path: self._side_loaded(path, image),
+                                QSize(width, width))
+
+    def _side_loaded(self, path: str, image) -> None:
+        self._side_pending.discard(path)
+        if any(c.path == path for c in self.side_queue):       # not after a jump emptied the queue
+            self._side_pictures[path] = QPixmap.fromImage(image) if image is not None else None
+
+    def _advance_side(self, dt: float) -> None:
+        """Ages the side pictures and lets the next waiting one land (SIDE_GAP after the one before); the
+        camera makes room while pictures stand."""
+        self.side.advance(dt)
+        self.side_gap += dt
+        self.side_ramp += dt
+        while self.side_queue and self.side_gap >= SIDE_GAP:
+            landed = self._land_side(self.side_queue[0])
+            if landed is None:
+                break                       # its picture is still being decoded
+            self.side_queue.pop(0)
+            if landed:
+                self.side_gap = 0.0
+        target = SIDE_KEEP_INSIDE if self.side.occupied() else KEEP_INSIDE
+        self.keep_right += (target - self.keep_right) * smooth(dt, SIDE_KEEP_SECONDS)
+
+    def _side_width(self) -> int:
+        return int(self.width() * SIDE_WIDTH * self.devicePixelRatioF() * 1.1)
+
+    def _land_side(self, cue: Cue) -> bool | None:
+        """The picture flies from where it was taken to the pile; False if its file cannot be read, None while
+        it is still being decoded."""
+        if self.images is None:
+            pixmap = load_thumbnail(cue.path, QSize(self._side_width(), self._side_width()))
+        elif cue.path in self._side_pictures:
+            pixmap = self._side_pictures[cue.path]
+            if not any(c.path == cue.path for c in self.side_queue[1:]):
+                del self._side_pictures[cue.path]               # no other picture waiting needs it
+        else:
+            return None
+        if pixmap is None:
+            return False
+        self.side.add(cue, pixmap, self._spot_on_screen(cue.time))
+        self.sound.play("screenshot")
+        return True
+
+    def _spot_on_screen(self, t: float) -> QPointF:
+        """Where the player was at t, on the screen (the marker, or the middle, if that is out of view)."""
+        area = self.picture_area()
+        spot = self.route.glide(t)
+        xy = self.route.project(*spot, self.view_map) if spot and self.view_map is not None else None
+        if xy is not None:
+            point = QPointF(self.view.mapFromScene(QPointF(xy[0] * W, xy[1] * H)))
+            if area.contains(point):
+                return point
+        if self.marker.isVisible():
+            point = QPointF(self.view.mapFromScene(self.marker.pos()))
+            if area.contains(point):
+                return point
+        return area.center()
+
+    def _clicked(self, pos: QPointF) -> None:
+        """A click on a side picture pauses and shows it large in the middle; another click goes on."""
+        if self.enlarged:
+            self._close_enlarged()
+            return
+        card = self.side.hit(pos) if self.side_style and self.side.isVisible() and not self.photo_on else None
+        if card is None:
+            return
+        pixmap = QPixmap(card.cue.path)
+        if pixmap.isNull():
+            return
+        area = self.picture_area()
+        pixmap = pixmap.scaled(int(area.width() * 0.75), int(area.height() * 0.95), Qt.AspectRatioMode.KeepAspectRatio,
+                               Qt.TransformationMode.SmoothTransformation)
+        self.photo.show_cue(card.cue, pixmap, self.side.screen_rect(card).center(), area)
+        self.photo.life = 10.0 ** 9         # until the next click
+        self.photo_on = self.enlarged = True
+        self.controls.raise_()
+
+    def _close_enlarged(self) -> None:
+        """The large picture flies back to its stack (its banner first)."""
+        if self.photo_on and self.enlarged:
+            self.photo.life = min(self.photo.life, self.photo.age + PhotoOverlay.FLY * 1.4 + 0.1)
 
     @staticmethod
     def _drop_toast(toast: AchievementToast) -> None:

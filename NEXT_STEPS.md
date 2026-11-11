@@ -92,6 +92,22 @@ were written at the time (older entries may describe things that changed later).
    one "skirmish" cue for several kills and deaths close together, a revenge banner, PvP lines in the credits
    (ask first: credits are long-term stats only).
 
+10. Self-update of the desktop app (2026-11-09, `updater.py`, `ui/update_dialog.py`, ARCHITECTURE "Self-update"):
+   the installed app offers newer GitHub releases at start and swaps itself. Tested with unit tests and one real
+   apply run on this PC (detached process, folder swap, relaunch); not yet with a real release. To start it:
+   (1) make the repository public (GitHub: Settings -> General -> Danger Zone -> Change visibility; the user
+   agreed on 2026-11-09, the repo holds ~34 MB of game art), (2) raise the addon version (e.g. 0.17.0) and turn
+   CHANGELOG "Unreleased" into that version, commit and push, (3) run
+   `desktop\.venv\Scripts\python tools\package_for_friends.py --release`, (4) friends install that zip once by
+   hand (0.16.0 has no updater); from then on releases arrive by themselves. Optional: a credit line for OpenMap
+   (MIT) in the README for the world map tiles.
+11. Cinematic screenshots at the side (2026-11-09, design in `docs/Cinematic_Side_Pictures.md`, option
+   "cine_side_photos", on by default): the replay no longer stops for screenshots; they land in a pile of up to five
+   over the map's right edge, and only big moments slow it to half speed. Tested with unit tests and rendered frames
+   from a copy of the real database; not yet watched by the user in the app. Values to tune after watching:
+   `SIDE_GAP`, `SIDE_SLOW`, `SIDE_KEEP_INSIDE` (ui/cinematic.py) and `SIDE_WIDTH`, `SIDE_LIFE`,
+   `SIDE_STEP_*` (ui/cinematic_fx.py). The 3D branch (`investigate/3d-map-viewer`) picks it up when merged.
+
 ## Confirmed client facts
 - Install: `C:\Program Files (x86)\World of Warcraft\_forever_\` (`Wow.exe`, flavor `wowf`, client 1.60.1). The beta
   (`_classic_beta_\`, `WowB.exe`, TOC Interface 16001) was uninstalled on 2026-10-27.

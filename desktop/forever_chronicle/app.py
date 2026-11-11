@@ -14,7 +14,7 @@ from .app_context import AppContext
 from .config import AppConfig
 from .setup_addon import update_addon
 from .storage.database import Database
-from .ui import audio_setup, theme
+from .ui import audio_setup, theme, update_dialog
 from .ui.main_window import MainWindow
 
 DAILY = 24 * 3600
@@ -51,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     window = MainWindow(ctx)
     window.show()
     if config.auto_import:
-        QTimer.singleShot(200, lambda: ctx.import_all(skip_unchanged=True))
+        QTimer.singleShot(200, lambda: ctx.import_all_in_background(skip_unchanged=True))   # reads off the UI thread
     QTimer.singleShot(1500, window.start_backup)   # the other-PC hint, then what changed since the last backup
     def first_steps() -> None:
         if ctx.needs_setup():                # first start: the wizard first, the sound offer after it
@@ -59,9 +59,12 @@ def main(argv: list[str] | None = None) -> int:
         audio_setup.offer_at_start(window, ctx)
 
     QTimer.singleShot(800, first_steps)
+    QTimer.singleShot(1000, lambda: update_dialog.check_at_start(window))   # a newer release (installed app only)
     code = app.exec()
     db.close()
-    if audio_setup.RESTART:                  # the sound part was just installed: it loads in a new process
+    if update_dialog.APPLY:                  # a new version is unpacked: the apply step swaps it in and restarts
+        update_dialog.apply_on_exit()
+    elif audio_setup.RESTART:                # the sound part was just installed: it loads in a new process
         audio_setup.start_again()
     return code
 

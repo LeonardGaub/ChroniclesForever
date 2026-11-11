@@ -3,7 +3,7 @@
 On the map (scene items):
 - RouteItem: the route up to the current moment. Older parts are thin and dim; the last TRAIL_SECONDS grow
   brighter and wider in small steps towards the marker, the newest minutes glow. Flight paths are dashed, and
-  their dashes move along the line; corpse runs are pale and dotted.
+  the newest ones' dashes move along the line (in the trail); corpse runs are pale and dotted.
 - MarkerItem: the player, at screen size: a disc in the class colour with a pulsing halo and an arrow in the
   direction of travel; a flapping gryphon on flight paths and a swirling portal inside dungeons. Mounted it
   carries a small medallion with the mount's game icon. Dead it is a dim grave mark, released a floating wisp
@@ -22,11 +22,14 @@ Over the window (widgets, all transparent for the mouse):
 - CinemaFrame: a vignette and letterbox bars that slide in when the replay starts.
 - TitleCard: the large title of a level-up (and of the end): it scales in with a glow and a passing shine. A
   death gets the same card in dark red.
-- AchievementToast: an event, as a small achievement alert that slides in from the right.
+- AchievementToast: an event, as a small achievement alert that slides in from the right (drops in at the top
+  centre where the screenshots stand at the side).
 - CloudCover: clouds that close over the picture and part again, for trips to and from an island in the sky.
 - PhotoOverlay: a screenshot as a polaroid that flies out from the marker after a white flash, drifts slowly
   under an achievement banner while it is shown, and flies back to its pin. A level-up's picture gets a
   ribbon saying "Level up" instead (its title has just named the level).
+- SideShots: screenshots in a pile over the right edge of the map while the replay goes on (option
+  "cine_side_photos"): each flies from where it was taken to the top of the pile.
 """
 
 from __future__ import annotations
@@ -34,11 +37,12 @@ from __future__ import annotations
 import bisect
 import math
 import random
+import time
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import (QBrush, QColor, QFont, QFontMetrics, QLinearGradient, QPainter,
-                           QPainterPath, QPen, QPixmap, QRadialGradient)
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt
+from PySide6.QtGui import (QBrush, QColor, QFont, QFontMetrics, QImage, QLinearGradient, QPainter, QPainterPath,
+                           QPen, QPixmap, QPolygonF, QRadialGradient, QTransform)
 from PySide6.QtWidgets import QGraphicsColorizeEffect, QGraphicsItem, QGraphicsView, QWidget
 
 from ..domain import maps
@@ -61,6 +65,9 @@ GOLD_LETTERS = ("#fff6c8", theme.GOLD, "#b07a10")   # large gold letters: top, m
 GOLD_GLOW = QColor(255, 196, 60)
 SYMBOL_FONTS = ["Segoe UI Symbol", "Segoe UI", "DejaVu Sans"]
 PIN_POP = 0.35             # seconds a new pin takes to pop up
+PIN_SPRITE = 56            # a pin is drawn once into a picture this size (screen px), centred on its spot
+PIN_NEAR = 6               # pins closer than this on screen (px) count as one place and fan out
+CARD_DETAIL = 1.5          # a side picture's paper and banner are drawn this much finer than the screen once
 BURST_LIFE = {"level": 1.7, "death": 1.5, "event": 1.1, "revive": 1.8, "spirit": 1.6, "teleport": 1.5, "arrive": 1.4,
               "quest": 1.6}
 BURST_REACH = {"level": 110, "death": 70, "event": 55, "revive": 90, "spirit": 60, "teleport": 80, "arrive": 95,
@@ -70,6 +77,14 @@ QUEST_SIZE = 34            # the question mark's height on screen (the game's te
 GHOST_COLOR = QColor("#b9d3ea")   # the corpse run on the map, and the ghost
 ARCANE_COLOR = QColor("#8fc4ff")  # teleports: the swirl, the comet and its trail
 GHOST_DOTS = (0.1, 2.2)    # dotted line of the corpse run, in pen widths
+ROUTE_CHUNK = 96           # lines per piece of the route (pieces outside the view are not drawn)
+LAYER_MARGIN = 0.25        # the old route's cached layer reaches this share of the view past each edge
+LAYER_ZOOM = 1.12          # ... and the next one is drawn once the zoom moved further than this factor
+LAYER_BUDGET = 0.004       # seconds per frame for drawing the next layer
+LAYER_STEADY = 0.01        # ... which starts once the zoom changes less than this (log) per frame
+LOD_PIXEL = 0.6            # zoomed out, route points closer than this (screen px) are left out
+LOD_BASE = 0.02            # ... in steps of scene units doubling from this one
+WORLD_LAYER_SCALE = 2.5    # screen px per scene unit of the whole map's layer
 SPIRIT_TINT = QColor(96, 116, 142)    # the spirit world's light: grey tones in this colour
 LETTERBOX = 2.2            # aspect ratio of the picture between the bars
 BARS_SECONDS = 1.2         # time the bars take to slide in
@@ -262,14 +277,68 @@ def _plate(painter: QPainter, rect: QRectF, stops, radius: float = 0.0) -> None:
 
 # -- route --------------------------------------------------------------------------------------------------
 
+class _OldLayer:
+    """The route older than the trail, drawn once and reused while the camera stays near it: its outlines (an
+    alpha mask) and its lines, each at the old route's alpha, so a road walked twice looks stronger as before.
+    Pieces are only ever added whole and in order, so the layer looks as if the old route had been drawn at once."""
+
+    def __init__(self, view_transform: QTransform, rect: QRectF, dpr: float, segments: int):
+        self.dpr = dpr
+        self.scale = view_transform.m11()
+        self.to_layer = view_transform * QTransform.fromTranslate(-rect.left(), -rect.top())   # scene -> layer
+        self.from_layer = self.to_layer.inverted()[0]
+        to_scene = view_transform.inverted()[0]
+        self.scene_rect = to_scene.mapRect(rect)
+        mx, my = rect.width() * LAYER_MARGIN / (1 + 2 * LAYER_MARGIN) / 2, \
+            rect.height() * LAYER_MARGIN / (1 + 2 * LAYER_MARGIN) / 2
+        self.inner = to_scene.mapRect(rect.adjusted(mx, my, -mx, -my))   # past this, a new layer is prepared
+        size = QSize(math.ceil(rect.width() * dpr), math.ceil(rect.height() * dpr))
+        self.outline = QImage(size, QImage.Format.Format_Alpha8)
+        self.lines = QImage(size, QImage.Format.Format_ARGB32_Premultiplied)
+        for image in (self.outline, self.lines):
+            image.setDevicePixelRatio(dpr)
+            image.fill(0)
+        self.done = [0] * segments          # per segment: the lines up to this point are on the layer
+        pad = 8 / self.scale
+        self.cull = self.scene_rect.adjusted(-pad, -pad, pad, pad)
+
+    def ratio(self, view_transform: QTransform) -> float:
+        return view_transform.m11() / self.scale
+
+    def draw(self, painter: QPainter, image: QImage) -> None:
+        """Only the part of the layer on screen: the layer reaches well past the view (LAYER_MARGIN), and blending
+        all of it, scaled and smoothed, every frame cost more than drawing the trail."""
+        painter.save()
+        painter.setWorldTransform(self.from_layer * painter.worldTransform())
+        seen = painter.worldTransform().inverted()[0].mapRect(QRectF(painter.viewport()))
+        d = self.dpr
+        left, top = max(0, math.floor(seen.left() * d) - 2), max(0, math.floor(seen.top() * d) - 2)
+        right = min(image.width(), math.ceil(seen.right() * d) + 2)
+        bottom = min(image.height(), math.ceil(seen.bottom() * d) + 2)
+        if right > left and bottom > top:
+            source = QRectF(left, top, right - left, bottom - top)
+            painter.drawImage(QRectF(left / d, top / d, (right - left) / d, (bottom - top) / d), image, source)
+        painter.restore()
+
+
 class RouteItem(QGraphicsItem):
     """The route on one map, painted up to time t; the last part up to the moving marker (head). Lines within a
-    ghost span (from the release to coming back to life) are the corpse run."""
+    ghost span (from the release to coming back to life) are the corpse run.
+
+    The route is cut into pieces of ROUTE_CHUNK lines; pieces outside the view are skipped. Whole pieces older
+    than the trail are kept on an _OldLayer while the camera stays near, so a frame draws only the trail, the glow
+    and the rest of the old route since the last whole piece (old flight paths too: their dashes stand still, only
+    the trail's move). When the
+    camera nears the layer's edge or zooms, a new layer is drawn a few pieces per frame (LAYER_BUDGET) and takes
+    over once complete. While the camera zooms fast (flights between zones) the old route is drawn directly, far
+    out from a layer of the whole map; once it is steady again a layer is drawn at once. Zoomed out, points closer
+    than about a pixel are left out (_points)."""
 
     def __init__(self, segments, colors: RouteColors, ghost_spans=()):
         super().__init__()
         self.setZValue(2)                        # above the map art and the light
         self.segs = []
+        self.pieces: list[tuple[list, list[int]]] = []   # per segment: [(first, last point, colour, box)], firsts
         self.has_taxi = False
         for seg in segments:
             times = [p[0] for p in seg.points]
@@ -279,12 +348,28 @@ class RouteItem(QGraphicsItem):
                 for i in range(1, len(times)):
                     if any(a < times[i] <= b for a, b in ghost_spans):
                         line_colors[i] = GHOST_COLOR
-            self.segs.append((times, [QPointF(x * W, y * H) for _, x, y in seg.points], seg.taxi,
-                              self._runs(line_colors), line_colors))
+            pts = [QPointF(x * W, y * H) for _, x, y in seg.points]
+            runs = self._runs(line_colors)
+            self.segs.append((times, pts, seg.taxi, runs, line_colors))
+            pieces = []
+            for a, b, color in runs:
+                for first in range(a, b, ROUTE_CHUNK):
+                    last = min(b, first + ROUTE_CHUNK)
+                    # Padded: a straight line's box has no height (or width), and such a box never intersects.
+                    box = QPolygonF(pts[first:last + 1]).boundingRect().adjusted(-0.01, -0.01, 0.01, 0.01)
+                    pieces.append((first, last, color, box))
+            self.pieces.append((pieces, [p[0] for p in pieces]))
             self.has_taxi = self.has_taxi or seg.taxi
         self.t = 0.0
         self.head: QPointF | None = None
         self.phase = 0.0
+        self.layer: _OldLayer | None = None          # the one shown
+        self.next_layer: tuple[_OldLayer, list[int]] | None = None   # one being drawn, and how far it goes
+        self.layered = False                          # a layer was drawn for this map
+        self.world_layer: _OldLayer | None = None    # the whole map, far out (zooming fast on a flight)
+        self.last_scale: float | None = None
+        self._pens: dict = {}
+        self._lod: dict[tuple[int, int, int], list[QPointF]] = {}   # simplified pieces, see _points
 
     @staticmethod
     def _runs(line_colors) -> list[tuple[int, int, QColor]]:
@@ -324,6 +409,18 @@ class RouteItem(QGraphicsItem):
             pen.setDashPattern(list(GHOST_DOTS))
         return pen
 
+    def _old_pen(self, color: QColor, outline: bool, taxi: bool = False) -> QPen:
+        """The pen of the old route: kept, as it never changes. A flight path's dashes stand still here (only the
+        trail's move): moving them meant drawing every flight ever taken anew each frame, which grew with each one."""
+        taxi = taxi and not outline
+        key = (OUTLINE.rgba() if outline else color.rgba(), outline, taxi)
+        if key not in self._pens:
+            pen = self._pen(OUTLINE, 5, 90, False) if outline else self._pen(color, 3, 120, False)
+            if taxi:
+                pen.setDashPattern(list(DASH))
+            self._pens[key] = pen
+        return self._pens[key]
+
     def painted(self) -> int:
         """Number of route points painted at the current time (for tests)."""
         return sum(bisect.bisect_right(seg[0], self.t) for seg in self.segs)
@@ -347,20 +444,190 @@ class RouteItem(QGraphicsItem):
                 groups.append((k, [line[2], line[3]]))
         return groups
 
+    def _whole(self, k: int, first: int) -> int:
+        """Where the last whole piece of segment k before point first ends (layers take whole pieces only)."""
+        pieces, firsts = self.pieces[k]
+        i = bisect.bisect_right(firsts, first) - 1
+        if i < 0:
+            return 0
+        start, last = pieces[i][0], pieces[i][1]
+        return last if last <= first else start
+
+    def _points(self, k: int, i: int, scale: float) -> list[QPointF]:
+        """The points of piece i of segment k, without those closer than about a pixel (at scale, screen px per
+        scene unit) to the one before: zoomed out, thousands of points fall on a few pixels."""
+        first, last = self.pieces[k][0][i][:2]
+        pts = self.segs[k][1]
+        level = int(math.log2(LOD_PIXEL / scale / LOD_BASE)) if scale < LOD_PIXEL / LOD_BASE else -1
+        if level < 0:
+            return pts[first:last + 1]
+        key = (k, i, level)
+        kept = self._lod.get(key)
+        if kept is None:
+            near = LOD_BASE * 2 ** level
+            kept = [pts[first]]
+            x, y = pts[first].x(), pts[first].y()
+            for p in pts[first + 1:last]:
+                if abs(p.x() - x) + abs(p.y() - y) >= near:
+                    kept.append(p)
+                    x, y = p.x(), p.y()
+            kept.append(pts[last])
+            self._lod[key] = kept
+        return kept
+
+    def _draw_old(self, painter: QPainter, k: int, lo: int, hi: int, pen_of, cull: QRectF | None = None,
+                  scale: float = math.inf) -> None:
+        """The lines of segment k ending at points lo+1 .. hi, a polyline per piece (pieces outside cull are
+        skipped), each with pen_of(colour); whole pieces simplified for the scale (screen px per scene unit)."""
+        if hi <= lo:
+            return
+        pieces, firsts = self.pieces[k]
+        pts = self.segs[k][1]
+        i = max(0, bisect.bisect_right(firsts, lo) - 1)
+        while i < len(pieces):
+            first, last, color, box = pieces[i]
+            i += 1
+            if first >= hi:
+                break
+            if last <= lo or (cull is not None and not cull.intersects(box)):
+                continue
+            painter.setPen(pen_of(color))
+            if lo <= first and last <= hi:
+                painter.drawPolyline(self._points(k, i - 1, scale))
+            else:
+                painter.drawPolyline(pts[max(first, lo):min(last, hi) + 1])
+
+    def _grow(self, layer: _OldLayer, upto: list[int], budget: float | None = None):
+        """Adds the whole pieces up to upto (per segment) to the layer, in order. With a budget (seconds), it stops
+        when that is used up and returns False if something is left; else returns True."""
+        todo = [(k, d, self._whole(k, f)) for k, (d, f) in enumerate(zip(layer.done, upto))]
+        todo = [(k, d, w) for k, d, w in todo if w > d]
+        if not todo:
+            return True
+        clock = time.perf_counter()
+        painters = [QPainter(layer.outline), QPainter(layer.lines)]
+        for p in painters:
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            p.setTransform(layer.to_layer)
+        finished = True
+        for k, done, whole in todo:
+            pieces, firsts = self.pieces[k]
+            i = max(0, bisect.bisect_right(firsts, done) - 1)
+            while i < len(pieces) and pieces[i][1] <= whole:
+                first, last, color, box = pieces[i]
+                i += 1
+                if last <= done or not layer.cull.intersects(box):
+                    continue
+                line = self._points(k, i - 1, layer.scale)
+                painters[0].setPen(self._old_pen(color, True))
+                painters[0].drawPolyline(line)
+                painters[1].setPen(self._old_pen(color, False, self.segs[k][2]))
+                painters[1].drawPolyline(line)
+                layer.done[k] = last
+                if budget is not None and time.perf_counter() - clock > budget:
+                    finished = False
+                    break
+            if not finished:
+                break
+            layer.done[k] = whole
+        for p in painters:
+            p.end()
+        return finished
+
+    def _view(self) -> QGraphicsView | None:
+        scene = self.scene()
+        views = scene.views() if scene is not None else []
+        return views[0] if views else None
+
+    def _old_layer(self, painter: QPainter, firsts: list[int]) -> tuple[_OldLayer | None, QRectF | None]:
+        """(the old route's layer grown up to firsts, per segment the point where the trail begins; the view in
+        scene coordinates, padded by a line's width). The layer is None while there is none for the view (all the
+        old route is drawn directly then, as while the camera zooms fast on a flight); both are None without a
+        view."""
+        view = self._view()
+        if view is None:
+            return None, None
+        transform = view.viewportTransform()
+        viewport = QRectF(view.viewport().rect())
+        scale = transform.m11()
+        if viewport.isEmpty() or scale <= 0:
+            return None, None
+        visible = transform.inverted()[0].mapRect(viewport)
+        pad = 8 / scale
+        cull = visible.adjusted(-pad, -pad, pad, pad)
+        dpr = painter.device().devicePixelRatioF()
+        steady = self.last_scale is not None and abs(math.log(scale / self.last_scale)) < LAYER_STEADY
+        self.last_scale = scale
+        mx, my = viewport.width() * LAYER_MARGIN, viewport.height() * LAYER_MARGIN
+        area = viewport.adjusted(-mx, -my, mx, my)
+
+        def fresh() -> _OldLayer:
+            return _OldLayer(transform, area, dpr, len(self.segs))
+
+        def usable(layer: _OldLayer) -> bool:
+            # Not one drawn at a much other zoom: zooming in on and on (diving in after a teleport) kept a layer
+            # from far out, blown up and blurred, as long as the camera never held still for a new one.
+            return (layer.dpr == dpr and layer.scene_rect.contains(visible)
+                    and 1 / LAYER_ZOOM ** 2 <= layer.ratio(transform) <= LAYER_ZOOM ** 2
+                    and not any(f < d for f, d in zip(firsts, layer.done)))
+
+        layer = self.layer
+        if layer is not None and any(f < d for f, d in zip(firsts, layer.done)):
+            self.layer = layer = self.next_layer = None      # time went back
+        if layer is not None and not usable(layer):
+            self.layer = layer = None               # moved or zoomed past it
+        if self.next_layer is not None and not (usable(self.next_layer[0]) and 1 / LAYER_ZOOM ** 2
+                                                <= self.next_layer[0].ratio(transform) <= LAYER_ZOOM ** 2):
+            self.next_layer = None                  # the camera went on: started again once it is steady
+        far = scale <= WORLD_LAYER_SCALE * LAYER_ZOOM ** 2
+        if layer is None and not far and (steady or not self.layered):
+            layer = self.layer = fresh()            # drawn at once: it costs about what one direct frame does
+            self.layered = True
+            self.next_layer = None
+            self._grow(layer, firsts)
+            return layer, cull
+        if layer is None:                           # zooming fast: far out, the whole map's layer serves
+            if not far:
+                return None, cull
+            if steady and self.next_layer is None:
+                self.next_layer = (fresh(), list(firsts))    # meanwhile the sharp one, in steps
+            if self.next_layer is not None:
+                new, target = self.next_layer
+                if self._grow(new, target, LAYER_BUDGET):
+                    self.next_layer = None
+                    self.layer = layer = new
+                    self.layered = True
+                    self._grow(layer, firsts)
+                    return layer, cull
+            world = self.world_layer
+            if world is None or world.dpr != dpr or any(f < d for f, d in zip(firsts, world.done)):
+                size = QRectF(0, 0, W, H).adjusted(-20, -20, 20, 20)
+                world = self.world_layer = _OldLayer(
+                    QTransform.fromScale(WORLD_LAYER_SCALE, WORLD_LAYER_SCALE),
+                    QTransform.fromScale(WORLD_LAYER_SCALE, WORLD_LAYER_SCALE).mapRect(size), dpr, len(self.segs))
+            self._grow(world, firsts)
+            return world, cull
+        if self.next_layer is None and steady and (
+                not layer.inner.contains(visible) or not 1 / LAYER_ZOOM <= layer.ratio(transform) <= LAYER_ZOOM):
+            self.next_layer = (fresh(), list(firsts))    # the camera nears the edge or zooms: the next one, in steps
+        if self.next_layer is not None:
+            new, target = self.next_layer
+            if self._grow(new, target, LAYER_BUDGET):
+                self.next_layer = None
+                self.layer = layer = new
+        self._grow(layer, firsts)
+        return layer, cull
+
     def paint(self, painter: QPainter, option, widget=None) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        old, trail, glow = [], [], []        # (taxi, colour, points), (taxi, step, colour, points), ...
+        firsts, trail, glow = [], [], []     # per segment, (taxi, step, colour, points), (step, colour, points)
         for times, pts, taxi, runs, line_colors in self.segs:
             n = bisect.bisect_right(times, self.t)
             if n == 0:
+                firsts.append(0)
                 continue
             first = max(0, bisect.bisect_right(times, self.t - TRAIL_SECONDS) - 1)
-            for a, b, color in runs:
-                if a >= first:
-                    break
-                line = pts[a:min(b, first) + 1]
-                if len(line) >= 2:
-                    old.append((taxi, color, line))
+            firsts.append(first)
             lines = self._trail_lines(times, pts, line_colors, first, n)
             for (step, color), line in self._group(
                     lines, lambda ln: (min(TRAIL_STEPS - 1, int(ln[0] / TRAIL_SECONDS * TRAIL_STEPS)), ln[1])):
@@ -369,6 +636,9 @@ class RouteItem(QGraphicsItem):
                     [ln for ln in lines if ln[0] < GLOW_SECONDS],
                     lambda ln: (min(3, int(ln[0] / GLOW_SECONDS * 4)), ln[1])):
                 glow.append((step, color, line))
+        layer, cull = self._old_layer(painter, firsts)
+        scale = painter.worldTransform().m11()
+        done = layer.done if layer is not None else [0] * len(firsts)
 
         # Glow under everything (added light), then all outlines, then the lines, so joints stay clean.
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
@@ -379,16 +649,19 @@ class RouteItem(QGraphicsItem):
                 painter.drawPolyline(line)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         # A dark outline keeps the line readable on bright maps (the Barrens are gold too).
-        for taxi, color, line in old:
-            painter.setPen(self._pen(OUTLINE, 5, 90, False))
-            painter.drawPolyline(line)
+        if layer is not None:
+            layer.draw(painter, layer.outline)
+        for k, first in enumerate(firsts):
+            self._draw_old(painter, k, done[k], first, lambda c: self._old_pen(c, True), cull, scale)
         for taxi, step, color, line in trail:
             k = 1 - (step + 0.5) / TRAIL_STEPS          # 1: newest
             painter.setPen(self._pen(OUTLINE, 5 + 3 * k, 90 + 120 * k, False))
             painter.drawPolyline(line)
-        for taxi, color, line in old:
-            painter.setPen(self._pen(color, 3, 120, taxi))
-            painter.drawPolyline(line)
+        if layer is not None:
+            layer.draw(painter, layer.lines)
+        for k, first in enumerate(firsts):
+            taxi = self.segs[k][2]
+            self._draw_old(painter, k, done[k], first, lambda c, taxi=taxi: self._old_pen(c, False, taxi), cull, scale)
         for taxi, step, color, line in trail:
             k = 1 - (step + 0.5) / TRAIL_STEPS
             painter.setPen(self._pen(color, 3 + 1.8 * k, 130 + 125 * k, taxi))
@@ -830,9 +1103,10 @@ class Pin:
     pos: QPointF                 # on the map (scene)
     glyph: str
     color: QColor
-    thumb: QPixmap | None = None  # screenshots: a small picture
+    thumb: QPixmap | None = None  # screenshots: a small picture (it may come a little later, see photo)
     tilt: float = 0.0
     icon: QPixmap | None = None   # events: the game icon, shown instead of the glyph
+    photo: bool = False           # a screenshot's polaroid, also while its picture is still being loaded
 
 
 @dataclass
@@ -860,6 +1134,7 @@ class PinsItem(QGraphicsItem):
         self.times = [p.time for p in self.pins]
         self.shown: dict[int, _Shown] = {}
         self.bursts: list[Burst] = []
+        self._sprites: dict[tuple[int, float, bool], QPixmap] = {}
 
     def boundingRect(self) -> QRectF:
         return QRectF(-60, -60, W + 120, H + 120)
@@ -901,30 +1176,61 @@ class PinsItem(QGraphicsItem):
         painter.resetTransform()          # pins are drawn at screen size
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        placed: list[QPointF] = []
+        dpr = painter.device().devicePixelRatioF()
+        views = self.scene().views() if self.scene() is not None else []
+        screen = (transform.mapRect(views[0].mapToScene(views[0].viewport().rect()).boundingRect())
+                  if views else QRectF(painter.viewport())).adjusted(-PIN_SPRITE, -PIN_SPRITE, PIN_SPRITE, PIN_SPRITE)
+        placed: dict[tuple[int, int], list[QPointF]] = {}    # by cells of PIN_NEAR px: pins already placed
         for i in sorted(self.shown):
             pin = self.pins[i]
             p = transform.map(pin.pos)
-            same = sum(1 for q in placed if abs(q.x() - p.x()) + abs(q.y() - p.y()) < 6)
-            placed.append(QPointF(p))
+            cx, cy = int(p.x() // PIN_NEAR), int(p.y() // PIN_NEAR)
+            same = sum(1 for dx in (-1, 0, 1) for dy in (-1, 0, 1) for q in placed.get((cx + dx, cy + dy), ())
+                       if abs(q.x() - p.x()) + abs(q.y() - p.y()) < PIN_NEAR)
+            placed.setdefault((cx, cy), []).append(p)
             if same:
                 a = math.radians(same * 55 - 90)
                 ring = 18 + 6 * (same // 6)
                 p = QPointF(p.x() + math.cos(a) * ring, p.y() + math.sin(a) * ring)
             scale = ease_out_back(self.shown[i].age / PIN_POP)
-            if scale <= 0.01:
+            if scale <= 0.01 or not screen.contains(p):
                 continue
             painter.save()
             painter.translate(p)
             painter.scale(scale, scale)
-            if pin.thumb is not None:
-                self._polaroid(painter, pin)
-            else:
-                self._medallion(painter, pin)
+            half = PIN_SPRITE / 2
+            painter.drawPixmap(QRectF(-half, -half, PIN_SPRITE, PIN_SPRITE), self._sprite(i, pin, dpr),
+                               QRectF(0, 0, PIN_SPRITE * self._ratio(dpr), PIN_SPRITE * self._ratio(dpr)))
             painter.restore()
         for b in self.bursts:
             self._burst(painter, transform.map(b.pos), b)
         painter.restore()
+
+    @staticmethod
+    def _ratio(dpr: float) -> float:
+        return max(2.0, dpr)        # drawn finer than the screen, so it stays crisp between pixels and popping up
+
+    def _sprite(self, i: int, pin: Pin, dpr: float) -> QPixmap:
+        """The pin drawn once (it never changes, but for a screenshot's picture arriving)."""
+        key = (i, dpr, pin.thumb is None)
+        sprite = self._sprites.get(key)
+        if sprite is None:
+            self._sprites.pop((i, dpr, True), None)
+            ratio = self._ratio(dpr)
+            sprite = QPixmap(round(PIN_SPRITE * ratio), round(PIN_SPRITE * ratio))
+            sprite.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(sprite)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            painter.scale(ratio, ratio)
+            painter.translate(PIN_SPRITE / 2, PIN_SPRITE / 2)
+            if pin.photo or pin.thumb is not None:
+                self._polaroid(painter, pin)
+            else:
+                self._medallion(painter, pin)
+            painter.end()
+            self._sprites[key] = sprite
+        return sprite
 
     @staticmethod
     def _medallion(painter: QPainter, pin: Pin) -> None:
@@ -945,6 +1251,16 @@ class PinsItem(QGraphicsItem):
     @staticmethod
     def _polaroid(painter: QPainter, pin: Pin) -> None:
         painter.rotate(pin.tilt)
+        if pin.thumb is None:                         # its picture is still being loaded
+            paper, photo = QRectF(-14, -13, 28, 26), QRectF(-12, -11, 24, 17)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(0, 0, 0, 110))
+            painter.drawRect(paper.translated(1.5, 2.5))
+            painter.setPen(QPen(PAPER_EDGE, 1))
+            painter.setBrush(PAPER)
+            painter.drawRect(paper)
+            painter.fillRect(photo, QColor(70, 60, 48))
+            return
         draw_polaroid(painter, QRectF(-14, -13, 28, 26), QRectF(-12, -11, 24, 17), pin.thumb, QPointF(1.5, 2.5))
 
     @staticmethod
@@ -1156,6 +1472,7 @@ class CinemaFrame(_Overlay):
     def __init__(self, parent):
         super().__init__(parent)
         self.progress = 0.0
+        self._vignette: tuple[tuple, QPixmap] | None = None   # drawn once per size
 
     @staticmethod
     def target_bar(w: int, h: int) -> int:
@@ -1173,19 +1490,29 @@ class CinemaFrame(_Overlay):
         self.update()
         return True
 
+    def _vignette_picture(self, w: int, h: int, dpr: float) -> QPixmap:
+        key = (w, h, dpr)
+        if self._vignette is None or self._vignette[0] != key:
+            pixmap = QPixmap(math.ceil(w * dpr), math.ceil(h * dpr))
+            pixmap.setDevicePixelRatio(dpr)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            painter.translate(w / 2, h / 2)
+            painter.scale(w / 2, h / 2)
+            vignette = QRadialGradient(QPointF(0, 0), 1.42)
+            vignette.setColorAt(0, QColor(0, 0, 0, 0))
+            vignette.setColorAt(0.5, QColor(0, 0, 0, 0))
+            vignette.setColorAt(0.78, QColor(0, 0, 0, 90))
+            vignette.setColorAt(1, QColor(0, 0, 0, 215))
+            painter.fillRect(QRectF(-1, -1, 2, 2), vignette)
+            painter.end()
+            self._vignette = (key, pixmap)
+        return self._vignette[1]
+
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         w, h = self.width(), self.height()
-        painter.save()
-        painter.translate(w / 2, h / 2)
-        painter.scale(w / 2, h / 2)
-        vignette = QRadialGradient(QPointF(0, 0), 1.42)
-        vignette.setColorAt(0, QColor(0, 0, 0, 0))
-        vignette.setColorAt(0.5, QColor(0, 0, 0, 0))
-        vignette.setColorAt(0.78, QColor(0, 0, 0, 90))
-        vignette.setColorAt(1, QColor(0, 0, 0, 215))
-        painter.fillRect(QRectF(-1, -1, 2, 2), vignette)
-        painter.restore()
+        painter.drawPixmap(0, 0, self._vignette_picture(w, h, painter.device().devicePixelRatioF()))
         bar = self.bar()
         if bar > 0:
             painter.fillRect(0, 0, w, bar, QColor("black"))
@@ -1317,6 +1644,7 @@ class TitleCard(_TimedOverlay):
         super().__init__(parent)
         self.heading = self.text = self.subtitle = ""
         self.tone = "gold"
+        self._still: tuple[tuple, QPixmap] | None = None     # the settled title, drawn once
         self.hide()
 
     def show_text(self, text: str, life: float, heading: str = "", subtitle: str = "", tone: str = "gold") -> None:
@@ -1333,9 +1661,28 @@ class TitleCard(_TimedOverlay):
         if not self.text:
             return
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setOpacity(self.envelope(FADE_SECONDS, FADE_SECONDS))
         w, h = self.width(), self.height()
+        settled = max(self.INTRO, self.SHINE[1], 0.9, sum(self.LINES))     # nothing moves after this
+        if self.age < settled:
+            self._paint_title(painter, w, h)
+            painter.end()
+            return
+        dpr = painter.device().devicePixelRatioF()
+        key = (self.text, self.heading, self.subtitle, self.tone, w, h, dpr)
+        if self._still is None or self._still[0] != key:
+            pixmap = QPixmap(math.ceil(w * dpr), math.ceil(h * dpr))
+            pixmap.setDevicePixelRatio(dpr)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            still = QPainter(pixmap)
+            self._paint_title(still, w, h)
+            still.end()
+            self._still = (key, pixmap)
+        painter.drawPixmap(0, 0, self._still[1])
+        painter.end()
+
+    def _paint_title(self, painter: QPainter, w: int, h: int) -> None:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         intro = ease_out(self.age / self.INTRO)
         # A soft dark band behind the text keeps it readable on bright maps.
         band = QRadialGradient(QPointF(0, 0), 1)
@@ -1384,7 +1731,6 @@ class TitleCard(_TimedOverlay):
             painter.setFont(pixel_font(h * 0.08))
             draw_shadowed_text(painter, QRectF(-w / 2, bottom + h * (0.075 if level else 0.05), w, h * 0.12),
                                self.subtitle, QColor("#d9c9a3"), offset=1.5)
-        painter.end()
 
     def _level_glow(self, painter: QPainter, box: QRectF) -> None:
         """The game's golden glow behind the title: flaring up, then settling."""
@@ -1569,11 +1915,13 @@ class AchievementToast(_TimedOverlay):
         super().__init__(parent, life)
         self.parts = banner_parts(cue, with_time=False)
         self.right = 0.0                # where its right edge rests
+        self.centred = False            # at the top centre: drops in instead of sliding in from the right
         self.y: float | None = None     # current top, eased towards target_y
         self.target_y = 0.0
 
-    def place_at(self, right: float, top: float) -> None:
-        self.right, self.target_y = right, top
+    def place_at(self, right: float, top: float, centred: bool = False) -> None:
+        """Rests with its right edge at right (centred: drops in from above instead of sliding in)."""
+        self.right, self.target_y, self.centred = right, top, centred
         if self.y is None:
             self.y = top
         self._move()
@@ -1590,6 +1938,9 @@ class AchievementToast(_TimedOverlay):
         enter = ease_out(self.age / self.SLIDE)
         leave = self.leaving()
         # A short slide only: a child reaching past the window's edge breaks full screen on Windows.
+        if self.centred:
+            self.move(int(self.right - self.width()), int((self.y or 0) - 18 * max(1 - enter, leave)))
+            return
         x = self.right - self.width() + 24 * max(1 - enter, leave)     # right rests 24 px from the edge
         self.move(int(x), int(self.y or 0))
 
@@ -1718,3 +2069,272 @@ class PhotoOverlay(_TimedOverlay):
             else:
                 draw_banner(painter, banner.translated(0, -18 * (1 - drop)), heading, title, "", badge, color, icon)
         painter.end()
+
+
+# -- screenshots at the side ------------------------------------------------------------------------------
+
+SIDE_WIDTH = 0.22          # a side picture's paper, share of the window's width
+SIDE_MARGIN = 24           # pixels between the pile and the window's edge
+SIDE_FLY = 0.7             # seconds a picture takes to fly from where it was taken to the pile
+SIDE_FLASH = 0.35          # the small flash at the spot it was taken
+SIDE_LIFE = 25.0           # real seconds a picture stays (unless newer ones push it off) ...
+SIDE_LEAVE = 0.8           # ... and then fades out
+SIDE_DEPTH_SECONDS = 0.18  # time constant of a picture going under a newer one
+SIDE_STACK = 5             # pictures the pile shows at once
+SIDE_STEP_DOWN = 0.16      # each one further under peeks out this much lower (share of its paper's height) ...
+SIDE_STEP_IN = 0.05        # ... this much further in (share of its width) ...
+SIDE_STEP_SCALE = 0.04     # ... and this much smaller
+
+
+@dataclass
+class _Card:
+    cue: Cue
+    pixmap: QPixmap
+    origin: QPointF             # where it flies from: the spot it was taken, on the screen
+    tilt: float
+    age: float = 0.0
+    slot: int = 0               # 0 on top, 1 under the newer one, ... SIDE_STACK and more: pushed off
+    depth: float = 0.0          # slot, eased
+    drawn: dict = field(default_factory=dict)   # its paper and banner, drawn once (SideShots._drawn)
+
+
+class SideShots(_Overlay):
+    """Screenshots in a pile over the right edge of the map, while the replay goes on. Each one flashes where
+    it was taken and flies from there to the top of the pile, under a small achievement banner, with the place
+    and date on the polaroid's strip. The ones before go under it (their banners fade away), each a little
+    lower, further in and smaller so its strip peeks out; past SIDE_STACK the oldest falls off, and each
+    picture fades out SIDE_LIFE seconds after it came. hit() finds the picture under the mouse (a click shows
+    it large)."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.cards: list[_Card] = []
+        self.hide()
+
+    # -- the pile ----------------------------------------------------------------------------------
+
+    def add(self, cue: Cue, pixmap: QPixmap, origin: QPointF) -> _Card:
+        for card in self.cards:
+            card.slot += 1
+        seed = scatter(cue.time)
+        tilt = (1 if seed & 4 else -1) * (1.2 + 2.0 * (seed >> 3) / (0xFFFF >> 3))   # always a little crooked
+        card = _Card(cue, pixmap, QPointF(origin), tilt)
+        self.cards.append(card)
+        self.show()
+        self.update()
+        return card
+
+    def advance(self, dt: float) -> None:
+        if not self.cards:
+            return
+        k = smooth(dt, SIDE_DEPTH_SECONDS)
+        for card in self.cards:
+            card.age += dt
+            card.depth += (card.slot - card.depth) * k
+        self.cards = [c for c in self.cards if not self._gone(c)]
+        if not self.cards:
+            self.hide()
+        self.update()
+
+    def clear(self) -> None:
+        self.cards = []
+        self.hide()
+
+    def fade_all(self) -> None:
+        """All pictures fade out now (the end credits show their own)."""
+        for card in self.cards:
+            card.age = max(card.age, SIDE_LIFE)
+
+    def occupied(self) -> bool:
+        """True while a picture stands in the pile (the camera keeps the marker away from it)."""
+        return any(c.slot < SIDE_STACK and c.age < SIDE_LIFE for c in self.cards)
+
+    def hit(self, pos: QPointF) -> _Card | None:
+        """The picture on top at pos (window coordinates), if any."""
+        for card in sorted(self.cards, key=lambda c: c.depth):
+            if card.age < SIDE_FLY or card.slot >= SIDE_STACK or card.age >= SIDE_LIFE:
+                continue
+            paper, _, banner, center, scale, tilt = self.layout(card)
+            local = QPointF(pos - center) / scale
+            angle = math.radians(-tilt)
+            local = QPointF(local.x() * math.cos(angle) - local.y() * math.sin(angle),
+                            local.x() * math.sin(angle) + local.y() * math.cos(angle))
+            if paper.contains(local) or (card.slot == 0 and banner.contains(local)):
+                return card
+        return None
+
+    def screen_rect(self, card: _Card) -> QRectF:
+        """Where the card's picture is on the screen (roughly, without its tilt)."""
+        _, photo, _, center, scale, _ = self.layout(card)
+        return QRectF(center + photo.topLeft() * scale, center + photo.bottomRight() * scale)
+
+    @staticmethod
+    def _gone(card: _Card) -> bool:
+        # Pushed off: gone once it has faded on its way down (its depth only nears its slot).
+        return card.age >= SIDE_LIFE + SIDE_LEAVE or card.depth >= SIDE_STACK - 0.03
+
+    # -- layout ----------------------------------------------------------------------------------------
+
+    def card_size(self, aspect: float) -> tuple[float, float]:
+        """(paper width, banner height) for a picture of this aspect ratio: SIDE_WIDTH of the window, smaller
+        where the picture between the bars is too low for the banner and the full pile under it."""
+        area = self.picture()
+        pw = self.width() * SIDE_WIDTH
+        banner_h = 50.0
+        for _ in range(2):
+            banner_h = clamp(pw * 0.19, 50.0, 84.0)
+            photo_w = pw / 1.07
+            paper_h = photo_w / aspect + photo_w * 0.035 * 5
+            height = banner_h * 0.62 + paper_h * (1 + SIDE_STEP_DOWN * (SIDE_STACK - 1))
+            if height <= area.height() * 0.92:
+                break
+            pw *= area.height() * 0.92 / height
+        return pw, banner_h
+
+    def layout(self, card: _Card) -> tuple[QRectF, QRectF, QRectF, QPointF, float, float]:
+        """Paper, picture and banner around the card's centre, then the centre on the screen, scale and tilt:
+        flying in from its spot, on top of the pile, or under newer ones."""
+        pm = card.pixmap
+        aspect = pm.width() / max(1, pm.height())
+        pw, banner_h = self.card_size(aspect)
+        photo_w = pw / 1.07
+        m = photo_w * 0.035
+        photo_h = photo_w / aspect
+        paper_h = photo_h + 5 * m
+        above = banner_h * 0.62
+        top = -(above + paper_h) / 2 + above
+        paper = QRectF(-pw / 2, top, pw, paper_h)
+        photo = QRectF(-photo_w / 2, top + m, photo_w, photo_h)
+        banner = QRectF(-pw / 2, top - above, pw, banner_h)
+
+        area = self.picture()
+        # The whole pile (the newest on top, the ones under it stepping down) stands in the middle.
+        rest = QPointF(self.width() - SIDE_MARGIN - pw / 2,
+                       area.center().y() - paper_h * SIDE_STEP_DOWN * (SIDE_STACK - 1) / 2)
+        # Under newer ones: lower and further in, a little smaller, the first one under turned the other way;
+        # past the last place it falls off.
+        d = min(card.depth, SIDE_STACK - 1.0)
+        rest += QPointF(-pw * SIDE_STEP_IN * d, paper_h * SIDE_STEP_DOWN * d)
+        tilt = card.tilt * (1 - 2 * min(d, 1.0))
+        scale = 1 - SIDE_STEP_SCALE * d
+        fall = max(0.0, card.depth - (SIDE_STACK - 1))
+        rest += QPointF(0, paper_h * 0.35 * fall)
+        f = ease_out(card.age / SIDE_FLY)
+        center = card.origin + (rest - card.origin) * f
+        scale *= 0.08 + 0.92 * f
+        tilt = tilt * f + 20 * (1 - f)
+        return paper, photo, banner, center, scale, tilt
+
+    # -- painting --------------------------------------------------------------------------------------
+
+    def paintEvent(self, event) -> None:
+        if not self.cards:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        for card in sorted(self.cards, key=lambda c: -c.depth):     # the ones underneath first
+            self._paint_card(painter, card)
+        painter.end()
+
+    def _paint_card(self, painter: QPainter, card: _Card) -> None:
+        age = card.age
+        if age < SIDE_FLASH:                                         # where it was taken
+            r = 46 * (0.6 + 0.4 * age / SIDE_FLASH)
+            glow = QRadialGradient(card.origin, r)
+            glow.setColorAt(0, QColor(255, 255, 255, int(230 * (1 - age / SIDE_FLASH) ** 2)))
+            glow.setColorAt(1, QColor(255, 255, 255, 0))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(glow)
+            painter.drawEllipse(card.origin, r, r)
+        opacity = (clamp(age / 0.12) * (1 - clamp((age - SIDE_LIFE) / SIDE_LEAVE))
+                   * (1 - clamp(card.depth - (SIDE_STACK - 1))))
+        if opacity <= 0:
+            return
+        paper, photo, banner, center, scale, tilt = self.layout(card)
+        painter.save()
+        painter.translate(center)
+        painter.rotate(tilt)
+        painter.scale(scale, scale)
+        painter.setOpacity(opacity)
+        dpr = painter.device().devicePixelRatioF()
+        # The paper with its shadow and caption, then the picture (it zooms slowly while it stands).
+        self._blit(painter, self._drawn(card, "paper", paper, dpr, lambda p: self._paint_paper(p, card, paper,
+                                                                                            photo)), paper)
+        drift = clamp(age / SIDE_LIFE)
+        source = cropped(card.pixmap, photo.width() / photo.height(), 1.0 + 0.05 * drift)
+        painter.drawPixmap(photo, card.pixmap, source)
+        painter.setPen(QPen(QColor(0, 0, 0, 90), 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(photo)
+        if card.depth > 0.02:                                        # under newer ones: in their shade
+            shade = 60 * min(1.0, card.depth) + 18 * max(0.0, card.depth - 1)
+            painter.fillRect(paper, QColor(0, 0, 0, int(min(140.0, shade))))
+        # The banner drops in once the picture has landed and fades as a newer one covers it.
+        drop = ease_out((age - SIDE_FLY * 0.8) / 0.35) * (1 - clamp(card.depth * 1.5))
+        if drop > 0:
+            heading, title, _, badge, color, icon = banner_parts(card.cue, with_time=False)
+            painter.setOpacity(opacity * drop)
+            shown = banner.translated(0, -12 * (1 - drop))
+            shine = (age - SIDE_FLY * 0.8 - 0.3) / 0.9
+            if card.cue.level is not None and 0 < shine < 1:      # its light passing: drawn as it moves
+                draw_ribbon(painter, shown, heading, shine)
+            elif card.cue.level is not None:   # the level-up title in the middle names the level
+                self._blit(painter, self._drawn(card, "banner", shown, dpr,
+                                                lambda p, r=shown: draw_ribbon(p, r, heading)), shown)
+            else:
+                self._blit(painter, self._drawn(card, "banner", shown, dpr, lambda p, r=shown: draw_banner(
+                    p, r, heading, title, "", badge, color, icon)), shown)
+        painter.restore()
+
+    @staticmethod
+    def _paint_paper(painter: QPainter, card: _Card, paper: QRectF, photo: QRectF) -> None:
+        # Shadow, softened by a few widening layers.
+        painter.setPen(Qt.PenStyle.NoPen)
+        for grow, alpha in ((10, 16), (5, 28), (2, 55)):
+            painter.setBrush(QColor(0, 0, 0, alpha))
+            painter.drawRoundedRect(paper.translated(5, 8).adjusted(-grow, -grow, grow, grow), grow, grow)
+        fill = QLinearGradient(paper.topLeft(), paper.bottomRight())
+        fill.setColorAt(0, PAPER)
+        fill.setColorAt(1, QColor("#e4dbc6"))
+        painter.setPen(QPen(PAPER_EDGE, 1))
+        painter.setBrush(fill)
+        painter.drawRect(paper)
+        strip = QRectF(photo.left(), photo.bottom(), photo.width(), paper.bottom() - photo.bottom())
+        caption = "  ·  ".join(p for p in (card.cue.place, format_datetime(card.cue.time)) if p)
+        font = pixel_font(clamp(strip.height() * 0.3, 10, 18))
+        font.setItalic(True)
+        painter.setFont(font)
+        painter.setPen(INK)
+        caption = QFontMetrics(font).elidedText(caption, Qt.TextElideMode.ElideRight, int(strip.width()))
+        painter.drawText(strip, Qt.AlignmentFlag.AlignCenter, caption)
+
+    @staticmethod
+    def _drawn(card: _Card, part: str, rect: QRectF, dpr: float, paint) -> tuple[QPixmap, QRectF]:
+        """A part of the card (paint draws it round rect, in card units) drawn once into a picture with room
+        round it for shadows and flourishes; drawn again only when the window's size changes it."""
+        key = (round(rect.width(), 1), round(rect.height(), 1), dpr)
+        kept = card.drawn.get(part)
+        if kept is not None and kept[0] == key:
+            return kept[1], kept[2]
+        room = max(24.0, rect.height() * 0.6)
+        area = rect.adjusted(-room, -room, room, room)
+        ratio = dpr * CARD_DETAIL
+        pixmap = QPixmap(math.ceil(area.width() * ratio), math.ceil(area.height() * ratio))
+        pixmap.fill(Qt.GlobalColor.transparent)
+        p = QPainter(pixmap)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.scale(ratio, ratio)
+        p.translate(-area.left(), -area.top())
+        paint(p)
+        p.end()
+        card.drawn[part] = (key, pixmap, area.translated(-rect.left(), -rect.top()))
+        return pixmap, card.drawn[part][2]
+
+    @staticmethod
+    def _blit(painter: QPainter, drawn: tuple[QPixmap, QRectF], at: QRectF) -> None:
+        """A part drawn by _drawn, placed round at."""
+        pixmap, area = drawn
+        target = area.translated(at.left(), at.top())
+        painter.drawPixmap(target, pixmap, QRectF(pixmap.rect()))

@@ -229,7 +229,7 @@ class GalleryPage(Page):
         events = {e.event_id: e for e in repo.events(cid, limit=1_000_000)}
         char = repo.character(cid)
         levels = Levels(events.values(), char.level if char else None)
-        route = Route(repo.positions(cid), repo.map_infos())
+        route: Route | None = None          # only for pictures without an event's zone; shared with the other pages
         sessions = sorted((s["started_at"] for s in repo.sessions(cid)), reverse=True)
         entries = []
         for row in rows:
@@ -238,6 +238,8 @@ class GalleryPage(Page):
             t = shot.time or 0
             zone = event.zone_name if event is not None and event.zone_name else None
             if zone is None:
+                if route is None:
+                    route = Route.cached(repo, cid)
                 point = route.point_at(int(t))
                 view = route.view_for(point) if point else None
                 zone = maps.zone_name(view, route.map_infos) if view else None

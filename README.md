@@ -24,7 +24,10 @@ German UI by default, English switchable.
   `%LOCALAPPDATA%\ForeverChronicle\venv`, copies the app and the addon to `%LOCALAPPDATA%\ForeverChronicle\app`,
   installs the addon in WoW Forever, asks once whether to put a "Journey Forever" shortcut on the desktop and in
   the start menu (the answer is kept in `%LOCALAPPDATA%\ForeverChronicle`), and starts the app.
-  For a new version, they unzip the new zip and run the same file again.
+  After that the app updates itself: `tools\package_for_friends.py --release` publishes the zip as GitHub release
+  `v<version>` (needs the repository public, everything committed and pushed, and a version without a release yet),
+  and the installed apps offer it at start ("Jetzt aktualisieren"), download it, restart and then install the new
+  addon. Running the launcher from a newer zip still works as a fallback. Git checkouts never update themselves.
 
 ## Tests
 

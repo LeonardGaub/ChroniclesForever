@@ -2,6 +2,12 @@
 "Journey Forever starten.bat", which sets everything up on their PC with one double-click.
 
     desktop\\.venv\\Scripts\\python tools\\package_for_friends.py [target.zip]
+    desktop\\.venv\\Scripts\\python tools\\package_for_friends.py --release
+
+--release also publishes the zip as GitHub release v<version> of the repository, which the installed apps
+download at start (desktop/forever_chronicle/updater.py). It needs a clean, pushed main and a version that has
+no release yet (raise "## Version:" in ForeverChronicle.toc first); the release notes are CHANGELOG.md's section
+for that version. The token comes from GITHUB_TOKEN or git's credential manager (the one git push uses).
 
 Output: dist/friends/JourneyForever-<version>-Komplett.zip (about 35 MB, most of it the map images), with one
 folder "Journey Forever" at the top:
@@ -11,15 +17,22 @@ folder "Journey Forever" at the top:
     addons/ForeverChronicle/        the addon
     desktop/forever_chronicle/      the desktop app (source; the venv is built on the friend's PC)
 
+Beside the zip: <zip>.sha256, which the app checks the download against.
 Files come from git (tracked plus untracked, not ignored), so caches, venvs and local leftovers stay out.
 The CurseForge upload (addon only) is tools/package_curseforge.py.
 """
 
 from __future__ import annotations
 
+import argparse
+import hashlib
+import json
+import os
 import re
 import subprocess
-import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -27,6 +40,8 @@ ROOT = Path(__file__).resolve().parents[1]
 TOP = "Journey Forever"
 LAUNCHER = "Journey Forever starten.bat"
 PARTS = ("addons/ForeverChronicle/", "desktop/forever_chronicle/")
+REPOSITORY = "LeonardGaub/ChroniclesForever"     # desktop/forever_chronicle/updater.py reads its releases
+API = f"https://api.github.com/repos/{REPOSITORY}"
 STORED = {".jpg", ".jpeg", ".png", ".ogg", ".mp3", ".ico"}   # already compressed
 
 README = """Journey Forever {version}
@@ -55,8 +70,9 @@ den Ordner behalten: die App startest du dann immer wieder ueber "{launcher}".
 Spaeter
 -------
 - Starten: Verknuepfung "Journey Forever" (oder "{launcher}").
-- Neue Version: die neue ZIP entpacken und "{launcher}" wieder doppelklicken.
-  Deine Daten bleiben erhalten (sie liegen in %APPDATA%\\ForeverChronicle).
+- Neue Version: die App fragt beim Start selbst nach ("Jetzt aktualisieren") und bringt dabei auch
+  das neue Addon mit. Klappt das mal nicht: die neue ZIP entpacken und "{launcher}" wieder
+  doppelklicken. Deine Daten bleiben erhalten (sie liegen in %APPDATA%\\ForeverChronicle).
 - Die App liest deine Spieldaten, wenn du dich im Spiel ausloggst oder /reload eingibst.
 
 Probleme? Ein Foto/Screenshot vom Fenster an Leon schicken.
@@ -94,13 +110,94 @@ def build(dest: Path | None = None) -> Path:
             zf.write(ROOT / rel, f"{TOP}/{rel}", compress_type=zipfile.ZIP_STORED if stored else None)
         readme = README.format(version=v, launcher=LAUNCHER).replace("\n", "\r\n")
         zf.writestr(f"{TOP}/LIES MICH.txt", readme.encode("ascii"))
+    checksum_file(dest).write_text(f"{sha256(dest)}  {dest.name}\n", encoding="ascii")
     return dest
 
 
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def checksum_file(zip_path: Path) -> Path:
+    return zip_path.with_name(zip_path.name + ".sha256")
+
+
+# -- GitHub release (--release) ---------------------------------------------------------------------------------
+
+def release_notes(v: str, changelog: str | None = None) -> str:
+    """CHANGELOG.md's section "## <version> ..." without its heading ("" if there is none)."""
+    text = changelog if changelog is not None else (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    match = re.search(rf"^## {re.escape(v)}(?![\w.]).*?$\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    return match.group(1).strip() if match else ""
+
+
+def token() -> str:
+    if os.environ.get("GITHUB_TOKEN"):
+        return os.environ["GITHUB_TOKEN"]
+    answer = subprocess.run(["git", "credential", "fill"], input="protocol=https\nhost=github.com\n\n",
+                            cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    for line in answer.splitlines():
+        if line.startswith("password="):
+            return line.split("=", 1)[1]
+    raise SystemExit("No GitHub token: set GITHUB_TOKEN or sign in to GitHub with git (git push) once")
+
+
+def api(method: str, url: str, secret: str, body: bytes | None = None,
+        content_type: str = "application/json") -> dict:
+    request = urllib.request.Request(url, data=body, method=method, headers={
+        "Authorization": f"Bearer {secret}", "Accept": "application/vnd.github+json",
+        "User-Agent": "JourneyForever-Packager", "Content-Type": content_type})
+    with urllib.request.urlopen(request, timeout=300) as response:
+        return json.loads(response.read() or b"{}")
+
+
+def check_publishable() -> str:
+    """The commit to release: everything committed and pushed, so the release matches the repository."""
+    if git("status", "--porcelain", "--", LAUNCHER, *PARTS, "CHANGELOG.md").strip():
+        raise SystemExit("--release needs everything committed (addon, app, launcher, CHANGELOG.md)")
+    if git("rev-list", "--count", "@{u}..HEAD").strip() != "0":
+        raise SystemExit("--release needs the commits pushed first (git push)")
+    return git("rev-parse", "HEAD").strip()
+
+
+def publish(path: Path, v: str, commit: str) -> str:
+    secret = token()
+    tag = f"v{v}"
+    try:
+        api("GET", f"{API}/releases/tags/{tag}", secret)
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            raise
+    else:
+        raise SystemExit(f"Release {tag} exists already: raise the version in ForeverChronicle.toc first")
+    notes = release_notes(v)
+    if not notes:
+        print(f"Hinweis: CHANGELOG.md has no section '## {v}', the release has no notes.")
+    created = api("POST", f"{API}/releases", secret, json.dumps({
+        "tag_name": tag, "target_commitish": commit, "name": f"Journey Forever {v}", "body": notes,
+    }).encode("utf-8"))
+    upload = created["upload_url"].split("{", 1)[0]
+    for file, kind in ((path, "application/zip"), (checksum_file(path), "text/plain")):
+        query = urllib.parse.urlencode({"name": file.name})
+        api("POST", f"{upload}?{query}", secret, file.read_bytes(), kind)
+    return created.get("html_url", tag)
+
+
 if __name__ == "__main__":
-    if git("status", "--porcelain", "--", LAUNCHER, *PARTS).strip():
+    parser = argparse.ArgumentParser(description="Builds the friends' zip; --release also publishes it.")
+    parser.add_argument("target", nargs="?", type=Path, help="zip path (default: dist/friends/...)")
+    parser.add_argument("--release", action="store_true", help="publish as GitHub release v<version>")
+    args = parser.parse_args()
+    commit = check_publishable() if args.release else ""
+    if not args.release and git("status", "--porcelain", "--", LAUNCHER, *PARTS).strip():
         print("Hinweis: uncommitted changes in the addon or app are included in the zip.")
-    path = build(Path(sys.argv[1]) if len(sys.argv) > 1 else None)
+    path = build(args.target)
     with zipfile.ZipFile(path) as zf:
         names = zf.namelist()
     print(f"{path}  ({len(names)} files, {path.stat().st_size / (1024 * 1024):.1f} MB)")
+    if args.release:
+        print(f"Published: {publish(path, version(), commit)}")

@@ -25,6 +25,7 @@ from __future__ import annotations
 import os
 import random
 import threading
+import time
 import wave
 from collections import deque
 from pathlib import Path
@@ -55,6 +56,7 @@ TRIM = {"click": 0.55,            # the click is heard very often: quieter than 
         "gryphon_call": 0.7, "wind_rider_call": 0.6, "wing_flap": 0.55, "wing_flap_soft": 0.25}
 MIN_GAP = {"click": 0.03, "wing_flap": 0.3, "wing_flap_soft": 0.3}   # seconds before it may start again
 DEFAULT_GAP = 0.35
+EFFECT_RECHECK = 2.0              # seconds before an effect's file is looked for again
 
 FADE_IN = 3.0                     # seconds
 FADE_OUT = 1.2
@@ -247,10 +249,15 @@ class Sound(EffectGate):
 
     def _effect(self, name: str):
         """The loaded effect; an own file added or removed meanwhile (or the game's sounds arriving) is picked
-        up."""
-        path = effect_path(name, game_sounds_on(self.config))
+        up, looked for at most every EFFECT_RECHECK seconds (the wing flaps play twice a second)."""
         cached = self._effects.get(name)
+        game = game_sounds_on(self.config)
+        now = time.monotonic()
+        if cached and cached[2] == game and now - cached[3] < EFFECT_RECHECK:
+            return cached[1]
+        path = effect_path(name, game)
         if cached and cached[0] == path:
+            self._effects[name] = (path, cached[1], game, now)
             return cached[1]
         if cached and cached[1] is not None:
             cached[1].deleteLater()
@@ -258,7 +265,7 @@ class Sound(EffectGate):
         if path.is_file():
             effect = QSoundEffect(self)
             effect.setSource(QUrl.fromLocalFile(str(path)))
-        self._effects[name] = (path, effect)
+        self._effects[name] = (path, effect, game, now)
         return effect
 
     # -- clicks ---------------------------------------------------------------------------

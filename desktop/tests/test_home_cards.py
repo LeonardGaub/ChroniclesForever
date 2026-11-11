@@ -56,6 +56,44 @@ def test_home_screen_cards(ctx, imported):
     window.close()
 
 
+def test_the_shown_page_loads_once(ctx, imported, monkeypatch):
+    """Start, an import (data_changed) and a language change each load the shown page once, for the chosen
+    character."""
+    from forever_chronicle import i18n
+    from forever_chronicle.ui.pages.home import HomePage
+    loads = []
+    original = HomePage.refresh
+    monkeypatch.setattr(HomePage, "refresh", lambda self: (loads.append((self, self.character_id)), original(self)))
+    window = MainWindow(ctx)
+    home, cid = window.page("tab.home"), window.current_character_id()
+    assert cid is not None and [load for load in loads if load[0] is home] == [(home, cid)]
+    ctx.data_changed.emit()
+    i18n.set_language("en")
+    i18n.set_language("de")
+    assert [load for load in loads if load[0] is home] == [(home, cid)] * 4
+    window.close()
+
+
+def test_home_photos_arrive_in_the_background(app, tmp_path):
+    from PySide6.QtCore import QSize
+    from PySide6.QtGui import QColor, QImage
+    from forever_chronicle.ui.pages.home import Photos, Thumb
+    path = tmp_path / "shot.jpg"
+    image = QImage(640, 400, QImage.Format.Format_RGB32)
+    image.fill(QColor("#336699"))
+    assert image.save(str(path), "JPG")
+    photos = Photos(None)
+    thumb = Thumb(str(path), lambda: None, QSize(132, 82), photos)
+    deadline = 200
+    while photos.waiting and deadline:
+        app.processEvents()
+        QTest.qWait(10)
+        deadline -= 1
+    assert not thumb.pixmap().isNull() and thumb.pixmap().height() == 82, "read in a worker, shown when ready"
+    again = Thumb(str(path), lambda: None, QSize(132, 82), photos)
+    assert not again.pixmap().isNull(), "kept: shown at once"
+
+
 def test_session_statistics(ctx, imported):
     cid = ctx.repo.list_characters()[0].character_id
     sessions = ctx.repo.sessions(cid)

@@ -180,7 +180,7 @@ class TimelinePage(Page):
         t = self._selected_time()
         if t is None or not self.character_id:
             return None
-        route = Route.load(self.ctx.repo, self.character_id)
+        route = Route.cached(self.ctx.repo, self.character_id)
         start, end = t - LEAD, t + 3600
         session = next((s for s in self.ctx.repo.sessions(self.character_id) if s["started_at"] <= t), None)
         if session is not None:

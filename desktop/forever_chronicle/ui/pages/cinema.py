@@ -18,15 +18,16 @@ import math
 import time
 from dataclasses import dataclass
 
-from PySide6.QtCore import QElapsedTimer, QPointF, QRectF, QSize, Qt, QTimer, QVariantAnimation
+from PySide6.QtCore import QElapsedTimer, QEvent, QPointF, QRectF, Qt, QTimer, QVariantAnimation
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QLinearGradient, QPainter, QRadialGradient
-from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
+                               QWidget)
 
 from ...domain import event_types
-from ...domain.cinematic import Levels
 from ...domain.route import Route
 from ...domain.route_colors import RouteColors
 from ...i18n import format_day, format_duration, tr
+from ...wow import map_art
 from .. import icons, journey_art, motion, theme
 from ..cards import DATA, ICON_SIZE, CardList
 from ..screenshots import ThumbnailLoader, shots_on_disk
@@ -54,13 +55,15 @@ class Chapter:
     shot: str | None      # its first screenshot on this computer
 
 
-def chapters(repo, character_id: str, route: Route) -> list[Chapter]:
-    """The character's sessions with route points, oldest first, numbered from 1."""
+def chapters(repo, character_id: str, route: Route, shot_rows: list | None = None) -> list[Chapter]:
+    """The character's sessions with route points, oldest first, numbered from 1. shot_rows: shots_on_disk(),
+    if already at hand."""
     events = repo.events(character_id, types=("quest_completed", "player_died", "level_up"), limit=1_000_000)
     events.sort(key=lambda e: e.occurred_at)
     times = [e.occurred_at for e in events]
-    shots = sorted(((r["captured_at"] or r["requested_at"] or 0, r["file_path"])
-                    for r in shots_on_disk(repo, character_id)))
+    if shot_rows is None:
+        shot_rows = shots_on_disk(repo, character_id)
+    shots = sorted(((r["captured_at"] or r["requested_at"] or 0, r["file_path"]) for r in shot_rows))
     shot_times = [t for t, _ in shots]
     out: list[Chapter] = []
     for session in reversed(repo.sessions(character_id)):
@@ -107,7 +110,12 @@ def _font(families: list[str], size: int, spacing: float | None = None) -> QFont
 
 
 class JourneyBanner(QWidget):
-    """The journey on the world map with the character's title over it (see the module notes)."""
+    """The journey on the world map with the character's title over it (see the module notes).
+
+    The pictures are painted when the banner is first painted after new data (not while it is hidden) and kept:
+    set_journey() with the same key (same route and colours) keeps them, and the whole journey's bright route is
+    kept for going back to it. The marker's pulse runs only while the banner shows in the active window (a
+    full-screen cinematic over the main window stops it)."""
 
     def __init__(self, config):
         super().__init__()
@@ -115,15 +123,19 @@ class JourneyBanner(QWidget):
         self.setFixedHeight(BANNER_H)
         self.route: Route | None = None
         self.colors: RouteColors | None = None
+        self.key: tuple | None = None                 # what the pictures were painted for (set_journey)
         self.texts = ("", "", "", theme.TEXT, "")     # heading, title, subtitle, subtitle colour, stats
         self.span: tuple[int, int] | None = None      # the chosen chapters; None: the whole journey
         self.frame: journey_art.Frame | None = None
         self.layer: QImage | None = None              # the map with the whole route dim
         self.lit: QImage | None = None                # the chosen part bright
         self.old_lit: QImage | None = None            # ... and the one it fades from
+        self.whole: tuple[QImage, QPointF | None] | None = None   # the whole journey bright, and where it ends
+        self.stale = False                            # new data: the pictures are painted before the next paint
         self.blend = 1.0
         self.marker: QPointF | None = None
         self.glow = 0.5
+        self._lines: tuple[tuple, list] | None = None  # ((texts, width), [(font, colour, text, ascent, height)])
 
         self.play_all = QPushButton()
         self.play_all.setObjectName("HeroPlay")
@@ -144,6 +156,7 @@ class JourneyBanner(QWidget):
         self.rebuild_timer.timeout.connect(self._rebuild)
         self.clock = QElapsedTimer()
         self.pulse = QTimer(self)
+        self.pulse.setTimerType(Qt.TimerType.PreciseTimer)
         self.pulse.setInterval(PULSE_MS)
         self.pulse.timeout.connect(self._pulse)
         self.fade = QVariantAnimation(self)
@@ -151,18 +164,33 @@ class JourneyBanner(QWidget):
         self.fade.setStartValue(0.0)
         self.fade.setEndValue(1.0)
         self.fade.valueChanged.connect(self._blend)
+        QApplication.instance().applicationStateChanged.connect(self._update_pulse)
 
     # -- data ------------------------------------------------------------------------------
 
-    def set_journey(self, route: Route | None, colors: RouteColors | None, texts: tuple) -> None:
-        self.route, self.colors, self.texts = route, colors, texts
+    def set_journey(self, route: Route | None, colors: RouteColors | None, texts: tuple,
+                    key: tuple | None = None) -> None:
+        """key: what the route and colours stand for; the same key again (and the same route) keeps the pictures."""
+        same = key is not None and key == self.key and route is self.route and self.layer is not None
+        self.route, self.colors, self.texts, self.key = route, colors, texts, key
         self.span = None
-        self._rebuild()
+        self.fade.stop()
+        self.old_lit, self.blend = None, 1.0
+        if same and not self.stale:
+            self.lit = self._paint_lit()            # the whole journey's, kept
+            self.update()
+            return
+        self.layer = self.lit = self.whole = None
+        self.frame = self.marker = None
+        self.stale = True
+        self.update()
 
     def set_span(self, span: tuple[int, int] | None) -> None:
         if span == self.span:
             return
         self.span = span
+        if self.stale:              # painted with the next paint anyway
+            return
         self.old_lit = self.lit
         self.lit = self._paint_lit()
         if self.old_lit is not None and motion.enabled(self.config) and self.isVisible():
@@ -175,7 +203,12 @@ class JourneyBanner(QWidget):
         self.update()
 
     def _rebuild(self) -> None:
-        self.layer = self.lit = self.old_lit = None
+        self._build()
+        self.update()
+
+    def _build(self) -> None:
+        self.stale = False
+        self.layer = self.lit = self.old_lit = self.whole = None
         self.frame = self.marker = None
         size = self.size()
         if self.route and self.colors and size.width() > 0:
@@ -188,11 +221,14 @@ class JourneyBanner(QWidget):
                 journey_art.draw_route(painter, self.frame, self.route, self.colors, bright=False)
                 painter.end()
                 self.lit = self._paint_lit()
-        self.update()
+        self._update_pulse()
 
     def _paint_lit(self) -> QImage | None:
         if self.frame is None or self.route is None:
             return None
+        if self.span is None and self.whole is not None:
+            self.marker = self.whole[1]
+            return self.whole[0]
         image = QImage(self.frame.size * self.devicePixelRatioF(), QImage.Format.Format_ARGB32_Premultiplied)
         image.setDevicePixelRatio(self.devicePixelRatioF())
         image.fill(Qt.GlobalColor.transparent)
@@ -200,6 +236,8 @@ class JourneyBanner(QWidget):
         start, end = self.span or (None, None)
         self.marker = journey_art.draw_route(painter, self.frame, self.route, self.colors, start, end)
         painter.end()
+        if self.span is None:
+            self.whole = (image, self.marker)
         return image
 
     # -- motion ----------------------------------------------------------------------------
@@ -216,23 +254,51 @@ class JourneyBanner(QWidget):
         if self.marker is not None:
             self.update(int(self.marker.x()) - 24, int(self.marker.y()) - 24, 48, 48)
 
+    def _update_pulse(self, *_args) -> None:
+        """The pulse runs while the banner shows a marker in the active window (not under a full-screen
+        cinematic, not while the app is in the background)."""
+        try:
+            run = (motion.enabled(self.config) and self.isVisible() and self.isActiveWindow()
+                   and self.marker is not None)
+        except RuntimeError:  # the banner is gone (the application's signal outlives it)
+            return
+        if run and not self.pulse.isActive():
+            if not self.clock.isValid():
+                self.clock.start()
+            self.pulse.start()
+        elif not run and self.pulse.isActive():
+            self.pulse.stop()
+
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        if motion.enabled(self.config):
-            self.clock.start()
-            self.pulse.start()
+        self._update_pulse()
 
     def hideEvent(self, event) -> None:
         self.pulse.stop()
         super().hideEvent(event)
 
+    def event(self, event) -> bool:
+        handled = super().event(event)
+        # The window's (de)activation reaches its visible widgets as WindowActivate / WindowDeactivate.
+        if event.type() in (QEvent.Type.WindowActivate, QEvent.Type.WindowDeactivate,
+                            QEvent.Type.ActivationChange):
+            self._update_pulse()
+        return handled
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        self.rebuild_timer.start()
+        if self.layer is None:
+            return                          # painted at the right size when first painted
+        if self.isVisible():
+            self.rebuild_timer.start()      # meanwhile the old pictures stretch
+        else:
+            self.stale = True
 
     # -- painting --------------------------------------------------------------------------
 
     def paintEvent(self, event) -> None:
+        if self.stale:
+            self._build()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
@@ -269,30 +335,42 @@ class JourneyBanner(QWidget):
             painter.setPen(QColor(201, 162, 74, alpha // 2))
             painter.drawLine(QPointF(0, y), QPointF(w, y))
 
-        heading, title, subtitle, subtitle_color, stats = self.texts
-        x, width = 36, max(100, int(w * 0.5))
-        y = 40
-        y = self._text(painter, heading, _font(theme.HEADING_FONTS, 10, 118), QColor("#c9a24a"), x, y, width) + 6
-        y = self._text(painter, title, _font(theme.TITLE_FONTS, 30), QColor(theme.GOLD), x, y, width) + 2
-        y = self._text(painter, subtitle, _font(theme.HEADING_FONTS, 13), QColor(subtitle_color), x, y, width) + 8
-        self._text(painter, stats, _font(["Segoe UI", "Arial"], 10), QColor(theme.TEXT), x, y, width)
+        x, y = 36, 40
+        for line, gap in zip(self._text_lines(max(100, int(w * 0.5))), (6, 2, 8, 0)):
+            y = self._text(painter, line, x, y) + gap
         painter.end()
 
+    def _text_lines(self, width: int) -> list[tuple[QFont, QColor, str, int, int]]:
+        """The title's four lines as (font, colour, elided text, ascent, height); made again only when the texts or
+        the width change (the pulse repaints many times a second)."""
+        key = (self.texts, width)
+        if self._lines is None or self._lines[0] != key:
+            heading, title, subtitle, subtitle_color, stats = self.texts
+            lines = []
+            for text, font, color in ((heading, _font(theme.HEADING_FONTS, 10, 118), "#c9a24a"),
+                                      (title, _font(theme.TITLE_FONTS, 30), theme.GOLD),
+                                      (subtitle, _font(theme.HEADING_FONTS, 13), subtitle_color),
+                                      (stats, _font(["Segoe UI", "Arial"], 10), theme.TEXT)):
+                metrics = QFontMetrics(font)
+                lines.append((font, QColor(color), metrics.elidedText(text, Qt.TextElideMode.ElideRight, width)
+                              if text else "", metrics.ascent(), metrics.height()))
+            self._lines = (key, lines)
+        return self._lines[1]
+
     @staticmethod
-    def _text(painter: QPainter, text: str, font: QFont, color: QColor, x: int, y: int, width: int) -> int:
+    def _text(painter: QPainter, line: tuple[QFont, QColor, str, int, int], x: int, y: int) -> int:
         """A line with a soft shadow; returns the y under it."""
+        font, color, text, ascent, height = line
         if not text:
             return y
-        metrics = QFontMetrics(font)
-        text = metrics.elidedText(text, Qt.TextElideMode.ElideRight, width)
         painter.setFont(font)
-        base = y + metrics.ascent()
+        base = y + ascent
         painter.setPen(QColor(0, 0, 0, 200))
         for dx, dy in ((2, 2), (1, 1), (0, 2)):
             painter.drawText(x + dx, base + dy, text)
         painter.setPen(color)
         painter.drawText(x, base, text)
-        return y + metrics.height()
+        return y + height
 
 
 class CinemaPage(Page):
@@ -354,7 +432,7 @@ class CinemaPage(Page):
         self.list.clear()
         repo = self.ctx.repo
         char = repo.character(self.character_id) if self.character_id else None
-        self.route = Route.load(repo, self.character_id) if self.character_id else None
+        self.route = Route.cached(repo, self.character_id) if self.character_id else None
         if not self.route:
             self.chapters = []
             self.banner.set_journey(None, None, (tr("cinema.heading"), char.name if char else tr("cinema.no_journey"),
@@ -362,11 +440,11 @@ class CinemaPage(Page):
             self._show_list()
             return
         sessions = repo.sessions(self.character_id)
-        colors = RouteColors(self.ctx.map_colors,
-                             Levels(repo.events(self.character_id, types=("level_up",)), char.level if char else None),
-                             [s["started_at"] for s in sessions])
-        self.chapters = chapters(repo, self.character_id, self.route)
-        self.banner.set_journey(self.route, colors, self._texts(char, sessions))
+        colors, colors_key = journey_art.journey_colors(self.ctx, self.character_id, char, sessions)
+        shots = shots_on_disk(repo, self.character_id)
+        self.chapters = chapters(repo, self.character_id, self.route, shots)
+        self.banner.set_journey(self.route, colors, self._texts(char, sessions, len(shots)),
+                                (self.character_id, colors_key, map_art.world_base()))
         for c in reversed(self.chapters):
             title = tr("cinema.chapter", n=c.number) + (f"  ·  {c.zone}" if c.zone else "")
             item = self.list.add_entry(title, chapter_detail(c), chapter_icon(c), thumb=c.shot is not None,
@@ -375,12 +453,11 @@ class CinemaPage(Page):
                 self.thumbnails.request(c.shot, lambda icon, it=item: CardList.set_thumb(it, icon))
         self._show_list()
 
-    def _texts(self, char, sessions) -> tuple:
+    def _texts(self, char, sessions, shots: int) -> tuple:
         details = tr("char.details", level=char.level or "?", race=char.race_name or "",
                      cls=char.class_name or "").strip() if char else ""
         played = next((s["played_total_seconds"] for s in sessions if s["played_total_seconds"] is not None), None)
         zones = {p.map_id for p in self.route.points if p.map_id is not None}
-        shots = len(shots_on_disk(self.ctx.repo, self.character_id))
         parts = [tr("cinema.n_chapters", n=len(self.chapters))]
         if played:
             parts.append(tr("cinema.played", time=format_duration(played)))

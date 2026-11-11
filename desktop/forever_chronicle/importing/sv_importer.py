@@ -11,7 +11,9 @@
 from __future__ import annotations
 
 import time
+from bisect import bisect_left
 from dataclasses import dataclass, field
+from operator import itemgetter
 from pathlib import Path
 from typing import Any, Callable
 
@@ -142,6 +144,79 @@ def unpack_stream(stream: Any) -> Any:
     return unpacked
 
 
+class ParsedPoints(list):
+    """Position records parsed ahead by prepare() (the positions stream's records, or one route archive record
+    "point;point;..."): a PositionPoint each, None for an invalid one."""
+
+
+def _parse_points(texts: list[Any]) -> ParsedPoints:
+    return ParsedPoints(PositionPoint.parse(t) if isinstance(t, str) else None for t in texts)
+
+
+def prepare(variables: dict[str, Any]) -> dict[str, Any]:
+    """The work on a parsed file that needs no database, done ahead (the background import runs it in a worker
+    thread): unpacks the streams and parses the position points. import_data takes the result like the raw data."""
+    for char in as_dict(as_dict(variables.get(VARIABLE_NAME)).get("characters")).values():
+        if not isinstance(char, dict) or not isinstance(char.get("streams"), dict):
+            continue
+        streams = char["streams"] = {name: unpack_stream(s) for name, s in char["streams"].items()}
+        positions = streams.get("positions")
+        if isinstance(positions, dict) and isinstance(positions.get("records"), list):
+            positions["records"] = _parse_points(positions["records"])
+        archive = streams.get("routeArchive")
+        if isinstance(archive, dict) and isinstance(archive.get("records"), list):
+            archive["records"] = [_parse_points(chunk.split(";")) if isinstance(chunk, str) else chunk
+                                  for chunk in archive["records"]]
+    return variables
+
+
+@dataclass
+class SavedFile:
+    """A SavedVariables file read and parsed. Needs no database, so the background import reads in a worker thread
+    (read_saved_file) and imports on the main thread (SavedVariablesImporter.import_read)."""
+    path: Path
+    account: str | None = None
+    mtime: int | None = None
+    size: int | None = None
+    variables: dict[str, Any] | None = None   # parsed and prepared; None: neither the file nor its .bak was readable
+    used_backup: bool = False
+    error: str | None = None                  # why the main file could not be read
+    unchanged: bool = False                   # same mtime and size as at the last import: not read
+
+
+def read_saved_file(path: Path, account: str | None = None, last: tuple[int, int] | None = None) -> SavedFile:
+    """Reads and parses the file (its .bak copy if the file is unreadable). ``last``: (mtime, size) of the last
+    import; an unchanged file is not read then. May wait a moment when the game has just written the file."""
+    try:
+        st = path.stat()
+    except OSError:
+        st = None
+    read = SavedFile(path, account, int(st.st_mtime) if st else None, st.st_size if st else None)
+    if st and last is not None and last == (read.mtime, read.size):
+        read.unchanged = True
+        return read
+    for candidate, is_backup in ((path, False), (path.with_name(path.name + ".bak"), True)):
+        try:
+            read.variables = prepare(parse_saved_variables_bytes(_read_stable(candidate)))
+            read.used_backup = is_backup
+            return read
+        except (OSError, LuaParseError) as exc:
+            if read.error is None:
+                read.error = str(exc)
+    return read
+
+
+def _read_stable(path: Path) -> bytes:
+    before = path.stat()
+    if time.time() - before.st_mtime < 5:
+        time.sleep(STABLE_WAIT_SECONDS)  # just written: give the client time to finish
+    raw = path.read_bytes()
+    after = path.stat()
+    if (before.st_size, before.st_mtime) != (after.st_size, after.st_mtime) or len(raw) != after.st_size:
+        raise OSError("file changed while reading; try again after the game has finished saving")
+    return raw
+
+
 class SavedVariablesImporter:
     def __init__(self, db: Database):
         self.db = db
@@ -151,54 +226,31 @@ class SavedVariablesImporter:
     # -- file handling ------------------------------------------------------------
 
     def import_file(self, path: Path, account: str | None = None, skip_unchanged: bool = False) -> ImportResult:
-        result = ImportResult(source=str(path))
-        try:
-            st = path.stat()
-        except OSError:
-            st = None
-        if st and skip_unchanged:
-            last = self.repo.last_import_for(str(path))
-            if last and last["file_mtime"] == int(st.st_mtime) and last["file_size"] == st.st_size:
-                result.status = "unchanged"
-                return result
+        return self.import_read(read_saved_file(path, account, self.last_seen(path) if skip_unchanged else None))
 
-        data, used_backup, error = self._read(path)
-        result.used_backup = used_backup
-        if data is None:
+    def last_seen(self, path: Path) -> tuple[int, int] | None:
+        """(mtime, size) of the file at its last import, for read_saved_file's skip of unchanged files."""
+        last = self.repo.last_import_for(str(path))
+        return (last["file_mtime"], last["file_size"]) if last else None
+
+    def import_read(self, read: SavedFile) -> ImportResult:
+        """Imports a file read by read_saved_file (or records that it could not be read)."""
+        result = ImportResult(source=str(read.path))
+        if read.unchanged:
+            result.status = "unchanged"
+            return result
+        result.used_backup = read.used_backup
+        if read.variables is None:
             result.status = "failed"
-            result.messages.append(error or "file could not be read")
+            result.messages.append(read.error or "file could not be read")
             with self.db.transaction():
-                result.import_id = self.repo.start_import(str(path), "saved_variables", account,
-                                                          int(st.st_mtime) if st else None, st.st_size if st else None)
+                result.import_id = self.repo.start_import(str(read.path), "saved_variables", read.account,
+                                                          read.mtime, read.size)
                 self.repo.finish_import(result.import_id, status="failed", message=result.messages[-1])
             return result
-        if used_backup:
-            result.messages.append(f"main file unreadable ({error}); imported the .bak copy instead")
-        return self.import_data(data, str(path), account, int(st.st_mtime) if st else None,
-                                st.st_size if st else None, result)
-
-    def _read(self, path: Path) -> tuple[dict[str, Any] | None, bool, str | None]:
-        """Returns (parsed variables, used_backup, error of the main file)."""
-        error = None
-        for candidate, is_backup in ((path, False), (path.with_name(path.name + ".bak"), True)):
-            try:
-                raw = self._read_stable(candidate)
-                return parse_saved_variables_bytes(raw), is_backup, error
-            except (OSError, LuaParseError) as exc:
-                if error is None:
-                    error = str(exc)
-        return None, False, error
-
-    @staticmethod
-    def _read_stable(path: Path) -> bytes:
-        before = path.stat()
-        if time.time() - before.st_mtime < 5:
-            time.sleep(STABLE_WAIT_SECONDS)  # just written: give the client time to finish
-        raw = path.read_bytes()
-        after = path.stat()
-        if (before.st_size, before.st_mtime) != (after.st_size, after.st_mtime) or len(raw) != after.st_size:
-            raise OSError("file changed while reading; try again after the game has finished saving")
-        return raw
+        if read.used_backup:
+            result.messages.append(f"main file unreadable ({read.error}); imported the .bak copy instead")
+        return self.import_data(read.variables, str(read.path), read.account, read.mtime, read.size, result)
 
     # -- data -----------------------------------------------------------------------
 
@@ -296,25 +348,26 @@ class SavedVariablesImporter:
         raw = as_list(pos_stream.get("records"))
         next_seq = _int(pos_stream.get("nextSeq")) or (len(raw) + 1)
         first_seq = next_seq - len(raw)
-        good_points = []
-        for i, text in enumerate(raw):
-            point = PositionPoint.parse(text) if isinstance(text, str) else None
-            if point is None:
-                result.invalid += 1
-                continue
-            self.repo.upsert_position(character_id, point)
-            good_points.append({"seq": first_seq + i, "time": point.time})
-            result.positions += 1
-        self._track_stream(character_id, "positions", good_points, import_id, result)
+        parsed = raw if isinstance(raw, ParsedPoints) else _parse_points(raw)
+        points = [(seq, p) for seq, p in enumerate(parsed, first_seq) if p is not None]   # (seq, point)
+        result.invalid += len(raw) - len(points)
+        self.repo.upsert_positions(character_id, self._positions_to_write(character_id, points))
+        result.positions += len(points)
+        self._track_seqs(character_id, "positions", [(seq, p.time) for seq, p in points], import_id, result)
         # Route archive: old points the addon thinned out when the positions stream was full ("point;point;..."
         # per record). They are the same points, so they only fill in what was not imported in time.
+        archived = []
         for chunk in as_list(as_dict(streams.get("routeArchive")).get("records")):
-            for text in chunk.split(";") if isinstance(chunk, str) else []:
-                point = PositionPoint.parse(text)
+            if isinstance(chunk, ParsedPoints):
+                chunk_points = chunk
+            else:
+                chunk_points = _parse_points(chunk.split(";")) if isinstance(chunk, str) else []
+            for point in chunk_points:
                 if point is None:
                     result.invalid += 1
-                    continue
-                self.repo.upsert_position(character_id, point)
+                else:
+                    archived.append(point)
+        self.repo.upsert_positions(character_id, archived)
         # Group: one string per stretch with the same group, "start,until,name/class/guid;..." (Modules/Group.lua).
         for text in as_list(as_dict(streams.get("group")).get("records")):
             stretch = parse_group_stretch(text)
@@ -349,18 +402,38 @@ class SavedVariablesImporter:
                 result.invalid += 1
         self.repo.replace_gear(character_id, items, _int(snap.get("updatedAt")))
 
+    def _positions_to_write(self, character_id: str, points: list[tuple[int, PositionPoint]]) -> list[PositionPoint]:
+        """The positions stream's points that may be new or changed since the last import. The addon only ever
+        changes its newest point (a stationary point's until grows, Modules/Positions.lua), so the points before the
+        newest one imported last time are stored as they are and left out; that one is written again. Trusted only
+        when that point is in the file and stored: else (a restarted stream, a friend's file, a seq number merged in
+        from another PC's export) all points are written, as before."""
+        last = None if self._owner_id is not None else self.repo.last_seq(character_id, "positions")
+        start = 0
+        if last is not None and points and points[-1][0] >= last:
+            i = bisect_left(points, last, key=itemgetter(0))   # seqs rise with the index
+            if i < len(points) and points[i][0] == last and self.repo.has_position(character_id, points[i][1].time):
+                start = i
+        return [p for _, p in points[start:]]
+
     def _track_stream(self, character_id: str, stream: str, records: list[dict[str, Any]], import_id: int,
                       result: ImportResult) -> None:
+        if self._owner_id is None:
+            self._track_seqs(character_id, stream, [(_int(r["seq"]), r.get("time")) for r in records], import_id,
+                             result)
+
+    def _track_seqs(self, character_id: str, stream: str, seq_times: list[tuple[int, Any]], import_id: int,
+                    result: ImportResult) -> None:
+        """_track_stream with the records' (seq, time) pairs."""
         if self._owner_id is not None:
             return
-        seqs = [_int(r["seq"]) for r in records]
+        seqs = [seq for seq, _ in seq_times]
         check = check_gap(self.repo.last_seq(character_id, stream), seqs)
         if check.reset:
             result.messages.append(f"{stream}: addon data was reset; numbering restarted")
         if check.gap:
-            first_after = min((r for r in records), key=lambda r: _int(r["seq"]))
-            self.repo.add_gap(character_id, stream, check.gap[0], check.gap[1], _int(first_after.get("time")),
-                              import_id)
+            first_after = min(seq_times, key=itemgetter(0))
+            self.repo.add_gap(character_id, stream, check.gap[0], check.gap[1], _int(first_after[1]), import_id)
             result.gaps += 1
         if seqs:
             self.repo.set_last_seq(character_id, stream, check.new_last)

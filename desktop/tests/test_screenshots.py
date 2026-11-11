@@ -116,7 +116,7 @@ def test_chronicle_shows_screenshots_inline(db, data, tmp_path, monkeypatch):
     assert any("Stufe 23 erreicht" in t for t in texts)
     assert timeline.count.text().endswith("2 Screenshots")
     loading = with_shot[0].data(THUMB).toImage()
-    timeline.thumbnails.load_batch()
+    timeline.thumbnails.wait()
     assert timeline.thumbnails.cache, "thumbnail loaded"
     assert with_shot[0].data(THUMB).toImage() != loading, "the picture replaces the placeholder"
 
@@ -140,7 +140,7 @@ def test_chronicle_shows_screenshots_inline(db, data, tmp_path, monkeypatch):
     window.show_page(gallery)
     assert len(gallery.tiles) == 1 and gallery.tiles[0].favorite, "one picture (shared by two events), starred"
     assert gallery.count.text() == "1 Bilder  ·  1 Favoriten"
-    gallery.thumbnails.load_batch()
+    gallery.thumbnails.wait()
     assert gallery.tiles[0].pixmap is not None
     for key in ("zone", "level", "type", "session"):
         gallery.group_by.setCurrentIndex(gallery.group_by.findData(key))

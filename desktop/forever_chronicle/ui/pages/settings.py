@@ -124,8 +124,8 @@ class SettingsPage(Page):
         ml.setColumnStretch(3, 1)
         root.addWidget(self.music_box)
 
-        # Cinematic mode: route colours (also the Kino page's and the video's), time of day, end credits, ambience
-        # (ui/cinematic.py; on by default)
+        # Cinematic mode: route colours (also the Kino page's and the video's), screenshots at the sides, time of
+        # day, end credits, ambience (ui/cinematic.py; on by default)
         self.cine_box = QGroupBox()
         cl = QVBoxLayout(self.cine_box)
         colors = QHBoxLayout()
@@ -137,7 +137,7 @@ class SettingsPage(Page):
         colors.addWidget(self.colors)
         colors.addStretch(1)
         cl.addLayout(colors)
-        for key in ("cine_daylight", "cine_credits", "cine_ambience"):
+        for key in ("cine_side_photos", "cine_daylight", "cine_credits", "cine_ambience"):
             cl.addWidget(self._option(key), 0, Qt.AlignmentFlag.AlignLeft)
         root.addWidget(self.cine_box)
 

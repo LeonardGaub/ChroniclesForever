@@ -1,5 +1,5 @@
-"""Screenshots: thumbnails (loaded in small batches so large folders do not freeze the window), the Shot model and
-a viewer for the full picture.
+"""Screenshots: thumbnails (read in worker threads, ui/image_loader.py, so large folders do not stall the window),
+the Shot model and a viewer for the full picture.
 
 The viewer shows the picture on black, under an achievement banner as in the cinematic mode (heading, name,
 place; the event's game icon or the level reached). It steps through the other screenshots of its list (arrow
@@ -10,13 +10,13 @@ the cinematic mode ("Wiedergabe ab hier", Enter). Esc closes it, F11 switches be
 from __future__ import annotations
 
 import bisect
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QRectF, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QIcon, QImageReader, QKeySequence, QPainter, QPixmap, \
-    QShortcut
+from PySide6.QtCore import QCoreApplication, QEventLoop, QRectF, QSize, Qt, QThread, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ..domain import event_types
@@ -24,23 +24,16 @@ from ..domain.cinematic import Cue, banner
 from ..i18n import format_datetime, tr
 from . import theme
 from .cards import THUMB_SIZE
+from .image_loader import ImageLoader, decode
 
-BATCH = 6
 REPLAY_BEFORE = 120        # the replay from a screenshot starts this many seconds of play before it
 
 
 def load_thumbnail(path: str | None, size: QSize = THUMB_SIZE, fill: bool = False) -> QPixmap | None:
-    """The picture scaled to fit inside size, or with fill to cover it (for cropping)."""
-    if not path:
-        return None
-    reader = QImageReader(path)
-    full = reader.size()
-    if not full.isValid():
-        return None
-    mode = Qt.AspectRatioMode.KeepAspectRatioByExpanding if fill else Qt.AspectRatioMode.KeepAspectRatio
-    reader.setScaledSize(full.scaled(size, mode))
-    image = reader.read()
-    return QPixmap.fromImage(image) if not image.isNull() else None
+    """The picture scaled to fit inside size, or with fill to cover it (for cropping). Read at once on the calling
+    (main) thread; ThumbnailLoader reads in the background."""
+    image = decode(path, size, fill)
+    return QPixmap.fromImage(image) if image is not None else None
 
 
 def file_exists(path: str | None) -> bool:
@@ -72,42 +65,52 @@ class ScreenshotFolderButton(QPushButton):
 
 
 class ThumbnailLoader:
-    """Loads thumbnails on a timer and hands each one to its callback. Thumbnails are cached by path."""
+    """Reads thumbnails in worker threads (ui/image_loader.py) and hands each one to its callback as a QIcon, on the
+    main thread. Thumbnails are cached by path; clear() drops the callbacks still waiting (they are not called), but
+    pictures already being read still arrive in the cache, so a list filled again at once does not read them twice."""
 
     def __init__(self, parent, size: QSize = THUMB_SIZE):
         self.size = size
         self.cache: dict[str, QIcon] = {}
-        self._pending: list[tuple[str, Callable[[QIcon], None]]] = []
-        self._timer = QTimer(parent)
-        self._timer.setInterval(15)
-        self._timer.timeout.connect(self.load_batch)
+        self._loader = ImageLoader(parent)
+        self._waiting: dict[str, list[Callable[[QIcon], None]]] = {}    # path being read -> its callbacks
+
+    @property
+    def pending(self) -> int:
+        return sum(1 for applies in self._waiting.values() if applies)
 
     def clear(self) -> None:
-        self._timer.stop()
-        self._pending = []
+        for applies in self._waiting.values():
+            applies.clear()
 
     def request(self, path: str, apply: Callable[[QIcon], None]) -> None:
-        """Calls apply now if the thumbnail is cached, else later once it is loaded."""
+        """Calls apply now if the thumbnail is cached, else later once it is loaded (not at all if it cannot be)."""
         if path in self.cache:
             apply(self.cache[path])
             return
-        self._pending.append((path, apply))
-        if not self._timer.isActive():
-            self._timer.start()
+        if path in self._waiting:
+            self._waiting[path].append(apply)
+            return
+        self._waiting[path] = [apply]
+        self._loader.request(path, lambda image, p=path: self._loaded(p, image), self.size)
 
-    def load_batch(self) -> None:
-        for _ in range(BATCH):
-            if not self._pending:
-                self._timer.stop()
-                return
-            path, apply = self._pending.pop(0)
-            icon = self.cache.get(path)
-            if icon is None:
-                pix = load_thumbnail(path, self.size)
-                icon = QIcon(pix) if pix is not None else None
-            if icon:
-                self.cache[path] = icon
+    def _loaded(self, path: str, image) -> None:
+        applies = self._waiting.pop(path, [])
+        if image is None:
+            return
+        icon = self.cache[path] = QIcon(QPixmap.fromImage(image))      # QPixmap: on the main thread only
+        for apply in applies:
+            try:
                 apply(icon)
+            except RuntimeError:  # its row or tile is gone
+                pass
+
+    def wait(self, timeout_ms: int = 10_000) -> None:
+        """Blocks until everything requested has been handed over (for tests and scripts)."""
+        deadline = time.monotonic() + timeout_ms / 1000
+        while self.pending and time.monotonic() < deadline:
+            QCoreApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 20)
+            QThread.msleep(2)
 
 
 @dataclass

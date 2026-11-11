@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
+from typing import Callable
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 
 from . import cloud_backup, i18n
 from .config import AppConfig
@@ -12,7 +14,7 @@ from .domain.route_colors import MODES
 from .importing.friend_importer import FriendImportResult, import_friends
 from .importing.friend_screenshots import FriendScreenshotsResult, sync_friend_screenshots
 from .importing.screenshot_matcher import match_screenshots
-from .importing.sv_importer import ImportResult, SavedVariablesImporter
+from .importing.sv_importer import ImportResult, SavedFile, SavedVariablesImporter, read_saved_file
 from .storage.database import Database
 from .storage.jsonl import ExportResult, JsonlImportResult, export_jsonl, import_jsonl
 from .storage.repository import Repository
@@ -28,6 +30,7 @@ class AppContext(QObject):
     select_character = Signal(str)  # make this character the shown one (character_id)
     imported = Signal(list)        # import_ids of imports that brought new events (the main window announces them)
     setup_requested = Signal()     # open the first-start wizard (the home screen's first-steps card)
+    _files_read = Signal(object)   # from import_all_in_background's worker thread
 
     def needs_setup(self) -> bool:
         """True on a first start: no character yet, and the wizard was neither finished nor skipped."""
@@ -45,6 +48,13 @@ class AppContext(QObject):
         self.last_friend_import = FriendImportResult()
         self.last_friend_screenshots = FriendScreenshotsResult()
         self.backup = BackupRunner(self)       # the cloud backup, off the main thread (ui/backup_runner.py)
+        # import_all_in_background: a run is going on; one more is waiting (its skip_unchanged, None: none); the
+        # callbacks for the next run; import_all ran during the run.
+        self.importing = False
+        self._import_again: bool | None = None
+        self._import_waiting: list[Callable[[list[ImportResult]], None]] = []
+        self._import_stale = False
+        self._files_read.connect(self._import_read_files, Qt.ConnectionType.QueuedConnection)
 
     def set_language(self, code: str) -> None:
         """Switches the language (i18n tells its listeners) and keeps it in the settings."""
@@ -78,8 +88,62 @@ class AppContext(QObject):
         return find_saved_variables(client) if client else []
 
     def import_all(self, skip_unchanged: bool = False) -> list[ImportResult]:
+        if self.importing:
+            self._import_stale = True   # the background run's files may be older than what this imports
         results = [self.importer.import_file(sv.path, sv.account, skip_unchanged=skip_unchanged)
                    for sv in self.saved_variables()]
+        return self._after_import(results)
+
+    def import_all_in_background(self, skip_unchanged: bool = True,
+                                 done: Callable[[list[ImportResult]], None] | None = None) -> None:
+        """import_all without blocking the window: the files are read and parsed in a worker thread, then imported
+        here in the main thread (the database connection lives here). ``done`` gets the results afterwards. One run
+        at a time: a request during a run makes one more run after it (unchanged files skipped only if every
+        request said so), whose results go to the waiting ``done`` callbacks."""
+        if done is not None:
+            self._import_waiting.append(done)
+        if self.importing:
+            self._import_again = skip_unchanged and (self._import_again is not False)
+            return
+        files = [(sv.path, sv.account, self.importer.last_seen(sv.path) if skip_unchanged else None)
+                 for sv in self.saved_variables()]
+        self.importing = True
+        self._import_stale = False
+        callbacks, self._import_waiting = self._import_waiting, []
+
+        def work() -> None:
+            reads = []
+            for path, account, last in files:
+                try:
+                    reads.append(read_saved_file(path, account, last))
+                except Exception as exc:   # never leave the run unfinished
+                    reads.append(SavedFile(path, account, error=f"file could not be read: {exc}"))
+            self._files_read.emit((reads, callbacks, skip_unchanged))
+
+        threading.Thread(target=work, name="import-read", daemon=True).start()
+
+    def _import_read_files(self, payload: tuple[list[SavedFile], list[Callable], bool]) -> None:
+        """Main thread: imports what the worker read, then tells the callbacks and starts a waiting run."""
+        reads, callbacks, skip_unchanged = payload
+        results: list[ImportResult] = []
+        if self._import_stale:   # import_all ran meanwhile: read the files again rather than import older reads
+            self._import_waiting[:0] = callbacks
+            self._import_again = skip_unchanged and (self._import_again is not False)
+            callbacks = []
+        else:
+            try:
+                results = self._after_import([self.importer.import_read(read) for read in reads])
+            except Exception as exc:   # e.g. a database error: reported like a failed file, the next run still starts
+                results = [ImportResult(source=str(read.path), status="failed", messages=[str(exc)]) for read in reads]
+        self.importing = False
+        again, self._import_again = self._import_again, None
+        if again is not None:
+            self.import_all_in_background(again)
+        for callback in callbacks:
+            callback(results)
+
+    def _after_import(self, results: list[ImportResult]) -> list[ImportResult]:
+        """What follows the files' import: friends, screenshots, icons, and the signals."""
         friends = self.import_friends(notify=False)
         matched = self.match_screenshots()
         new_icons = self.extract_icons()

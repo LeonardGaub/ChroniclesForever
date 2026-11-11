@@ -9,25 +9,29 @@
   "Alle Kapitel" (the Kino page).
 The characters are in the sidebar, so the page has no card for them.
 The cards navigate through AppContext.navigate; the main window does the rest.
+The page refreshes often (every start, import and tab change), so the route comes from Route.cached, the journey
+picture is painted again only when the route changed (journey_art.cached_picture) and the photos are read in the
+background (ui/image_loader.py) and kept.
 """
 
 from __future__ import annotations
 
 import time
+from typing import Callable
 
 from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout,
                                QWidget)
 
 from ...domain import event_types, maps
-from ...domain.cinematic import Levels
 from ...domain.route import GAP_SECONDS, Route
-from ...domain.route_colors import RouteColors
 from ...domain.stats import session_durations
 from ...i18n import format_datetime, format_day, format_duration, tr
 from .. import icons, journey_art, theme
 from ..cards import Card
-from ..screenshots import load_thumbnail, make_shot, open_viewer, shots_on_disk
+from ..image_loader import ImageLoader
+from ..screenshots import make_shot, open_viewer, shots_on_disk
 from ..widgets import Page, muted
 
 # Moments counted for the last session, in this order (the type's game icon and the count).
@@ -37,6 +41,7 @@ THUMB = QSize(132, 82)
 JOURNEY = QSize(420, 236)
 MAX_ZONES = 4
 MIN_RATE_SECONDS = 15 * 60      # shorter sessions show no quests per hour
+PHOTO_CACHE = 48                # photos kept (path and size)
 
 
 def clear(layout) -> None:
@@ -117,19 +122,60 @@ def session_stats(session, count: int, durations: list[int], events, route: Rout
     return rows
 
 
-class Thumb(QLabel):
-    """A clickable screenshot thumbnail on photo paper."""
+class Photos:
+    """Screenshots for the cards, read in worker threads and kept by path and size. clear() (each refresh) drops
+    the callbacks still waiting; pictures being read still arrive in the cache."""
 
-    def __init__(self, path: str, on_click, size: QSize = THUMB):
+    def __init__(self, parent):
+        self.loader = ImageLoader(parent)
+        self.cache: dict[tuple[str, int, int], QPixmap] = {}
+        self.waiting: dict[tuple[str, int, int], list[Callable[[QPixmap], None]]] = {}
+
+    def clear(self) -> None:
+        for applies in self.waiting.values():
+            applies.clear()
+
+    def request(self, path: str, size: QSize, apply: Callable[[QPixmap], None]) -> None:
+        """Calls apply with the picture now if it is kept, else once it is read (not at all if it cannot be)."""
+        key = (path, size.width(), size.height())
+        pix = self.cache.get(key)
+        if pix is not None:
+            apply(pix)
+        elif key in self.waiting:
+            self.waiting[key].append(apply)
+        else:
+            self.waiting[key] = [apply]
+            self.loader.request(path, lambda image, k=key: self._loaded(k, image), size)
+
+    def _loaded(self, key: tuple[str, int, int], image) -> None:
+        applies = self.waiting.pop(key, [])
+        if image is None:
+            return
+        pix = self.cache[key] = QPixmap.fromImage(image)
+        while len(self.cache) > PHOTO_CACHE:
+            self.cache.pop(next(iter(self.cache)))
+        for apply in applies:
+            apply(pix)
+
+
+class Thumb(QLabel):
+    """A clickable screenshot thumbnail on photo paper; the picture comes in when photos has read it."""
+
+    def __init__(self, path: str, on_click, size: QSize = THUMB, photos: Photos | None = None):
         super().__init__()
         self.on_click = on_click
         self.setFixedSize(size + QSize(8, 8))
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background: #f3eee2; border: 1px solid #c9bea6;")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        pix = load_thumbnail(path, size)
-        if pix is not None:
+        if photos is not None and path:
+            photos.request(path, size, self._show)
+
+    def _show(self, pix: QPixmap) -> None:
+        try:
             self.setPixmap(pix)
+        except RuntimeError:  # the card was filled again meanwhile
+            pass
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -183,6 +229,7 @@ class HomePage(Page):
             card.body.addLayout(body)
             card.body.addStretch(1)
             self.bodies[name] = body
+        self.photos = Photos(self)
 
     def refresh(self) -> None:
         repo = self.ctx.repo
@@ -195,17 +242,19 @@ class HomePage(Page):
         self.session_card.title.setText(tr("home.session"))
         self.gallery_card.title.setText(tr("home.gallery"))
         self.map_card.title.setText(tr("home.map"))
+        self.photos.clear()
         for body in self.bodies.values():
             clear(body)
-        route = Route.load(repo, self.character_id) if self.character_id else None
+        route = Route.cached(repo, self.character_id) if self.character_id else None
         sessions = repo.sessions(self.character_id) if self.character_id else []
-        self._fill_session(sessions, route)
-        self._fill_gallery()
-        self._fill_map(sessions[0] if sessions else None, route)
+        shots = shots_on_disk(repo, self.character_id) if self.character_id else []
+        self._fill_session(sessions, route, shots)
+        self._fill_gallery(shots)
+        self._fill_map(sessions, route, char)
 
     # -- last session ----------------------------------------------------------------------
 
-    def _fill_session(self, sessions, route: Route | None) -> None:
+    def _fill_session(self, sessions, route: Route | None, shots: list) -> None:
         body = self.bodies["session"]
         if not sessions:
             body.addWidget(muted(tr("home.no_session")))
@@ -281,8 +330,7 @@ class HomePage(Page):
             if len(zones) > MAX_ZONES:
                 body.addWidget(muted(tr("home.more_zones", n=len(zones) - MAX_ZONES)))
 
-        shots = [r for r in shots_on_disk(self.ctx.repo, self.character_id)
-                 if start <= (r["captured_at"] or r["requested_at"] or 0) <= end]
+        shots = [r for r in shots if start <= (r["captured_at"] or r["requested_at"] or 0) <= end]
         if shots:
             row = QHBoxLayout()
             row.setSpacing(8)
@@ -291,7 +339,8 @@ class HomePage(Page):
                                                                                            r["first_event_id"] or ""))
                          for r in reversed(shots)]
             for i, shot in enumerate(all_shots[:4]):
-                row.addWidget(Thumb(shot.path, lambda i=i, s=all_shots: open_viewer(self, self.ctx, s, i)))
+                row.addWidget(Thumb(shot.path, lambda i=i, s=all_shots: open_viewer(self, self.ctx, s, i),
+                                    photos=self.photos))
             row.addStretch(1)
             body.addLayout(row)
         buttons = QHBoxLayout()
@@ -309,9 +358,8 @@ class HomePage(Page):
 
     # -- gallery ---------------------------------------------------------------------------
 
-    def _fill_gallery(self) -> None:
+    def _fill_gallery(self, rows: list) -> None:
         body = self.bodies["gallery"]
-        rows = shots_on_disk(self.ctx.repo, self.character_id) if self.character_id else []
         if not rows:
             body.addWidget(muted(tr("gallery.empty")))
             return
@@ -320,12 +368,14 @@ class HomePage(Page):
                                             r["captured_at"] or r["requested_at"] or 0), reverse=True)[:3]
         collage = QHBoxLayout()
         collage.setSpacing(8)
-        big = Thumb(picks[0]["file_path"], lambda: self.ctx.navigate.emit("tab.gallery"), QSize(260, 162))
+        big = Thumb(picks[0]["file_path"], lambda: self.ctx.navigate.emit("tab.gallery"), QSize(260, 162),
+                    self.photos)
         collage.addWidget(big)
         side = QVBoxLayout()
         side.setSpacing(8)
         for r in picks[1:]:
-            side.addWidget(Thumb(r["file_path"], lambda: self.ctx.navigate.emit("tab.gallery"), QSize(122, 75)))
+            side.addWidget(Thumb(r["file_path"], lambda: self.ctx.navigate.emit("tab.gallery"), QSize(122, 75),
+                                 self.photos))
         side.addStretch(1)
         collage.addLayout(side)
         collage.addStretch(1)
@@ -338,17 +388,14 @@ class HomePage(Page):
 
     # -- map -------------------------------------------------------------------------------
 
-    def _fill_map(self, session, route: Route | None) -> None:
+    def _fill_map(self, sessions, route: Route | None, char) -> None:
         body = self.bodies["map"]
         if not route:
             body.addWidget(muted(tr("map.no_points")))
             return
-        repo = self.ctx.repo
-        char = repo.character(self.character_id)
-        colors = RouteColors(self.ctx.map_colors,
-                             Levels(repo.events(self.character_id, types=("level_up",)), char.level if char else None),
-                             [s["started_at"] for s in repo.sessions(self.character_id)])
-        pixmap = journey_art.picture(route, colors, JOURNEY)
+        session = sessions[0] if sessions else None
+        colors, colors_key = journey_art.journey_colors(self.ctx, self.character_id, char, sessions)
+        pixmap = journey_art.cached_picture(self.character_id, route, colors, colors_key, JOURNEY)
         if pixmap is not None:
             preview = QLabel()
             preview.setPixmap(pixmap)
