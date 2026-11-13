@@ -4,10 +4,13 @@ Start here. "Current state" and "Open items" are kept up to date; `docs/History.
 were written at the time (older entries may describe things that changed later). Architecture and extension guide:
 `ARCHITECTURE.md`. Player-facing addon changes for the next upload: `CHANGELOG.md`.
 
-## Current state (2026-11-04)
-- Main addon `addons/ForeverChronicle` 0.16.0 (changelog section "0.16.0" in `CHANGELOG.md`), shared with friends
-  on 2026-11-04 as `dist/friends/JourneyForever-0.16.0-Komplett.zip` (addon + desktop app, built by
-  `tools/package_for_friends.py`; `Journey Forever starten.bat` installs everything, README "Install and run").
+## Current state (2026-11-13)
+- Main addon `addons/ForeverChronicle` 0.17.0 (changelog section "0.17.0" in `CHANGELOG.md`, with a "Desktop app"
+  part that is not for CurseForge). The repository is public since 2026-11-13. 0.17.0 is the first version
+  published as a GitHub release (`tools/package_for_friends.py --release`); friends on 0.16.0 install its zip once
+  by hand, later releases reach their apps by themselves (open item 10). 0.16.0 was shared on 2026-11-04 as
+  `dist/friends/JourneyForever-0.16.0-Komplett.zip` (addon + desktop app; `Journey Forever starten.bat`
+  installs everything, README "Install and run").
   CurseForge: 0.15.0 was packaged on 2026-10-20 but never uploaded (last upload 0.14.1; description in
   `docs/CurseForge.md`). The friends companion `ForeverChronicle_Share` was removed on 2026-10-27; the
   desktop app installs a newer main addon from the repository at start (WoW closed) and deletes the companion folder.
@@ -94,13 +97,13 @@ were written at the time (older entries may describe things that changed later).
 
 10. Self-update of the desktop app (2026-11-09, `updater.py`, `ui/update_dialog.py`, ARCHITECTURE "Self-update"):
    the installed app offers newer GitHub releases at start and swaps itself. Tested with unit tests and one real
-   apply run on this PC (detached process, folder swap, relaunch); not yet with a real release. To start it:
-   (1) make the repository public (GitHub: Settings -> General -> Danger Zone -> Change visibility; the user
-   agreed on 2026-11-09, the repo holds ~34 MB of game art), (2) raise the addon version (e.g. 0.17.0) and turn
-   CHANGELOG "Unreleased" into that version, commit and push, (3) run
-   `desktop\.venv\Scripts\python tools\package_for_friends.py --release`, (4) friends install that zip once by
-   hand (0.16.0 has no updater); from then on releases arrive by themselves. Optional: a credit line for OpenMap
-   (MIT) in the README for the world map tiles.
+   apply run on this PC (detached process, folder swap, relaunch); not yet with a real release. Done on
+   2026-11-13: repository public, 0.17.0 prepared (version, CHANGELOG, tests, a test zip staged by the updater),
+   committed and pushed. Left: (3) run `desktop\.venv\Scripts\python tools\package_for_friends.py --release`,
+   (4) friends install that zip once by hand (0.16.0 has no updater); from then on releases arrive by themselves.
+   The first real check is 0.17.1: does an installed 0.17.0 offer it and swap cleanly? Release routine: raise
+   "## Version:" in the TOC, turn CHANGELOG "Unreleased" into the version, commit, push, run `--release`.
+   Optional: a credit line for OpenMap (MIT) in the README for the world map tiles.
 11. Cinematic screenshots at the side (2026-11-09, design in `docs/Cinematic_Side_Pictures.md`, option
    "cine_side_photos", on by default): the replay no longer stops for screenshots; they land in a pile of up to five
    over the map's right edge, and only big moments slow it to half speed. Tested with unit tests and rendered frames

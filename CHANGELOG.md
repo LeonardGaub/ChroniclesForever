@@ -6,6 +6,10 @@ then turn "Unreleased" into the uploaded version and date.
 
 ## Unreleased
 
+## 0.17.0 – 2026-11-13
+
+### Addon
+
 - Deaths are no longer recorded twice: on servers that report a death twice, the chronicle showed two
   deaths (one with the killer, one with the corpse run). Now it is one death with both.
 - Screenshots with "Keep popups": the screenshot now waits 2 seconds after the popup (level-up banner,
@@ -13,6 +17,17 @@ then turn "Unreleased" into the uploaded version and date.
 - More history per character: the route keeps 200,000 points before the oldest are thinned into the archive
   (was 100,000, roughly 110 hours of movement instead of 55), the route archive holds four times as much, and
   the kill log keeps 100,000 kills (was 50,000).
+
+### Desktop app (friends' package only, not part of the CurseForge upload)
+
+- The app updates itself: at start it offers new versions ("Jetzt aktualisieren") and brings the new addon
+  along. Your data stays where it is.
+- Cinema: screenshots no longer stop the replay. They pile up at the right edge of the map while the journey
+  goes on, and only the big moments slow it down a little.
+- Cinema: long journeys draw faster and run more smoothly.
+- Importing the game data runs in the background, so the app stays usable meanwhile; screenshots load without
+  freezing the window.
+- Long realm names in the character list end in "…" instead of spilling over the character's name.
 
 ## 0.16.0 – 2026-11-04
 
